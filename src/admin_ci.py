@@ -85,6 +85,11 @@ def make_app() -> Flask:
     def root_redirect():
         return redirect(url_for("admin_home"))
 
+    # Quiet favicon requests to avoid 404 noise
+    @app.route("/favicon.ico")
+    def favicon():
+        return Response(status=204)
+
     @app.route("/admin/ci/workflows")
     @basic_auth
     def admin_workflows():
