@@ -39,21 +39,34 @@ def format_message(
 ) -> str:
     status_emoji = "✅" if summary.get("pass") else "❌"
     title = summary.get("records_path") or "Unknown records"
+    total = summary.get("total", 0)
+    schema_pass = summary.get("schema_pass", 0)
+    pdf_ok = summary.get("pdf_ok", 0)
     schema_rate = summary.get("schema_rate")
     pdf_rate = summary.get("pdf_rate")
 
-    lines = [
+    local_cached = 0
+    for payload in results.values():
+        resolved = (payload.get("pdf") or {}).get("resolved_url")
+        if isinstance(resolved, str) and not resolved.startswith("http"):
+            local_cached += 1
+
+    lines: List[str] = [
         f"{status_emoji} Harvest Gate ({title})",
-        f"- total: {summary.get('total', 0)}",
-        f"- schema pass: {summary.get('schema_pass', 0)} ({schema_rate}%)",
-        f"- pdf ok: {summary.get('pdf_ok', 0)} ({pdf_rate}%)",
-        f"- duplicates: {summary.get('dup_ids', 0)}",
-        f"- status: {'PASS' if summary.get('pass') else 'FAIL'}",
+        "",
+        f"Records processed: {total} ({schema_pass} schema-clean, {max(total - schema_pass, 0)} flagged)",
+        f"PDFs retrieved: {pdf_ok}/{total} ({pdf_rate}% passing gate)",
     ]
+
+    if local_cached:
+        lines.append(f"Local cache coverage: {local_cached}/{pdf_ok or total}")
+
+    lines.append(f"Duplicates detected: {summary.get('dup_ids', 0)}")
+    lines.append(f"Gate status: {'PASS' if summary.get('pass') else 'FAIL'}")
 
     reasons = summary.get("reasons") or []
     if reasons:
-        lines.append(f"- reasons: {', '.join(reasons)}")
+        lines.append(f"Reasons: {', '.join(reasons)}")
 
     failures = summarize_failures(results)
     if failures:
