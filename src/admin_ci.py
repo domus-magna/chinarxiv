@@ -73,6 +73,21 @@ def make_app() -> Flask:
     def _inject_now():
         return {"now_local": _now_local_str()}
 
+    # Template filter: ISO8601 -> local time string
+    from dateutil import parser as dtparser
+
+    def dt_local(iso_str: Optional[str], fmt: str = "%Y-%m-%d %I:%M:%S %p %Z") -> str:
+        try:
+            if not iso_str:
+                return ""
+            dt = dtparser.isoparse(iso_str)
+            dt_local = dt.astimezone()
+            return dt_local.strftime(fmt)
+        except Exception:
+            return str(iso_str or "")
+
+    app.jinja_env.filters["dt_local"] = dt_local
+
     @app.route("/admin")
     @basic_auth
     def admin_home():
