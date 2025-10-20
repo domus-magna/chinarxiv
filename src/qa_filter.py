@@ -16,6 +16,7 @@ class QAStatus(Enum):
     FLAG_FORMATTING = "flag_formatting"
     FLAG_LENGTH = "flag_length"
     FLAG_MATH = "flag_math"
+    FLAG_CONTENT = "flag_content"
 
 
 @dataclass
@@ -176,6 +177,9 @@ class TranslationQAFilter:
         self.MAX_CHINESE_PUNCTUATION_RATIO = 0.01  # 1% max Chinese punctuation
         self.MIN_ABSTRACT_LENGTH = 50
         self.MAX_METADATA_RATIO = 0.3  # 30% max metadata content
+        # New content sanity checks
+        self.MIN_ENGLISH_LETTERS_START = 3  # require some English letters near the start
+        self.TRAILING_WINDOW = 300  # characters to inspect at the end
 
     def check_translation(self, translation: Dict[str, Any]) -> QAResult:
         """
@@ -246,6 +250,46 @@ class TranslationQAFilter:
                 issues.append(f"{field} is too short ({len(field_text)} chars)")
                 flagged_fields.append(field)
 
+        # Additional content sanity checks:
+        # 1) Start with real English content: ensure early part contains letters
+        def _has_english_letters(text: str, count: int = 3) -> bool:
+            import re
+            if count < 1:
+                return True
+            # Build pattern: [A-Za-z] followed by (count-1) instances of .*[A-Za-z]
+            pattern = r"[A-Za-z]" + (r".*[A-Za-z]" * (count - 1))
+            return bool(re.search(pattern, (text or "")[:200]))
+
+        title_en = translation.get("title_en") or ""
+        abstract_en = translation.get("abstract_en") or ""
+        first_body_para = None
+        body_en = translation.get("body_en")
+        if isinstance(body_en, list) and body_en:
+            first_body_para = next((p for p in body_en if isinstance(p, str) and p.strip()), "")
+        
+        # Check starts
+        if title_en and not _has_english_letters(title_en, self.MIN_ENGLISH_LETTERS_START):
+            issues.append("title_en does not start with real English content")
+            flagged_fields.append("title_en")
+        if abstract_en and not _has_english_letters(abstract_en, self.MIN_ENGLISH_LETTERS_START):
+            issues.append("abstract_en does not start with real English content")
+            flagged_fields.append("abstract_en")
+        if first_body_para and not _has_english_letters(first_body_para, self.MIN_ENGLISH_LETTERS_START):
+            issues.append("first body_en paragraph lacks real English content")
+            flagged_fields.append("body_en")
+
+        # 2) No Chinese at the end: inspect trailing window across all English text
+        all_text = " ".join(
+            str(translation.get(field, ""))
+            for field in text_fields
+            if translation.get(field)
+        )
+        trailing = all_text[-self.TRAILING_WINDOW :]
+        trailing_chinese = self.detector.find_chinese_chars(trailing)
+        if trailing and trailing_chinese:
+            issues.append("trailing Chinese characters detected in translation end")
+            flagged_fields.append("body_en")
+
         # Calculate overall Chinese ratios
         all_text = " ".join(
             str(translation.get(field, ""))
@@ -265,7 +309,12 @@ class TranslationQAFilter:
         ):
             status = QAStatus.FLAG_CHINESE
         elif len(issues) > 0:
-            status = QAStatus.FLAG_FORMATTING
+            # Prefer formatting for punctuation-only or trailing-window findings
+            # to keep FLAG_CONTENT reserved for more severe content issues we may add later.
+            if any("real English content" in msg for msg in issues):
+                status = QAStatus.FLAG_CONTENT
+            else:
+                status = QAStatus.FLAG_FORMATTING
         else:
             status = QAStatus.PASS
 
