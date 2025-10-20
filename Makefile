@@ -120,9 +120,11 @@ dev: clean venv ensure-env
 	|| (echo 'Translation failed; falling back to --dry-run' && $(VPY) -m src.translate --selected data/selected.json --dry-run)
 
 admin:
-	@if [ -z "$$ADMIN_PASSWORD" ]; then echo "Set ADMIN_PASSWORD to protect the admin UI"; exit 1; fi
-	@if [ -z "$$GH_TOKEN" ]; then echo "Set GH_TOKEN (repo+workflow scope)"; exit 1; fi
-	@if [ -z "$$GH_REPO" ]; then echo "Set GH_REPO (e.g., owner/repo)"; exit 1; fi
+	# Load .env first so checks see values
+	set -a; [ -f .env ] && . .env; set +a; \
+	if [ -z "$$ADMIN_PASSWORD" ]; then echo "Set ADMIN_PASSWORD in .env to protect the admin UI"; exit 1; fi; \
+	if [ -z "$$GH_TOKEN" ]; then echo "Set GH_TOKEN (repo+workflow scope) in .env"; exit 1; fi; \
+	if [ -z "$$GH_REPO" ]; then echo "Set GH_REPO (e.g., owner/repo) in .env"; exit 1; fi; \
 	$(PY) -m flask --app src.admin_ci:make_app run --host 127.0.0.1 --port 8081
 	$(VPY) -m src.render
 	$(VPY) -m src.search_index
