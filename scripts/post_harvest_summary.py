@@ -42,24 +42,34 @@ def format_message(
     total = summary.get("total", 0)
     schema_pass = summary.get("schema_pass", 0)
     pdf_ok = summary.get("pdf_ok", 0)
+    # Fallback-safe rates (compute if missing)
     schema_rate = summary.get("schema_rate")
+    if schema_rate is None:
+        schema_rate = round((schema_pass / total) * 100, 2) if total else 0.0
     pdf_rate = summary.get("pdf_rate")
+    if pdf_rate is None:
+        pdf_rate = round((pdf_ok / total) * 100, 2) if total else 0.0
 
-    local_cached = 0
+    # Count local-cached PDFs among successful PDF validations only
+    local_cached_success = 0
     for payload in results.values():
-        resolved = (payload.get("pdf") or {}).get("resolved_url")
-        if isinstance(resolved, str) and not resolved.startswith("http"):
-            local_cached += 1
+        pdf_info = payload.get("pdf") or {}
+        resolved = pdf_info.get("resolved_url")
+        pdf_ok_flag = bool(pdf_info.get("pdf_ok"))
+        if pdf_ok_flag and isinstance(resolved, str) and not resolved.startswith("http"):
+            local_cached_success += 1
 
     lines: List[str] = [
         f"{status_emoji} Harvest Gate ({title})",
         "",
         f"Records processed: {total} ({schema_pass} schema-clean, {max(total - schema_pass, 0)} flagged)",
         f"PDFs retrieved: {pdf_ok}/{total} ({pdf_rate}% passing gate)",
+        f"Schema pass rate: {schema_rate}%",
     ]
 
-    if local_cached:
-        lines.append(f"Local cache coverage: {local_cached}/{pdf_ok or total}")
+    # Only show cache coverage when there are successful PDFs
+    if pdf_ok > 0 and local_cached_success > 0:
+        lines.append(f"Local cache (of successful PDFs): {local_cached_success}/{pdf_ok}")
 
     lines.append(f"Duplicates detected: {summary.get('dup_ids', 0)}")
     lines.append(f"Gate status: {'PASS' if summary.get('pass') else 'FAIL'}")
