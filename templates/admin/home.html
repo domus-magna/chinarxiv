@@ -4,7 +4,7 @@
     <p class="fail">Config error: {{ cfg_error }}</p>
     <p>Set <code>GH_TOKEN</code> and <code>GH_REPO</code>, and <code>ADMIN_PASSWORD</code> in your environment.</p>
   {% endif %}
-    <div class="grid">
+    <div>
       <div>
         <h2>Quick Links</h2>
         <p><a href="/admin/ci/workflows">Workflows</a> · <a href="/admin/ci/runs">Runs</a></p>
@@ -23,7 +23,7 @@
           <p class="muted">No recent runs found.</p>
         {% endif %}
       </div>
-      <div>
+      <div style="margin-top: 1.25rem;">
         <h2>Recent Runs</h2>
         <table>
           <tr><th>Workflow</th><th>Branch</th><th>Status</th><th>Conclusion</th><th>Started (local)</th><th>Updated (local)</th><th>Duration</th></tr>
