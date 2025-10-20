@@ -6,17 +6,18 @@
   {% else %}
     <div class="grid">
       <div>
-        <h2>Workflows (sample)</h2>
+        <h2>Quick Links</h2>
+        <p><a href="/admin/ci/workflows">Workflows</a> · <a href="/admin/ci/runs">Runs</a></p>
+        <h3>Basic Metrics (last {{ metrics.window }} runs)</h3>
         <table>
-          <tr><th>Name</th><th>File</th><th>State</th><th>Created (local)</th></tr>
-          {% for w in workflows %}
+          <tr><th>Total</th><th>Success</th><th>Failure</th><th>Cancelled</th><th>In Progress</th></tr>
           <tr>
-            <td>{{ w.name }}</td>
-            <td class="muted">{{ w.path }}</td>
-            <td>{{ w.state }}</td>
-            <td class="muted">{{ w.created_at | dt_local }}</td>
+            <td>{{ metrics.total }}</td>
+            <td class="ok">{{ metrics.successes }}</td>
+            <td class="fail">{{ metrics.failures }}</td>
+            <td class="muted">{{ metrics.cancelled }}</td>
+            <td>{{ metrics.in_progress }}</td>
           </tr>
-          {% endfor %}
         </table>
       </div>
       <div>

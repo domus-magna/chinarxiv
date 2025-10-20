@@ -121,12 +121,11 @@ def make_app() -> Flask:
     @basic_auth
     def admin_home():
         cfg_error: Optional[str] = None
-        workflows = []
         latest_runs = []
+        metrics = {}
         try:
             cfg = make_config()
             client = GHClient(cfg)
-            workflows = client.list_workflows()[:10]
             latest_runs = client.list_runs(per_page=20)
             # Hide irrelevant automation runs (e.g., Claude Code)
             def _is_hidden_workflow(name: str, path: str | None = None) -> bool:
@@ -135,15 +134,29 @@ def make_app() -> Flask:
                 return ("claude" in s) or ("claude" in p)
 
             latest_runs = [r for r in latest_runs if not _is_hidden_workflow(r.get("name",""), r.get("path"))]
+
+            # Basic metrics from recent runs (simple counts)
+            successes = sum(1 for r in latest_runs if (r.get("conclusion") or "").lower() == "success")
+            failures = sum(1 for r in latest_runs if (r.get("conclusion") or "").lower() == "failure")
+            cancelled = sum(1 for r in latest_runs if (r.get("conclusion") or "").lower() == "cancelled")
+            in_progress = sum(1 for r in latest_runs if (r.get("status") or "").lower() in ("in_progress", "queued"))
+            metrics = {
+                "window": len(latest_runs),
+                "successes": successes,
+                "failures": failures,
+                "cancelled": cancelled,
+                "in_progress": in_progress,
+                "total": len(latest_runs),
+            }
         except Exception as e:
             cfg_error = str(e)
 
         return render_template(
             "admin/home.html",
             cfg_error=cfg_error,
-            workflows=workflows,
             latest_runs=latest_runs,
             repo=os.getenv("GH_REPO"),
+            metrics=metrics,
         )
 
     # Convenience: redirect / to /admin
