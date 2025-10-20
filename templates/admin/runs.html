@@ -1,0 +1,17 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+  <table>
+    <tr><th>Workflow</th><th>Branch</th><th>Status</th><th>Conclusion</th><th>Started</th><th>Actor</th></tr>
+    {% for r in runs %}
+    <tr>
+      <td><a href="/admin/ci/run/{{ r.id }}">{{ r.name }}</a></td>
+      <td>{{ r.head_branch }}</td>
+      <td>{{ r.status }}</td>
+      <td>{% if r.conclusion %}{{ r.conclusion }}{% else %}<span class="muted">(pending)</span>{% endif %}</td>
+      <td class="muted">{{ r.run_started_at }}</td>
+      <td class="muted">{{ r.actor.login }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+{% endblock %}
+

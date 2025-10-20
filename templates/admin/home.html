@@ -1,0 +1,38 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+  {% if cfg_error %}
+    <p class="fail">Config error: {{ cfg_error }}</p>
+    <p>Set <code>GH_TOKEN</code> and <code>GH_REPO</code>, and <code>ADMIN_PASSWORD</code> in your environment.</p>
+  {% else %}
+    <div class="grid">
+      <div>
+        <h2>Workflows (sample)</h2>
+        <table>
+          <tr><th>Name</th><th>File</th><th>State</th></tr>
+          {% for w in workflows %}
+          <tr>
+            <td>{{ w.name }}</td>
+            <td class="muted">{{ w.path }}</td>
+            <td>{{ w.state }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      <div>
+        <h2>Recent Runs</h2>
+        <table>
+          <tr><th>Workflow</th><th>Branch</th><th>Status</th><th>Conclusion</th></tr>
+          {% for r in latest_runs %}
+          <tr>
+            <td><a href="/admin/ci/run/{{ r.id }}">{{ r.name }}</a></td>
+            <td>{{ r.head_branch }}</td>
+            <td>{{ r.status }}</td>
+            <td>{% if r.conclusion %}{{ r.conclusion }}{% else %}<span class="muted">(pending)</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+

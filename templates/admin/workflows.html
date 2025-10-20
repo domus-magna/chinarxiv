@@ -1,0 +1,15 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+  <table>
+    <tr><th>Name</th><th>File</th><th>State</th><th>Created</th></tr>
+    {% for w in workflows %}
+    <tr>
+      <td>{{ w.name }}</td>
+      <td class="muted">{{ w.path }}</td>
+      <td>{{ w.state }}</td>
+      <td class="muted">{{ w.created_at }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+{% endblock %}
+
