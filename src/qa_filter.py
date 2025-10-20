@@ -254,7 +254,11 @@ class TranslationQAFilter:
         # 1) Start with real English content: ensure early part contains letters
         def _has_english_letters(text: str, count: int = 3) -> bool:
             import re
-            return bool(re.search(r"[A-Za-z].*[A-Za-z].*[A-Za-z]", (text or "")[:200]))
+            if count < 1:
+                return True
+            # Build pattern: [A-Za-z] followed by (count-1) instances of .*[A-Za-z]
+            pattern = r"[A-Za-z]" + (r".*[A-Za-z]" * (count - 1))
+            return bool(re.search(pattern, (text or "")[:200]))
 
         title_en = translation.get("title_en") or ""
         abstract_en = translation.get("abstract_en") or ""
