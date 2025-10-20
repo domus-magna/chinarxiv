@@ -16,9 +16,8 @@
   </style>
 </head>
 <body>
-  <div class="muted">Local Admin — <a href="/admin">Home</a> | <a href="/admin/ci/workflows">Workflows</a> | <a href="/admin/ci/runs">Runs</a></div>
+  <div class="muted">Local Admin — <a href="/admin">Home</a> | <a href="/admin/ci/workflows">Workflows</a> | <a href="/admin/ci/runs">Runs</a> <span style="float:right">Local time: {{ now_local }}</span></div>
   <h1>{{ title or 'Admin' }}</h1>
   {% block content %}{% endblock %}
 </body>
 </html>
-

@@ -60,6 +60,19 @@ def make_app() -> Flask:
     tpl_dir = (Path(__file__).resolve().parent.parent / "templates").as_posix()
     app = Flask(__name__, template_folder=tpl_dir)
 
+    # Inject current local time into all templates
+    from datetime import datetime
+
+    def _now_local_str() -> str:
+        dt = datetime.now().astimezone()
+        # Example: Mon Oct 20, 2025 02:45:07 PM PDT
+        tz = dt.tzname() or "local"
+        return dt.strftime(f"%a %b %d, %Y %I:%M:%S %p {tz}")
+
+    @app.context_processor
+    def _inject_now():
+        return {"now_local": _now_local_str()}
+
     @app.route("/admin")
     @basic_auth
     def admin_home():
