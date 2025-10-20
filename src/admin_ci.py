@@ -1,18 +1,19 @@
-from __future__ import annotations
-
 """
-Local-only Admin CI dashboard for GitHub Actions (read-only, Phase 1).
+Local-only Admin CI dashboard for GitHub Actions (Phase 1+2).
 
 Endpoints:
-  - /admin            : landing with quick status + config sanity
-  - /admin/ci/workflows : list workflows
-  - /admin/ci/runs      : list recent runs
-  - /admin/ci/run/<id>  : run details, jobs, and artifacts (preview JSON reports)
+  - /admin                : landing with quick status + config sanity
+  - /admin/ci/workflows   : list workflows
+  - /admin/ci/runs        : list recent runs
+  - /admin/ci/run/<id>    : run details, jobs, and artifacts (preview JSON reports)
+  - /admin/ci/workflow/<id>/dispatch : dispatch UI (Phase 2)
 
 Auth: Basic password via ADMIN_PASSWORD (env). Bind to localhost only.
 Config: GH_TOKEN and GH_REPO required for API access.
-Run:   make admin  (adds FLASK_APP and host/port)
+Run:   make admin
 """
+
+from __future__ import annotations
 
 import base64
 import io
@@ -25,7 +26,8 @@ from typing import Any, Dict, Optional
 
 from flask import Flask, Response, abort, redirect, render_template, request, url_for
 
-from .gh_actions import GHClient, GHConfig, GHError, make_config
+from .gh_actions import GHClient, make_config
+from .gha_workflow_config import get_dispatch_inputs
 
 
 def require_password() -> str:
@@ -129,10 +131,56 @@ def make_app() -> Flask:
         except Exception as e:
             return render_template("admin/error.html", message=str(e)), 500
 
+    @app.route("/admin/ci/workflow/<int:wfid>/dispatch", methods=["GET", "POST"])
+    @basic_auth
+    def admin_dispatch(wfid: int):
+        try:
+            client = GHClient(make_config())
+            # Find the workflow by id to get its path and name
+            workflows = client.list_workflows()
+            wf = next((w for w in workflows if int(w.get("id")) == int(wfid)), None)
+            if not wf:
+                abort(404)
+            inputs_spec = {}
+            # Parse local workflow YAML to extract inputs
+            wf_path = wf.get("path")
+            if wf_path and Path(wf_path).exists():
+                inputs_spec = get_dispatch_inputs(wf_path)
+
+            if request.method == "POST":
+                # Guard: require confirmation checkbox
+                if request.form.get("confirm") != "on":
+                    return render_template(
+                        "admin/dispatch.html",
+                        workflow=wf,
+                        inputs_spec=inputs_spec,
+                        error="Please confirm dispatch by checking the box.",
+                    ), 400
+
+                ref = request.form.get("ref", "main").strip() or "main"
+                inputs: Dict[str, Any] = {}
+                for name, spec in inputs_spec.items():
+                    typ = (spec.get("type") or "string").lower()
+                    if typ == "boolean":
+                        inputs[name] = True if request.form.get(name) == "on" else False
+                    else:
+                        val = request.form.get(name)
+                        if val is not None and val != "":
+                            inputs[name] = val
+                        elif "default" in spec:
+                            inputs[name] = spec["default"]
+                client.dispatch_workflow(wfid, ref=ref, inputs=inputs or None)
+                return redirect(url_for("admin_runs"))
+
+            return render_template(
+                "admin/dispatch.html", workflow=wf, inputs_spec=inputs_spec
+            )
+        except Exception as e:
+            return render_template("admin/error.html", message=str(e)), 500
+
     return app
 
 
 if __name__ == "__main__":
     app = make_app()
     app.run(host="127.0.0.1", port=int(os.getenv("ADMIN_PORT", "8081")))
-

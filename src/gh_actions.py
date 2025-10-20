@@ -1,12 +1,11 @@
-from __future__ import annotations
-
 """
 Minimal GitHub Actions REST client for localhost admin.
 
 Reads GH_TOKEN and GH_REPO (owner/repo) from environment or constructor args.
-Only covers endpoints we need for read-only dashboard: list workflows, runs,
-run details, jobs, and artifacts, plus artifact download.
+Endpoints: list workflows, runs, run details, jobs, artifacts (download), dispatch.
 """
+
+from __future__ import annotations
 
 import os
 from dataclasses import dataclass
@@ -137,3 +136,12 @@ class GHClient:
             f.write(r.content)
         return dest_path
 
+    # Dispatch (workflow_dispatch)
+    def dispatch_workflow(self, workflow_id: int | str, ref: str, inputs: Optional[Dict[str, Any]] = None) -> None:
+        payload: Dict[str, Any] = {"ref": ref}
+        if inputs:
+            payload["inputs"] = inputs
+        self._post(
+            f"/repos/{self.cfg.repo}/actions/workflows/{workflow_id}/dispatches",
+            json=payload,
+        )
