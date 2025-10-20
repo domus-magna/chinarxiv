@@ -30,6 +30,7 @@ def run_translation_gate(output_path: str = "reports/translation_report.json") -
     passed = 0
     flagged = 0
     total = 0
+    completeness_flagged = 0
 
     files = sorted(glob.glob("data/translated/*.json"))
 
@@ -39,14 +40,52 @@ def run_translation_gate(output_path: str = "reports/translation_report.json") -
             with open(fp, "r", encoding="utf-8") as f:
                 data = json.load(f)
             res = qa.check_translation(data)
+
+            # Translation completeness checks (simple, thresholded)
+            def _strlen(s: str) -> int:
+                return len((s or "").strip())
+
+            title_ok = _strlen(data.get("title_en", "")) >= 5
+            abstract_ok = _strlen(data.get("abstract_en", "")) >= 50
+            # Only require body when present (indicates full text attempted)
+            body_val = data.get("body_en")
+            if isinstance(body_val, list):
+                body_text = " ".join([p for p in body_val if isinstance(p, str)])
+            elif isinstance(body_val, str):
+                body_text = body_val
+            else:
+                body_text = ""
+            body_present = bool(body_text.strip())
+            body_ok = (not body_present) or (_strlen(body_text) >= 150)
+
+            completeness_ok = title_ok and abstract_ok and body_ok
+            completeness_issues = []
+            if not title_ok:
+                completeness_issues.append("missing_or_short_title")
+            if not abstract_ok:
+                completeness_issues.append("missing_or_short_abstract")
+            if body_present and not body_ok:
+                completeness_issues.append("body_too_short")
+
+            status_val = res.status.value
+            # Combine QA result with completeness
+            if status_val == "pass" and not completeness_ok:
+                status_val = "flag_formatting"
+                completeness_flagged += 1
+
             results[os.path.basename(fp)] = {
-                "status": res.status.value,
+                "status": status_val,
                 "score": res.score,
                 "issues": res.issues,
                 "chinese_ratio": res.chinese_ratio,
                 "flagged_fields": res.flagged_fields,
+                "completeness": {
+                    "ok": completeness_ok,
+                    "issues": completeness_issues,
+                },
             }
-            if res.status.value == "pass":
+
+            if status_val == "pass":
                 passed += 1
             else:
                 flagged += 1
@@ -76,6 +115,7 @@ def run_translation_gate(output_path: str = "reports/translation_report.json") -
         "passed": passed,
         "flagged": flagged,
         "flagged_ratio": round(flagged_ratio, 4),
+        "completeness_flagged": completeness_flagged,
         "reasons": reasons,
         "thresholds": {
             "max_flagged_ratio": max_flagged_ratio,

@@ -81,3 +81,52 @@ def test_translation_gate_allows_small_flagged_ratio(tmp_path, monkeypatch):
     assert summary.total == 2
     assert summary.flagged == 1
     assert summary.passed == 1
+
+
+def test_translation_completeness_flags_short_body_when_present(tmp_path, monkeypatch):
+    """If body_en is present but too short, gate should flag due to completeness."""
+    monkeypatch.chdir(tmp_path)
+    translated_dir = Path("data/translated")
+    translated_dir.mkdir(parents=True, exist_ok=True)
+
+    # Title/abstract OK, but body is too short (<150 chars)
+    (translated_dir / "short_body.json").write_text(
+        json.dumps(
+            {
+                "id": "paper-short-body",
+                "title_en": "A Valid English Title",
+                "abstract_en": "This abstract is sufficiently long to pass the QA and completeness checks. It contains more than fifty characters.",
+                "body_en": ["Too short."],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = run_translation_gate(output_path="reports/translation_report.json")
+    assert summary.total == 1
+    assert summary.flagged == 1
+    assert summary.passed == 0
+
+
+def test_translation_completeness_allows_abstract_only(tmp_path, monkeypatch):
+    """If body_en is missing (abstract-only record), completeness should not flag it."""
+    monkeypatch.chdir(tmp_path)
+    translated_dir = Path("data/translated")
+    translated_dir.mkdir(parents=True, exist_ok=True)
+
+    (translated_dir / "abstract_only.json").write_text(
+        json.dumps(
+            {
+                "id": "paper-abstract-only",
+                "title_en": "A Valid English Title",
+                "abstract_en": "This abstract is sufficiently long to pass the QA and completeness checks. It contains more than fifty characters.",
+                # No body_en field at all
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = run_translation_gate(output_path="reports/translation_report.json")
+    assert summary.total == 1
+    assert summary.flagged == 0
+    assert summary.passed == 1
