@@ -80,6 +80,11 @@ def make_app() -> Flask:
             repo=os.getenv("GH_REPO"),
         )
 
+    # Convenience: redirect / to /admin
+    @app.route("/")
+    def root_redirect():
+        return redirect(url_for("admin_home"))
+
     @app.route("/admin/ci/workflows")
     @basic_auth
     def admin_workflows():
