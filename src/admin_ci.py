@@ -128,6 +128,13 @@ def make_app() -> Flask:
             client = GHClient(cfg)
             workflows = client.list_workflows()[:10]
             latest_runs = client.list_runs(per_page=20)
+            # Hide irrelevant automation runs (e.g., Claude Code)
+            def _is_hidden_workflow(name: str, path: str | None = None) -> bool:
+                s = (name or "").lower()
+                p = (path or "").lower()
+                return ("claude" in s) or ("claude" in p)
+
+            latest_runs = [r for r in latest_runs if not _is_hidden_workflow(r.get("name",""), r.get("path"))]
         except Exception as e:
             cfg_error = str(e)
 
@@ -155,6 +162,13 @@ def make_app() -> Flask:
         try:
             client = GHClient(make_config())
             workflows = client.list_workflows()
+            # Hide irrelevant automation workflows (e.g., Claude Code)
+            def _is_hidden_workflow(w: Dict[str, Any]) -> bool:
+                name = (w.get("name") or "").lower()
+                path = (w.get("path") or "").lower()
+                return ("claude" in name) or ("claude" in path)
+
+            workflows = [w for w in workflows if not _is_hidden_workflow(w)]
         except Exception as e:
             return render_template("admin/error.html", message=str(e)), 500
         return render_template("admin/workflows.html", workflows=workflows)
