@@ -27,7 +27,7 @@ from typing import Any, Dict, Optional
 from flask import Flask, Response, abort, redirect, render_template, request, url_for
 
 from .gh_actions import GHClient, make_config
-from .gha_workflow_config import get_dispatch_inputs
+from .gha_workflow_config import get_dispatch_inputs, describe_workflow
 
 
 def require_password() -> str:
@@ -182,6 +182,15 @@ def make_app() -> Flask:
                 return ("claude" in name) or ("claude" in path)
 
             workflows = [w for w in workflows if not _is_hidden_workflow(w)]
+            # Attach simple natural-language descriptions from the YAML
+            for w in workflows:
+                w["description"] = ""
+                path = w.get("path")
+                if path and Path(path).exists():
+                    try:
+                        w["description"] = describe_workflow(path)
+                    except Exception:
+                        w["description"] = ""
         except Exception as e:
             return render_template("admin/error.html", message=str(e)), 500
         return render_template("admin/workflows.html", workflows=workflows)
