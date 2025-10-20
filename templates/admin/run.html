@@ -6,12 +6,13 @@
     Branch: {{ run.head_branch }} — Commit: <span class="muted">{{ run.head_sha }}</span><br/>
     Started: <span class="muted">{{ run.run_started_at | dt_local }}</span>
     {% if run.updated_at %} — Updated: <span class="muted">{{ run.updated_at | dt_local }}</span>{% endif %}
+    {% if run.run_started_at %} — Duration: <span class="muted">{{ run.run_started_at | duration(run.updated_at) }}</span>{% endif %}
   </p>
   <p><a href="{{ run.html_url }}" target="_blank">View on GitHub</a></p>
 
   <h3>Jobs</h3>
   <table>
-    <tr><th>Name</th><th>Status</th><th>Conclusion</th><th>Started (local)</th><th>Completed (local)</th></tr>
+    <tr><th>Name</th><th>Status</th><th>Conclusion</th><th>Started (local)</th><th>Completed (local)</th><th>Duration</th></tr>
     {% for j in jobs %}
     <tr>
       <td>{{ j.name }}</td>
@@ -19,6 +20,7 @@
       <td>{{ j.conclusion or '(pending)' }}</td>
       <td class="muted">{{ j.started_at | dt_local }}</td>
       <td class="muted">{{ j.completed_at | dt_local }}</td>
+      <td class="muted">{{ j.started_at | duration(j.completed_at) }}</td>
     </tr>
     {% endfor %}
   </table>

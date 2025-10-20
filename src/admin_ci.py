@@ -88,6 +88,35 @@ def make_app() -> Flask:
 
     app.jinja_env.filters["dt_local"] = dt_local
 
+    # Duration helper: compute human-readable delta between two ISO times
+    def duration(iso_start: Optional[str], iso_end: Optional[str] = None) -> str:
+        try:
+            if not iso_start:
+                return ""
+            start = dtparser.isoparse(iso_start)
+            if iso_end:
+                end = dtparser.isoparse(iso_end)
+            else:
+                from datetime import datetime as _dt
+
+                end = _dt.now(_dt.utcnow().astimezone().tzinfo)
+            delta = end - start
+            total = int(delta.total_seconds())
+            if total < 0:
+                total = 0
+            days, rem = divmod(total, 86400)
+            hours, rem = divmod(rem, 3600)
+            minutes, seconds = divmod(rem, 60)
+            if days > 0:
+                return f"{days}d {hours:02}:{minutes:02}:{seconds:02}"
+            if hours > 0:
+                return f"{hours}:{minutes:02}:{seconds:02}"
+            return f"{minutes}:{seconds:02}"
+        except Exception:
+            return ""
+
+    app.jinja_env.filters["duration"] = duration
+
     @app.route("/admin")
     @basic_auth
     def admin_home():
