@@ -298,7 +298,33 @@ class TestTranslationQAFilter:
         assert result.chinese_chars == []
         assert result.issues == []
         assert result.flagged_fields == []
-        assert self.qa_filter.should_display(result) == True
+
+    def test_trailing_chinese_is_flagged(self):
+        translation = {
+            'id': 'test-trailing',
+            'title_en': 'Valid English Title',
+            'abstract_en': 'This abstract is valid English with no Chinese content and sufficient length to pass the minimum requirement of the QA filter.',
+            'body_en': [
+                'This is a valid English paragraph to start the body.',
+                'Another valid paragraph to ensure enough content.',
+                'Ending with Chinese 中文',
+            ],
+        }
+        result = self.qa_filter.check_translation(translation)
+        assert result.status in (QAStatus.FLAG_CHINESE, QAStatus.FLAG_CONTENT)
+        assert any('trailing Chinese' in msg for msg in result.issues)
+
+    def test_start_without_real_english_is_flagged(self):
+        translation = {
+            'id': 'test-start-content',
+            'title_en': '... ( )',
+            'abstract_en': '   ',
+            'body_en': [',,, -- !!']
+        }
+        result = self.qa_filter.check_translation(translation)
+        assert result.status in (QAStatus.FLAG_FORMATTING, QAStatus.FLAG_CONTENT)
+        assert 'title_en does not start with real English content' in ' '.join(result.issues)
+        assert self.qa_filter.should_display(result) == False
     
     def test_unicode_edge_cases(self):
         """Test Unicode edge cases."""

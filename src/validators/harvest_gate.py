@@ -67,19 +67,31 @@ def _check_schema(rec: Dict[str, Any]) -> Tuple[bool, List[str]]:
     if not isinstance(rid, str) or not re.match(r"^chinaxiv-\d{6}\.\d{5}$", rid or ""):
         errors.append("Invalid id format")
 
-    if not isinstance(rec.get("title"), str):
+    title = rec.get("title")
+    if not isinstance(title, str):
         errors.append("Title must be string")
+    else:
+        if len(title.strip()) < 5:
+            errors.append("Title too short or empty")
 
-    if not isinstance(rec.get("abstract"), str) or len(rec.get("abstract", "")) < 50:
+    abstract = rec.get("abstract")
+    if not isinstance(abstract, str) or len(abstract.strip()) < 50:
         errors.append("Abstract too short")
 
     creators = rec.get("creators")
     if not isinstance(creators, list) or not creators:
         errors.append("Creators must be non-empty list")
+    else:
+        # Ensure at least one non-empty creator name
+        if not any(isinstance(c, str) and c.strip() for c in creators):
+            errors.append("Creators list has no actual names")
 
     subjects = rec.get("subjects")
     if not isinstance(subjects, list) or not subjects:
         errors.append("Subjects must be non-empty list")
+    else:
+        if not any(isinstance(s, str) and s.strip() for s in subjects):
+            errors.append("Subjects list has no actual values")
 
     if not isinstance(rec.get("date"), str):
         errors.append("Date must be string")
@@ -155,6 +167,15 @@ def _check_pdf_access(url: str, timeout: int = 30) -> bool:
 
 def _resolve_pdf(rec: Dict[str, Any]) -> Tuple[Optional[str], List[str], bool]:
     issues: List[str] = []
+
+    # Prefer pre-downloaded local PDF if available
+    local_pdf_path = rec.get("pdf_local_path")
+    if local_pdf_path:
+        local_path = Path(local_pdf_path)
+        if local_path.exists() and local_path.stat().st_size > 0:
+            return str(local_path), issues, True
+        issues.append(f"Local PDF missing or too small: {local_pdf_path}")
+
     pdf_url = rec.get("pdf_url")
     source_url = rec.get("source_url")
     if pdf_url and _check_pdf_access(pdf_url):
