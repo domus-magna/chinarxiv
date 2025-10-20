@@ -3,22 +3,25 @@
   {% if cfg_error %}
     <p class="fail">Config error: {{ cfg_error }}</p>
     <p>Set <code>GH_TOKEN</code> and <code>GH_REPO</code>, and <code>ADMIN_PASSWORD</code> in your environment.</p>
-  {% else %}
+  {% endif %}
     <div class="grid">
       <div>
         <h2>Quick Links</h2>
         <p><a href="/admin/ci/workflows">Workflows</a> · <a href="/admin/ci/runs">Runs</a></p>
-        <h3>Basic Metrics (last {{ metrics.window }} runs)</h3>
+        <h3>Basic Metrics (last {{ metrics.window or 0 }} runs)</h3>
         <table>
           <tr><th>Total</th><th>Success</th><th>Failure</th><th>Cancelled</th><th>In Progress</th></tr>
           <tr>
-            <td>{{ metrics.total }}</td>
-            <td class="ok">{{ metrics.successes }}</td>
-            <td class="fail">{{ metrics.failures }}</td>
-            <td class="muted">{{ metrics.cancelled }}</td>
-            <td>{{ metrics.in_progress }}</td>
+            <td>{{ metrics.total or 0 }}</td>
+            <td class="ok">{{ metrics.successes or 0 }}</td>
+            <td class="fail">{{ metrics.failures or 0 }}</td>
+            <td class="muted">{{ metrics.cancelled or 0 }}</td>
+            <td>{{ metrics.in_progress or 0 }}</td>
           </tr>
         </table>
+        {% if (metrics.total or 0) == 0 %}
+          <p class="muted">No recent runs found.</p>
+        {% endif %}
       </div>
       <div>
         <h2>Recent Runs</h2>
@@ -36,7 +39,9 @@
           </tr>
           {% endfor %}
         </table>
+        {% if latest_runs|length == 0 %}
+          <p class="muted">No runs to display.</p>
+        {% endif %}
       </div>
     </div>
-  {% endif %}
 {% endblock %}
