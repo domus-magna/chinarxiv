@@ -56,7 +56,9 @@ def basic_auth(f):
 
 
 def make_app() -> Flask:
-    app = Flask(__name__)
+    # Ensure Flask finds templates at repo_root/templates
+    tpl_dir = (Path(__file__).resolve().parent.parent / "templates").as_posix()
+    app = Flask(__name__, template_folder=tpl_dir)
 
     @app.route("/admin")
     @basic_auth
