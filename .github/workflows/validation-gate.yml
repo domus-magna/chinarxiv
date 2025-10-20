@@ -27,6 +27,10 @@ on:
         description: "Behavior when artifact paths are missing (default warn)"
         type: string
         required: false
+      post_command:
+        description: "Optional shell command to run after artifact upload"
+        type: string
+        required: false
       records_path:
         description: "Optional records path exposed to the gate via $RECORDS_PATH"
         type: string
@@ -41,6 +45,8 @@ on:
       brightdata_api_key:
         required: false
       brightdata_zone:
+        required: false
+      discord_webhook_url:
         required: false
 
 jobs:
@@ -84,6 +90,7 @@ jobs:
           BRIGHTDATA_API_KEY: ${{ secrets.brightdata_api_key }}
           BRIGHTDATA_ZONE: ${{ secrets.brightdata_zone }}
           RECORDS_PATH: ${{ inputs.records_path }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.discord_webhook_url }}
         run: ${{ inputs.pre_command }}
 
       - name: Execute ${{ inputs.gate_id }} gate
@@ -93,6 +100,7 @@ jobs:
           BRIGHTDATA_API_KEY: ${{ secrets.brightdata_api_key }}
           BRIGHTDATA_ZONE: ${{ secrets.brightdata_zone }}
           RECORDS_PATH: ${{ inputs.records_path }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.discord_webhook_url }}
         run: ${{ inputs.command }}
 
       - name: Upload artifacts
@@ -102,3 +110,14 @@ jobs:
           name: ${{ inputs.artifact_name || format('{0}-reports-{1}', inputs.gate_id, github.run_id) }}
           path: ${{ inputs.artifact_paths }}
           if-no-files-found: ${{ inputs.artifact_if_missing || 'warn' }}
+
+      - name: Run post-command
+        if: ${{ inputs.post_command && inputs.post_command != '' }}
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.openrouter_api_key }}
+          BRIGHTDATA_API_KEY: ${{ secrets.brightdata_api_key }}
+          BRIGHTDATA_ZONE: ${{ secrets.brightdata_zone }}
+          RECORDS_PATH: ${{ inputs.records_path }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.discord_webhook_url }}
+        run: ${{ inputs.post_command }}

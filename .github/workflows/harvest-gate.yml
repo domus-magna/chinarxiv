@@ -27,7 +27,14 @@ jobs:
         reports/harvest_report.json
         reports/harvest_report.md
       artifact_if_missing: error
+      post_command: |
+        python scripts/post_harvest_summary.py \
+          --report reports/harvest_report.json \
+          --repo "${{ github.repository }}" \
+          --run-id "${{ github.run_id }}" \
+          --webhook "${{ secrets.DISCORD_WEBHOOK_URL }}"
     secrets:
       openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
       brightdata_api_key: ${{ secrets.BRIGHTDATA_API_KEY }}
       brightdata_zone: ${{ secrets.BRIGHTDATA_ZONE }}
+      discord_webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
