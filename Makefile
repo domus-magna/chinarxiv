@@ -87,6 +87,33 @@ build: smoke
 serve:
 	$(PY) -m http.server -d site $(PORT)
 
+site-from-b2:
+	# Load .env so BACKBLAZE_* vars are present
+	set -a; [ -f .env ] && . .env; set +a; \
+	if [ -z "$$BACKBLAZE_KEY_ID" ] || [ -z "$$BACKBLAZE_APPLICATION_KEY" ] || [ -z "$$BACKBLAZE_S3_ENDPOINT" ] || [ -z "$$BACKBLAZE_BUCKET" ]; then \
+		echo "Set BACKBLAZE_* env vars in .env (KEY_ID, APPLICATION_KEY, S3_ENDPOINT, BUCKET)"; exit 1; \
+	fi; \
+	python -m pip install --upgrade pip >/dev/null 2>&1 || true; \
+	pip install awscli >/dev/null 2>&1 || true; \
+	export AWS_ACCESS_KEY_ID="$$BACKBLAZE_KEY_ID"; \
+	export AWS_SECRET_ACCESS_KEY="$$BACKBLAZE_APPLICATION_KEY"; \
+	export AWS_DEFAULT_REGION=us-west-004; \
+	DEST="s3://$$BACKBLAZE_BUCKET/$$BACKBLAZE_PREFIX"; \
+	rm -rf data/translated && mkdir -p data/translated; \
+	echo "⬇️  Syncing $$DESTvalidated/translations → data/translated ..."; \
+	aws s3 sync "$$DESTvalidated/translations" data/translated --exclude "*" --include "*.json" --endpoint-url "$$BACKBLAZE_S3_ENDPOINT" --only-show-errors || true; \
+	COUNT=$$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' '); \
+	echo "Found $$COUNT validated translation JSON files"; \
+	if [ "$$COUNT" = "0" ]; then \
+		echo "No validated translations found; aborting build"; \
+		exit 1; \
+	fi; \
+	$(PY) -m src.render; \
+	$(PY) -m src.search_index; \
+	-$(PY) -m src.make_pdf; \
+	@echo "Starting server at http://localhost:$(PORT) (Ctrl+C to stop)"; \
+	$(PY) -m http.server -d site $(PORT)
+
 samples:
 	@echo "Generating before/after samples into site/samples/ ..."
 	$(PY) -m src.tools.formatting_compare --count 3 || true

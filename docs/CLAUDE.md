@@ -15,6 +15,39 @@
 #
 # Claude Development Guide
 
+## Admin CI Dashboard (Local)
+- Start with `make admin` (loads `.env` first). Required: `ADMIN_PASSWORD`, `GH_TOKEN`, `GH_REPO`.
+- Endpoints:
+  - `/admin` — home with metrics (top), recent runs, quick links.
+  - `/admin/ci/workflows` — lists workflows; dispatch UI for `workflow_dispatch` (“Quick Actions”); non-dispatchable workflows shown read‑only.
+  - `/admin/ci/runs`, `/admin/ci/run/<id>` — runs, jobs, artifacts; JSON previews for gate reports; local timestamps and durations.
+- Username is not used; any username + `ADMIN_PASSWORD` grants access (localhost only). Claude‑related automation hidden.
+
+## Storage Plan — Backblaze B2 (Durable, Private)
+- We persist pipeline outputs from CI to B2 via the S3 API.
+- Phase A (active): JSON only — `data/records/*.json`, `data/translated/*.json`, `data/selected.json` (per run under `selections/${run_id}/`).
+- Phase B (optional): PDFs for archival only; never served publicly.
+- Bucket layout:
+  - `records/chinaxiv_YYYYMM.json`
+  - `translations/{paper_id}.json`
+  - `selections/{run_id}/selected.json`
+  - `pdfs/{paper_id}.pdf` (Phase B)
+- Required GitHub Secrets:
+  - `BACKBLAZE_KEY_ID`, `BACKBLAZE_APPLICATION_KEY`
+  - `BACKBLAZE_S3_ENDPOINT` (e.g., `https://s3.us-west-004.backblazeb2.com`)
+  - `BACKBLAZE_BUCKET` (e.g., `chinaxiv-pipeline`)
+  - `BACKBLAZE_PREFIX` (optional, e.g., `prod/`)
+
+Notes
+- We never serve Chinese PDFs from the site. We only publish formatted English outputs.
+- GitHub Artifacts for harvest JSONs remain as a belt‑and‑suspenders but B2 is the durable source of truth.
+
+## Hydration and Rebuild Flows (CI + Local)
+- Daily build and backfill workflows now publish post‑QA outputs to B2, then hydrate from B2 before rendering. This ensures the deployed site exactly matches the canonical `validated/translations/` in B2.
+- If hydration returns zero translations, a single aggregated Discord alert is sent (15‑minute throttle) and the job fails to prevent an empty site deploy.
+- Rebuild‑only workflow: `.github/workflows/rebuild-from-b2.yml` hydrates from B2 → render → index → PDFs → deploy. Trigger with `workflow_dispatch`.
+- Local development: `make site-from-b2` pulls `validated/translations/` into `data/translated`, rebuilds the site, and serves it on port 8001.
+
 ## Quick Start
 
 ### Environment Setup

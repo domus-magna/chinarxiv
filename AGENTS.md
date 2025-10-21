@@ -58,6 +58,43 @@
 - **Self-review**: `make self-review` (run before marking tasks complete)
 - **Local preview**: `python -m http.server -d site 8001`
 
+### Admin CI Dashboard (Local)
+- **Start admin**: `make admin`
+  - Reads `.env` first so checks see values.
+  - Required in `.env`: `ADMIN_PASSWORD_HASH` (preferred) or `ADMIN_PASSWORD` (legacy), `GH_TOKEN` (repo+workflow), `GH_REPO` (e.g., `owner/repo`).
+  - Generate a hash: `python - <<'PY'\nfrom werkzeug.security import generate_password_hash; print(generate_password_hash(input('Password: ')))\nPY` then set `ADMIN_PASSWORD_HASH=...` in `.env`.
+- **Endpoints** (password-protected; any username + `ADMIN_PASSWORD`):
+  - `/admin` — Home: quick links, basic metrics (stacked), recent runs with timestamps and durations.
+  - `/admin/ci/workflows` — Workflows list with natural‑language descriptions; dispatch UI for `workflow_dispatch` (Quick Actions). Non-dispatchable workflows listed read-only.
+  - `/admin/ci/runs` — Recent runs.
+  - `/admin/ci/run/<id>` — Run details: jobs, artifacts, JSON previews for gate reports. Shows local times and durations.
+  - `/favicon.ico` — 204 (no 404 noise).
+  - Root `/` redirects to `/admin`.
+  - Claude-related automation is hidden from lists.
+
+### Durable Storage (Backblaze B2)
+- We persist pipeline outputs to a private Backblaze B2 bucket via the S3‑compatible API.
+- Phase A (enabled): JSON only — harvest records, per-paper translations, and per-run selection sets.
+- Phase B (optional): PDFs (archival only; never publicly served). Controlled by a workflow input/flag when enabled.
+- Bucket layout (keys):
+  - `records/chinaxiv_YYYYMM.json`
+  - `translations/{paper_id}.json`
+  - `selections/{run_id}/selected.json`
+  - `pdfs/{paper_id}.pdf` (Phase B only)
+
+### Required GitHub Secrets (CI)
+- Existing: `CF_API_TOKEN`, `OPENROUTER_API_KEY`, `BRIGHTDATA_API_KEY`, `BRIGHTDATA_ZONE`, `DISCORD_WEBHOOK_URL`.
+- New (Backblaze B2):
+  - `BACKBLAZE_KEY_ID` — B2 S3 key ID
+  - `BACKBLAZE_APPLICATION_KEY` — B2 S3 application key
+  - `BACKBLAZE_S3_ENDPOINT` — e.g., `https://s3.us-west-004.backblazeb2.com`
+  - `BACKBLAZE_BUCKET` — e.g., `chinaxiv-pipeline`
+  - `BACKBLAZE_PREFIX` — optional prefix like `prod/`
+
+Notes
+- We still avoid committing large artifacts to git. Only `data/seen.json` is committed for cross-run dedupe.
+- GitHub Artifacts remain enabled as a safety net for harvest JSONs and selections (90‑day retention), but B2 is the durable source of truth.
+
 ### Pipeline Operations
 - **Harvest**: `python -m src.harvest_chinaxiv_optimized --month $(date -u +"%Y%m")`
 - **Translate**: `python -m src.translate --dry-run`
@@ -189,9 +226,10 @@ This process catches overengineering before it becomes technical debt.
 - **UI Improvements**: ✅ Cleaner navigation and layout
 
 ### GitHub Actions Workflows
-- **Daily Build** (`.github/workflows/build.yml`): Runs at 3 AM UTC, harvests current + previous month (optimized), selects unseen items, translates all newly selected items in parallel, and deploys to Cloudflare Pages
-- **Configurable Backfill** (`.github/workflows/backfill.yml`): Configurable parallel processing via inputs (1-10 jobs, 1-100 workers per job)
+- **Daily Build** (`.github/workflows/build.yml`): Runs at 3 AM UTC, harvests current + previous month (optimized), selects unseen items, translates, publishes to B2, then hydrates validated translations from B2 → render → search index → PDFs → deploy. This guarantees the site reflects the canonical data in B2.
+- **Configurable Backfill** (`.github/workflows/backfill.yml`): Translates a specific month, publishes to B2, then (when `deploy=true`) hydrates from B2 and rebuilds the site before deploy.
   - Both workflows persist `data/seen.json` by committing it back to the repository, ensuring cross-job deduplication.
+- **Rebuild from B2** (`.github/workflows/rebuild-from-b2.yml`): Minimal workflow to hydrate from B2 and redeploy without harvesting/translating. Trigger via `workflow_dispatch` from the Admin UI or GitHub UI.
 
 ### Manual Backfill (On Demand)
 - **Harvester**: `python -m src.harvest_chinaxiv_optimized --month YYYYMM --resume` (run newest→oldest across months; background long runs with `nohup ... &`).
@@ -253,6 +291,13 @@ This process catches overengineering before it becomes technical debt.
 - **Translation Failures**: Verify OpenRouter API key, check credits
 - **Deployment Issues**: Check Cloudflare API token permissions
 - **Site Issues**: Check build output directory, verify DNS
+
+### B2 Hydration Flows (New)
+- CI steps use Backblaze B2 as source of truth:
+  - After translation, outputs are published to `validated/translations/` in B2 along with manifests and per‑paper pointers.
+  - Before rendering, CI wipes `data/translated/` and syncs from `s3://$BACKBLAZE_BUCKET/$BACKBLAZE_PREFIX/validated/translations`.
+  - If hydration returns zero JSON files, CI sends a throttled Discord alert and fails to avoid deploying an empty site.
+- Local development: `make site-from-b2` pulls validated JSON from B2, rebuilds the site, and serves it on port 8001.
 
 ### Documentation
 - **Complete Setup Guide**: `docs/archive/old/CLOUDFLARE_COMPLETE_SETUP.md`
