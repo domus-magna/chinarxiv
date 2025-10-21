@@ -215,6 +215,7 @@ def main() -> int:
 
     # Helper to read, append, and re-upload CSV
     def _append_csv(s3_key: str, header: List[str], rows: List[List[str]]) -> None:
+        nonlocal failure_count
         if not rows:
             return
         local = Path("/tmp") / Path(s3_key).name

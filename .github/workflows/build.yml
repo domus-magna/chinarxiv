@@ -97,13 +97,14 @@ jobs:
 
           # Default to skipping harvest during PR builds
           SKIP_HARVEST="${{ github.event_name == 'pull_request' && 'true' || (github.event.inputs.skip_harvest || 'false') }}"
+          # Define CURR/PREV unconditionally for metadata/RECORDS_KEYS
+          CURR=$(date -u +"%Y%m")
+          PREV=$(date -u -d "-1 month" +"%Y%m")
 
           if [ "$SKIP_HARVEST" = "false" ]; then
             # Attempt ChinaXiv harvest via BrightData if credentials provided
             if [ -n "${BRIGHTDATA_API_KEY}" ] && [ -n "${BRIGHTDATA_ZONE}" ]; then
               echo "📥 Harvesting from ChinaXiv (BrightData)…"
-              CURR=$(date -u +"%Y%m")
-              PREV=$(date -u -d "-1 month" +"%Y%m")
               echo "   Current month: $CURR"
               echo "   Previous month: $PREV"
               python -m src.harvest_chinaxiv_optimized --month "$CURR" || echo "⚠️ Harvest current month failed; continuing"

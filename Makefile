@@ -100,8 +100,8 @@ site-from-b2:
 	export AWS_DEFAULT_REGION=us-west-004; \
 	DEST="s3://$$BACKBLAZE_BUCKET/$$BACKBLAZE_PREFIX"; \
 	rm -rf data/translated && mkdir -p data/translated; \
-	echo "⬇️  Syncing $$DESTvalidated/translations → data/translated ..."; \
-	aws s3 sync "$$DESTvalidated/translations" data/translated --exclude "*" --include "*.json" --endpoint-url "$$BACKBLAZE_S3_ENDPOINT" --only-show-errors || true; \
+	echo "⬇️  Syncing $${DEST}validated/translations → data/translated ..."; \
+	aws s3 sync "$${DEST}validated/translations" data/translated --exclude "*" --include "*.json" --endpoint-url "$$BACKBLAZE_S3_ENDPOINT" --only-show-errors || true; \
 	COUNT=$$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' '); \
 	echo "Found $$COUNT validated translation JSON files"; \
 	if [ "$$COUNT" = "0" ]; then \
