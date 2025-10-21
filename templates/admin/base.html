@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>{{ title or 'Admin' }}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 1.5rem; }
+    a { text-decoration: none; color: #0366d6; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    th { background: #f6f8fa; text-align: left; }
+    .ok { color: #1a7f37; }
+    .fail { color: #d73a49; }
+    .muted { color: #6a737d; font-size: 90%; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .divider { border-top: 1px solid #e1e4e8; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <div class="muted">Local Admin — <a href="/admin">Home</a> | <a href="/admin/ci/workflows">Workflows</a> | <a href="/admin/ci/runs">Runs</a> <span style="float:right">Local time: {{ now_local }}</span></div>
+  <p class="muted" style="margin-top:0.5rem">Security note: This dashboard is intended for localhost use only. Basic Auth is not encrypted over HTTP; do not expose this server to a network. Prefer ADMIN_PASSWORD_HASH over plain ADMIN_PASSWORD.</p>
+  <h1>{{ title or 'Admin' }}</h1>
+  {% block content %}{% endblock %}
+</body>
+</html>

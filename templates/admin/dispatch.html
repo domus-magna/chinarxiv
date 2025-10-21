@@ -1,0 +1,45 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+  <h2>Dispatch Workflow</h2>
+  <p><strong>{{ workflow.name }}</strong> <span class="muted">({{ workflow.path }})</span></p>
+  <form method="post">
+    <p>
+      <label>Ref (branch/tag):
+        <input type="text" name="ref" value="main"/>
+      </label>
+    </p>
+    {% if inputs_spec %}
+      <h3>Inputs</h3>
+      {% for name, spec in inputs_spec.items() %}
+        <p>
+          <label><strong>{{ name }}</strong>
+            {% set t = (spec.type or 'string')|lower if spec.type is defined else 'string' %}
+            {% if t == 'boolean' %}
+              <input type="checkbox" name="{{ name }}" {% if spec.default %}checked{% endif %}/>
+            {% elif t == 'choice' and spec.options %}
+              <select name="{{ name }}">
+                {% for opt in spec.options %}
+                  <option value="{{ opt }}" {% if spec.default == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            {% else %}
+              <input type="text" name="{{ name }}" value="{{ spec.default or '' }}"/>
+            {% endif %}
+          </label>
+          {% if spec.description %}<div class="muted">{{ spec.description }}</div>{% endif %}
+        </p>
+      {% endfor %}
+    {% else %}
+      <p class="muted">This workflow has no declared inputs.</p>
+    {% endif %}
+    {% if error %}<p class="fail">{{ error }}</p>{% endif %}
+    <p>
+      <label><input type="checkbox" name="confirm"/> I understand this will trigger a GitHub Actions run and may consume CI minutes or API credits.</label>
+    </p>
+    <p>
+      <button type="submit">Dispatch</button>
+      <a href="/admin/ci/workflows">Cancel</a>
+    </p>
+  </form>
+{% endblock %}
+

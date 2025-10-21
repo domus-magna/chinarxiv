@@ -1,0 +1,16 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+  <table>
+    <tr><th>Name</th><th>Description</th><th>File</th><th>State</th><th>Created (local)</th><th>Actions</th></tr>
+    {% for w in workflows %}
+    <tr>
+      <td>{{ w.name }}</td>
+      <td class="muted">{{ w.description }}</td>
+      <td class="muted">{{ w.path }}</td>
+      <td>{{ w.state }}</td>
+      <td class="muted">{{ w.created_at | dt_local }}</td>
+      <td><a href="/admin/ci/workflow/{{ w.id }}/dispatch">Dispatch</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+{% endblock %}

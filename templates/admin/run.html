@@ -1,0 +1,51 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+  <h2>Run #{{ run.id }} — {{ run.name }}</h2>
+  <p>Status: <strong>{{ run.status }}</strong> — Conclusion: <strong>{{ run.conclusion or '(pending)' }}</strong></p>
+  <p>
+    Branch: {{ run.head_branch }} — Commit: <span class="muted">{{ run.head_sha }}</span><br/>
+    Started: <span class="muted">{{ run.run_started_at | dt_local }}</span>
+    {% if run.updated_at %} — Updated: <span class="muted">{{ run.updated_at | dt_local }}</span>{% endif %}
+    {% if run.run_started_at %} — Duration: <span class="muted">{{ run.run_started_at | duration(run.updated_at) }}</span>{% endif %}
+  </p>
+  <p><a href="{{ run.html_url }}" target="_blank">View on GitHub</a></p>
+
+  <h3>Jobs</h3>
+  <table>
+    <tr><th>Name</th><th>Status</th><th>Conclusion</th><th>Started (local)</th><th>Completed (local)</th><th>Duration</th></tr>
+    {% for j in jobs %}
+    <tr>
+      <td>{{ j.name }}</td>
+      <td>{{ j.status }}</td>
+      <td>{{ j.conclusion or '(pending)' }}</td>
+      <td class="muted">{{ j.started_at | dt_local }}</td>
+      <td class="muted">{{ j.completed_at | dt_local }}</td>
+      <td class="muted">{{ j.started_at | duration(j.completed_at) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <h3>Artifacts</h3>
+  {% if artifacts %}
+    <table>
+      <tr><th>Name</th><th>Size</th><th>Expires (local)</th></tr>
+      {% for a in artifacts %}
+      <tr>
+        <td>{{ a.name }}</td>
+        <td class="muted">{{ a.size_in_bytes }} bytes</td>
+        <td class="muted">{{ a.expires_at | dt_local }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="muted">No artifacts.</p>
+  {% endif %}
+
+  {% if previews %}
+    <h3>Report Previews</h3>
+    {% for name, data in previews.items() %}
+      <h4>{{ name }}</h4>
+      <pre style="background:#f6f8fa;padding:8px;overflow:auto;max-height:300px">{{ data | tojson(indent=2) }}</pre>
+    {% endfor %}
+  {% endif %}
+{% endblock %}

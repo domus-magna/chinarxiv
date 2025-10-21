@@ -1,0 +1,48 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+  {% if cfg_error %}
+    <p class="fail">Config error: {{ cfg_error }}</p>
+    <p>Set <code>GH_TOKEN</code> and <code>GH_REPO</code>, and <code>ADMIN_PASSWORD</code> in your environment.</p>
+  {% endif %}
+    <div>
+      <div>
+        <h2>Quick Links</h2>
+        <p><a href="/admin/ci/workflows">Workflows</a> · <a href="/admin/ci/runs">Runs</a></p>
+        <h3>Basic Metrics (last {{ metrics.window or 0 }} runs)</h3>
+        <table>
+          <tr><th>Total</th><th>Success</th><th>Failure</th><th>Cancelled</th><th>In Progress</th></tr>
+          <tr>
+            <td>{{ metrics.total or 0 }}</td>
+            <td class="ok">{{ metrics.successes or 0 }}</td>
+            <td class="fail">{{ metrics.failures or 0 }}</td>
+            <td class="muted">{{ metrics.cancelled or 0 }}</td>
+            <td>{{ metrics.in_progress or 0 }}</td>
+          </tr>
+        </table>
+        {% if (metrics.total or 0) == 0 %}
+          <p class="muted">No recent runs found.</p>
+        {% endif %}
+      </div>
+      <div class="divider"></div>
+      <div style="margin-top: 1.0rem;">
+        <h2>Recent Runs</h2>
+        <table>
+          <tr><th>Workflow</th><th>Branch</th><th>Status</th><th>Conclusion</th><th>Started (local)</th><th>Updated (local)</th><th>Duration</th></tr>
+          {% for r in latest_runs %}
+          <tr>
+            <td><a href="/admin/ci/run/{{ r.id }}">{{ r.name }}</a></td>
+            <td>{{ r.head_branch }}</td>
+            <td>{{ r.status }}</td>
+            <td>{% if r.conclusion %}{{ r.conclusion }}{% else %}<span class="muted">(pending)</span>{% endif %}</td>
+            <td class="muted">{{ r.run_started_at | dt_local }}</td>
+            <td class="muted">{{ r.updated_at | dt_local }}</td>
+            <td class="muted">{{ r.run_started_at | duration(r.updated_at) }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+        {% if latest_runs|length == 0 %}
+          <p class="muted">No runs to display.</p>
+        {% endif %}
+      </div>
+    </div>
+{% endblock %}
