@@ -118,6 +118,12 @@ dev: clean venv ensure-env
 	# Translate (allow model override; fallback to dry-run on failure)
 		$(VPY) -m src.translate --selected data/selected.json $(if $(MODEL),--model $(MODEL),) \
 	|| (echo 'Translation failed; falling back to --dry-run' && $(VPY) -m src.translate --selected data/selected.json --dry-run)
+	# Build and serve the site locally
+	$(VPY) -m src.render
+	$(VPY) -m src.search_index
+	-$(VPY) -m src.make_pdf
+	@echo "Starting server at http://localhost:$(PORT) (Ctrl+C to stop)"
+	$(VPY) -m http.server -d site $(PORT)
 
 admin:
 	# Load .env first so checks see values
@@ -126,8 +132,3 @@ admin:
 	if [ -z "$$GH_TOKEN" ]; then echo "Set GH_TOKEN (repo+workflow scope) in .env"; exit 1; fi; \
 	if [ -z "$$GH_REPO" ]; then echo "Set GH_REPO (e.g., owner/repo) in .env"; exit 1; fi; \
 	$(PY) -m flask --app src.admin_ci:make_app run --host 127.0.0.1 --port 8081
-	$(VPY) -m src.render
-	$(VPY) -m src.search_index
-	-$(VPY) -m src.make_pdf
-	@echo "Starting server at http://localhost:$(PORT) (Ctrl+C to stop)"
-	$(VPY) -m http.server -d site $(PORT)
