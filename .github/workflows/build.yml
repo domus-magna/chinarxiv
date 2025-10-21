@@ -31,6 +31,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Capture run metadata
+        id: meta
+        run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+      - name: Set Backblaze region (job-wide)
+        run: echo "AWS_DEFAULT_REGION=us-west-004" >> $GITHUB_ENV
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -74,25 +79,32 @@ jobs:
       - name: Skip tests on pull_request
         if: ${{ github.event_name == 'pull_request' }}
         run: echo "ℹ️ Skipping tests on PR"
-      - name: Build site
+      - name: Build pipeline (harvest/translate only)
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
           BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
+          # Backblaze B2 (S3-compatible)
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
         run: |
           set -e
           echo "🚀 Starting build process..."
 
           # Default to skipping harvest during PR builds
           SKIP_HARVEST="${{ github.event_name == 'pull_request' && 'true' || (github.event.inputs.skip_harvest || 'false') }}"
+          # Define CURR/PREV unconditionally for metadata/RECORDS_KEYS
+          CURR=$(date -u +"%Y%m")
+          PREV=$(date -u -d "-1 month" +"%Y%m")
 
           if [ "$SKIP_HARVEST" = "false" ]; then
             # Attempt ChinaXiv harvest via BrightData if credentials provided
             if [ -n "${BRIGHTDATA_API_KEY}" ] && [ -n "${BRIGHTDATA_ZONE}" ]; then
               echo "📥 Harvesting from ChinaXiv (BrightData)…"
-              CURR=$(date -u +"%Y%m")
-              PREV=$(date -u -d "-1 month" +"%Y%m")
               echo "   Current month: $CURR"
               echo "   Previous month: $PREV"
               python -m src.harvest_chinaxiv_optimized --month "$CURR" || echo "⚠️ Harvest current month failed; continuing"
@@ -114,34 +126,125 @@ jobs:
               echo '[]' > data/selected.json;
             fi
 
+          # Persist selection to B2 (dated + latest), then strictly read from B2 (skip on PRs)
+          echo "🧭 Preparing selection in Backblaze B2..."
+          CI_IS_PR="${{ github.event_name == 'pull_request' && 'true' || 'false' }}"
+          if [ -n "${BACKBLAZE_KEY_ID}" ] && [ -n "${BACKBLAZE_APPLICATION_KEY}" ] && [ -n "${BACKBLAZE_S3_ENDPOINT}" ] && [ -n "${BACKBLAZE_BUCKET}" ]; then
+            python -m pip install --upgrade pip >/dev/null 2>&1 || true
+            pip install awscli >/dev/null 2>&1 || true
+            export AWS_ACCESS_KEY_ID="${BACKBLAZE_KEY_ID}"
+            export AWS_SECRET_ACCESS_KEY="${BACKBLAZE_APPLICATION_KEY}"
+            export AWS_DEFAULT_REGION=us-west-004
+              DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
+              DAY=$(date -u +"%Y-%m-%d")
+              SELECT_KEY="selections/daily/${DAY}.json"
+              aws s3 cp data/selected.json "${DEST}${SELECT_KEY}" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" || {
+                echo "❌ Failed to upload selection to B2";
+                python -m src.tools.b2_alerts add "upload selection failed: ${SELECT_KEY}";
+                exit 1;
+              }
+              # Write latest pointer JSON
+              echo "{\"path\": \"${SELECT_KEY}\", \"run_id\": \"${GITHUB_RUN_ID}\", \"ts\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > latest.json
+              aws s3 cp latest.json "${DEST}selections/latest.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" || {
+                echo "❌ Failed to update selections/latest.json";
+                python -m src.tools.b2_alerts add "update latest.json failed";
+                exit 1;
+              }
+              # Strictly read back from B2 to ensure CI references B2, not local
+              rm -f data/selected.json
+              aws s3 cp "${DEST}${SELECT_KEY}" data/selected.json --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" || {
+                echo "❌ Failed to pull selection from B2";
+                python -m src.tools.b2_alerts add "download selection failed: ${SELECT_KEY}";
+                exit 1;
+              }
+              export SELECT_KEY
+              echo "SELECT_KEY=${SELECT_KEY}" >> $GITHUB_ENV
+              echo "RECORDS_KEYS=records/chinaxiv_${CURR}.json;records/chinaxiv_${PREV}.json" >> $GITHUB_ENV
+            else
+              if [ "$CI_IS_PR" = "true" ]; then
+                echo "ℹ️ PR build: skipping B2 selection persist (secrets withheld). Using local data/selected.json."
+              else
+                echo "❌ B2 secrets missing; cannot persist selection"
+                python -m src.tools.b2_alerts add "B2 selection persist skipped: missing secrets"
+                exit 1
+              fi
+            fi
+
             # Translate
             echo "🌐 Running translation pipeline..."
-            python -m src.pipeline --skip-selection --workers 20 || {
+            python -m src.pipeline --skip-selection --workers 20 --with-qa || {
               echo "⚠️ Translation failed, continuing with existing translations"
             }
           else
             echo "ℹ️ Skipping harvest and translation (rebuild only)"
           fi
           
-          # Render site
-          echo "🎨 Rendering site..."
-          python -m src.render || {
-            echo "❌ Site rendering failed"
-            exit 1
+          echo "ℹ️ Deferring render/index/pdf to post-hydration steps"
+
+      - name: Publish validated/flagged/PDFs to B2 and write manifests
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          B2_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          B2_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+          SELECT_KEY: ${{ env.SELECT_KEY }}
+          RECORDS_KEYS: ${{ env.RECORDS_KEYS }}
+          RUN_STARTED_AT: ${{ steps.meta.outputs.started_at }}
+          B2_FAIL_ON_ERROR: 'true'
+        run: |
+          # Ensure AWS CLI signs requests for Backblaze region
+          export AWS_DEFAULT_REGION=us-west-004
+          python -m pip install --upgrade pip >/dev/null 2>&1 || true
+          pip install awscli >/dev/null 2>&1 || true
+          python -m src.tools.b2_publish || {
+            echo "❌ B2 publish failed";
+            exit 1;
           }
-          
+
+      - name: Hydrate validated translations from B2 (pre-render)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ] || [ -z "${BACKBLAZE_S3_ENDPOINT}" ] || [ -z "${BACKBLAZE_BUCKET}" ]; then
+            echo "❌ Missing B2 credentials for hydration";
+            python -m src.tools.b2_alerts add "hydrate skipped: missing B2 credentials";
+            exit 1;
+          fi
+          python -m pip install --upgrade pip >/dev/null 2>&1 || true
+          pip install awscli >/dev/null 2>&1 || true
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
+          echo "🧯 Reset local translations (data/translated)"
+          rm -rf data/translated && mkdir -p data/translated
+          echo "⬇️  Syncing validated translations from ${DEST}validated/translations ..."
+          aws s3 sync "${DEST}validated/translations" data/translated --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors || true
+          COUNT=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
+          echo "Found ${COUNT} validated translation JSON files"
+          if [ "${COUNT}" = "0" ]; then
+            echo "❌ No validated translations found after hydration";
+            python -m src.tools.b2_alerts add "hydrate yielded zero translations";
+            # flush and fail to avoid empty site deploy
+            python -m src.tools.b2_alerts flush || true
+            exit 1;
+          fi
+
+      - name: Render site (post-hydration)
+        run: |
+          set -e
+          echo "🎨 Rendering site from hydrated data..."
+          python -m src.render
           echo "🔍 Building search index..."
-          python -m src.search_index || {
-            echo "❌ Search index failed"
-            exit 1
-          }
-          
+          python -m src.search_index
           echo "📄 Generating PDFs..."
-          python -m src.make_pdf || {
-            echo "⚠️ PDF generation failed, continuing without PDFs"
-          }
-          
-          echo "✅ Build completed successfully!"
+          python -m src.make_pdf || echo "⚠️ PDF generation failed, continuing without PDFs"
       - name: Set up Node.js
         if: ${{ github.event_name != 'pull_request' }}
         uses: actions/setup-node@v4
@@ -168,6 +271,48 @@ jobs:
           }
           
           echo "✅ Deployment completed successfully!"
+      - name: Persist pipeline outputs to Backblaze B2 (JSON only)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          B2_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          B2_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ] || [ -z "${B2_S3_ENDPOINT}" ] || [ -z "${B2_BUCKET}" ]; then
+            echo "ℹ️ Backblaze B2 secrets not set; skipping persistence"
+            exit 0
+          fi
+          python -m pip install --upgrade pip
+          pip install awscli
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${B2_BUCKET}/${B2_PREFIX}"
+          echo "📤 Persisting JSON outputs to ${DEST} via ${B2_S3_ENDPOINT}"
+          if [ -d data/records ]; then
+            aws s3 cp data/records "${DEST}records/" --recursive --exclude "*" --include "*.json" --endpoint-url "${B2_S3_ENDPOINT}" --only-show-errors
+          fi
+          if [ -d data/translated ]; then
+            aws s3 cp data/translated "${DEST}translations/" --recursive --exclude "*" --include "*.json" --endpoint-url "${B2_S3_ENDPOINT}" --only-show-errors
+          fi
+          if [ -f data/selected.json ]; then
+            aws s3 cp data/selected.json "${DEST}selections/${GITHUB_RUN_ID}/selected.json" --endpoint-url "${B2_S3_ENDPOINT}" --only-show-errors
+          fi
+      - name: Flush B2 alert buffer (if any)
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          python -m src.tools.b2_alerts flush || true
+      - name: Upload harvest artifacts (records + selection)
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: harvest-data-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 90
+          path: |
+            data/records/*.json
+            data/selected.json
       - name: Persist dedupe state (seen.json)
         if: ${{ github.event_name != 'pull_request' }}
         run: |

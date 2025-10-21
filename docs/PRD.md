@@ -8,6 +8,7 @@ Translate ChinaXiv preprints to English with high math/LaTeX fidelity and publis
 - Single integration via OpenRouter; easily swap model slugs
 - Static site: view pages, client-side search, Markdown/PDF downloads
 - Simple, cheap, low-ops pipeline (nightly cron)
+- Durable storage of pipeline outputs (JSON) for audit/replay; admin dashboard for CI visibility.
 
 ### Non‑Goals (V1)
 - No user accounts, comments, or server-side search
@@ -42,7 +43,7 @@ References:
 1) Harvest
    - ChinaXiv scraping via BrightData (Web Unlocker)
    - Safe rate limits and checkpointing; resume capability
-   - Store harvested JSON for traceability (size-capped, rolling retention)
+   - Store harvested JSON for traceability in durable object storage (Backblaze B2)
    - Normalize to JSON with fields: `id`, `oai_identifier`, `title`, `creators`, `subjects`, `abstract`, `date`, `pdf_url`, `source_url`, `license`, `setSpec` (if any)
 
 2) License Gate
@@ -70,9 +71,15 @@ References:
    - MiniSearch/Lunr loaded as single JS file; instant results
 
 7) Automation & Deploy
-   - GitHub Actions nightly (03:00 UTC): harvest → license gate → fetch → translate → render → index → deploy to Cloudflare Pages
-   - Idempotent via `seen.json` cache; only process new IDs
+   - GitHub Actions nightly (03:00 UTC): harvest → QA gates → fetch → translate → render → index → deploy to Cloudflare Pages
+   - Idempotent via `seen.json` cache (committed back to repo to persist dedupe state)
+   - Persist pipeline outputs to Backblaze B2 (S3 API) to prevent loss on ephemeral runners
    - Log per-item model slug and token counts for cost tracking
+
+ 8) Admin CI Dashboard (Local)
+   - Minimal Flask app (no DB/caching), password‑protected; runs on localhost
+   - Endpoints: `/admin` (metrics + recent runs), `/admin/ci/workflows` (Quick Actions dispatch + read‑only non‑dispatchable workflows), `/admin/ci/runs`, `/admin/ci/run/<id>` (jobs, artifacts, previews)
+   - Hides irrelevant automation (Claude Code runs). All timestamps shown in local time; durations displayed per run/job.
 
 ### Out of Scope (for V1)
 - Multi-model majority vote, human QA workflows, translation memory database
@@ -100,6 +107,7 @@ repo/
     raw_json/              # optional raw responses (if custom harvester used)
   assets/                  # CSS, logo, MathJax, MiniSearch/Lunr
   site/                    # generated static site (deploy target)
+  templates/               # admin dashboard HTML templates
   docs/
     archive/INTERNET_ARCHIVE_PLAN.md  # archived plan (not in use)
   .github/workflows/build.yml
@@ -175,11 +183,31 @@ Client-side search
 - Generate `search-index.json` with minimal fields
 - Load MiniSearch/Lunr as single minified script; debounce input; instant results
 
-Automation (GitHub Actions)
-- Cron at 03:00 UTC
-- Steps: checkout → setup Python → install deps → run pipeline → upload `site/` to Pages
-- Caching: pip cache; optional artifacts for `data/raw_xml` (short retention)
-- Secrets: `OPENROUTER_API_KEY`
+ Automation (GitHub Actions)
+ - Cron at 03:00 UTC
+ - Steps: checkout → setup Python → install deps → run pipeline → persist outputs to B2 → upload `site/` to Pages
+ - Caching: pip cache
+ - GitHub Artifacts: upload harvest JSONs and selection as a short‑term safety net (90‑day retention)
+ - Secrets: `OPENROUTER_API_KEY`, Cloudflare, BrightData; plus Backblaze B2 secrets below
+
+ Durable Storage (Backblaze B2)
+ - Backend: Backblaze B2, private bucket, S3‑compatible API
+ - We persist JSON outputs by default; PDFs are optional archival (never served from the site)
+ - Bucket layout:
+   - `records/chinaxiv_YYYYMM.json`
+   - `translations/{paper_id}.json`
+   - `selections/{run_id}/selected.json`
+   - `pdfs/{paper_id}.pdf` (optional)
+- Required GitHub Secrets:
+   - `BACKBLAZE_KEY_ID`, `BACKBLAZE_APPLICATION_KEY`
+   - `BACKBLAZE_S3_ENDPOINT` (e.g., `https://s3.us-west-004.backblazeb2.com`)
+   - `BACKBLAZE_BUCKET` (e.g., `chinaxiv-pipeline`)
+   - `BACKBLAZE_PREFIX` (optional; e.g., `prod/`)
+
+ Hydration & Rebuild (Site Reflects B2)
+ - After translation completes in CI, the pipeline publishes validated outputs to B2 under `validated/translations/` and writes manifests and pointers.
+ - Before rendering and deploying, CI hydrates `data/translated/` by syncing from `validated/translations/` in B2. If zero files are found, CI sends a throttled Discord alert and fails to avoid a “green but empty” deploy.
+ - A dedicated workflow `rebuild-from-b2.yml` hydrates → render → index → PDFs → deploy without harvesting/translating (manual trigger). For local parity, `make site-from-b2` performs the same hydration and build steps and serves the site on port 8001.
 
 Observability & cost tracking
 - Log per-item: model slug, input/output tokens, computed cost per model pricing table
@@ -191,6 +219,7 @@ Observability & cost tracking
 - Time-bounded operation (target < 30 minutes; per-paper < 90s at P50)
 - Site build reproducibility (pinned dependency versions)
 - Accessibility: keyboard navigation, sufficient contrast, readable math sizing
+- Outputs are durably persisted off-runner; replays are possible given B2 JSONs
 
 ### Risks & Mitigations
 - Endpoint instability → Retry with backoff; resume via `resumptionToken`
@@ -198,6 +227,7 @@ Observability & cost tracking
 - Cost drift → token logging and pricing configuration; alert if daily estimate exceeds threshold
 - Large PDFs or missing LaTeX → fall back to Markdown → Pandoc
 - Proxy failures or geo-blocking → Bright Data residential proxies with China IPs; fallback to retry with exponential backoff; monitor proxy quota and costs
+ - Artifact loss on runners → Persist JSON (and optional PDFs) to B2 via S3 API; also upload short‑lived artifacts per run for belt‑and‑suspenders
 
 ### Milestones
 1. Harvest + normalize + seen cache (1 day)
@@ -221,6 +251,7 @@ Observability & cost tracking
   - `license_mappings` (commented out - we don't care about licenses)
 - Secrets (GitHub repo secrets and `.env`):
   - `OPENROUTER_API_KEY` (required)
+  - Backblaze B2 (required for persistence): `BACKBLAZE_KEY_ID`, `BACKBLAZE_APPLICATION_KEY`, `BACKBLAZE_S3_ENDPOINT`, `BACKBLAZE_BUCKET`, `BACKBLAZE_PREFIX` (optional)
 - Deprecated config (no longer needed with IA approach):
   - `oai.base_url` (ChinaXiv OAI-PMH blocked)
   - `proxy.*` settings
