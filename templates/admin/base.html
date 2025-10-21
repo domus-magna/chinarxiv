@@ -18,6 +18,7 @@
 </head>
 <body>
   <div class="muted">Local Admin — <a href="/admin">Home</a> | <a href="/admin/ci/workflows">Workflows</a> | <a href="/admin/ci/runs">Runs</a> <span style="float:right">Local time: {{ now_local }}</span></div>
+  <p class="muted" style="margin-top:0.5rem">Security note: This dashboard is intended for localhost use only. Basic Auth is not encrypted over HTTP; do not expose this server to a network. Prefer ADMIN_PASSWORD_HASH over plain ADMIN_PASSWORD.</p>
   <h1>{{ title or 'Admin' }}</h1>
   {% block content %}{% endblock %}
 </body>

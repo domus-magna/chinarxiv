@@ -23,6 +23,9 @@ import zipfile
 from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, Optional
+import logging
+import tempfile
+from werkzeug.security import check_password_hash
 
 from flask import Flask, Response, abort, redirect, render_template, request, url_for
 
@@ -30,11 +33,18 @@ from .gh_actions import GHClient, make_config
 from .gha_workflow_config import get_dispatch_inputs, describe_workflow
 
 
-def require_password() -> str:
-    pw = os.getenv("ADMIN_PASSWORD")
-    if not pw:
-        raise RuntimeError("ADMIN_PASSWORD not set; export it to protect the admin UI")
-    return pw
+logger = logging.getLogger(__name__)
+
+
+def _get_passwords() -> Dict[str, Optional[str]]:
+    """Return configured admin password hash/plain.
+
+    Prefer ADMIN_PASSWORD_HASH. Fall back to ADMIN_PASSWORD (legacy).
+    """
+    return {
+        "hash": os.getenv("ADMIN_PASSWORD_HASH"),
+        "plain": os.getenv("ADMIN_PASSWORD"),
+    }
 
 
 def basic_auth(f):
@@ -45,11 +55,21 @@ def basic_auth(f):
             return Response(status=401, headers={"WWW-Authenticate": "Basic realm=admin"})
         try:
             raw = base64.b64decode(auth.split(" ", 1)[1]).decode("utf-8")
-            _, password = raw.split(":", 1)
+            username, password = raw.split(":", 1)
         except Exception:
             return Response(status=401, headers={"WWW-Authenticate": "Basic realm=admin"})
-        if password != require_password():
+        creds = _get_passwords()
+        ok = False
+        if creds["hash"]:
+            ok = check_password_hash(creds["hash"], password)
+        elif creds["plain"]:
+            ok = password == creds["plain"]
+            if ok:
+                logger.warning("ADMIN_PASSWORD used without hash; set ADMIN_PASSWORD_HASH for stronger security")
+        if not ok:
+            logger.warning("Admin auth failed for user=%s from %s", username, request.remote_addr)
             return Response(status=401, headers={"WWW-Authenticate": "Basic realm=admin"})
+        logger.info("Admin access %s by user=%s from %s", request.path, username, request.remote_addr)
         return f(*args, **kwargs)
 
     return wrapper
@@ -149,7 +169,8 @@ def make_app() -> Flask:
                 "total": len(latest_runs),
             }
         except Exception as e:
-            cfg_error = str(e)
+            logger.error("admin_home error: %s", e, exc_info=True)
+            cfg_error = "Configuration error. See logs."
 
         return render_template(
             "admin/home.html",
@@ -192,7 +213,8 @@ def make_app() -> Flask:
                     except Exception:
                         w["description"] = ""
         except Exception as e:
-            return render_template("admin/error.html", message=str(e)), 500
+            logger.error("admin_workflows error: %s", e, exc_info=True)
+            return render_template("admin/error.html", message="An error occurred"), 500
         return render_template("admin/workflows.html", workflows=workflows)
 
     @app.route("/admin/ci/runs")
@@ -202,7 +224,8 @@ def make_app() -> Flask:
             client = GHClient(make_config())
             runs = client.list_runs(per_page=50)
         except Exception as e:
-            return render_template("admin/error.html", message=str(e)), 500
+            logger.error("admin_runs error: %s", e, exc_info=True)
+            return render_template("admin/error.html", message="An error occurred"), 500
         return render_template("admin/runs.html", runs=runs)
 
     @app.route("/admin/ci/run/<int:run_id>")
@@ -215,12 +238,18 @@ def make_app() -> Flask:
             artifacts = client.list_artifacts(run_id)
             previews: Dict[str, Dict[str, Any]] = {}
             # Attempt to preview well-known JSON artifacts
+            MAX_PREVIEW_BYTES = int(os.getenv("ADMIN_MAX_PREVIEW_BYTES", str(100 * 1024 * 1024)))
             for art in artifacts:
                 name = art.get("name", "")
                 if name in ("harvest_report", "translation_report", "ocr_report"):
+                    size = int(art.get("size_in_bytes") or 0)
+                    if size and size > MAX_PREVIEW_BYTES:
+                        previews[name] = {"error": "Artifact too large for preview"}
+                        continue
                     # Download to memory and extract
                     zip_bytes = io.BytesIO()
-                    path = client.download_artifact_zip(art["id"], dest_path=str(Path("/tmp") / f"{art['id']}.zip"))
+                    tmp_zip = Path(tempfile.gettempdir()) / f"{art['id']}.zip"
+                    path = client.download_artifact_zip(art["id"], dest_path=str(tmp_zip))
                     with open(path, "rb") as fh:
                         zip_bytes.write(fh.read())
                     zip_bytes.seek(0)
@@ -230,11 +259,16 @@ def make_app() -> Flask:
                                 data = json.loads(zf.read(zname))
                                 previews[name] = data.get("summary", data)
                                 break
+                    try:
+                        tmp_zip.unlink(missing_ok=True)
+                    except Exception:
+                        pass
             return render_template(
                 "admin/run.html", run=run, jobs=jobs, artifacts=artifacts, previews=previews
             )
         except Exception as e:
-            return render_template("admin/error.html", message=str(e)), 500
+            logger.error("admin_run error: %s", e, exc_info=True)
+            return render_template("admin/error.html", message="An error occurred"), 500
 
     @app.route("/admin/ci/workflow/<int:wfid>/dispatch", methods=["GET", "POST"])
     @basic_auth
@@ -271,9 +305,19 @@ def make_app() -> Flask:
                     else:
                         val = request.form.get(name)
                         if val is not None and val != "":
+                            if typ == "choice":
+                                choices = (spec.get("options") or []) or (spec.get("choices") or [])
+                                if choices and val not in choices:
+                                    return render_template(
+                                        "admin/dispatch.html",
+                                        workflow=wf,
+                                        inputs_spec=inputs_spec,
+                                        error=f"Invalid value for {name}",
+                                    ), 400
                             inputs[name] = val
                         elif "default" in spec:
                             inputs[name] = spec["default"]
+                logger.warning("Workflow %s dispatched ref=%s inputs=%s", wfid, ref, inputs)
                 client.dispatch_workflow(wfid, ref=ref, inputs=inputs or None)
                 return redirect(url_for("admin_runs"))
 
@@ -281,7 +325,8 @@ def make_app() -> Flask:
                 "admin/dispatch.html", workflow=wf, inputs_spec=inputs_spec
             )
         except Exception as e:
-            return render_template("admin/error.html", message=str(e)), 500
+            logger.error("admin_dispatch error: %s", e, exc_info=True)
+            return render_template("admin/error.html", message="An error occurred"), 500
 
     return app
 
