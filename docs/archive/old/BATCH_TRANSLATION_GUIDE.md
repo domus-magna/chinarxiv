@@ -1,4 +1,6 @@
-# Batch Translation System Guide
+# [ARCHIVED] Batch Translation System Guide
+
+Note (archived on 2025-10-21): Batch translation is documented in `docs/WORKFLOWS.md` and `docs/DEPLOYMENT.md`. This guide is kept for historical context.
 
 Complete guide for running fully online batch translation with integrated QA filtering.
 

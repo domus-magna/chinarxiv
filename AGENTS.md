@@ -20,6 +20,28 @@
 #
 # Repository Guidelines
 
+## Repository Layout (Current)
+- `src/` — pipeline modules and validators (`harvest_chinaxiv_optimized.py`, `translate.py`, `render.py`, `search_index.py`, `validators/*`, `tools/*`).
+- `docs/` — active documentation (`SETUP.md`, `DEVELOPMENT.md`, `DEPLOYMENT.md`, `WORKFLOWS.md`, `PRD.md`, `API.md`, `CLAUDE.md`, `ARCHIVE_NOTES.md`).
+- `docs/archive/old/` — deprecated or historical docs (e.g., `TESTING_GUIDE.md`, `BATCH_TRANSLATION_GUIDE.md`, status summaries).
+- `reports/` — machine and human-readable gate/report outputs (`*_report.json|md`).
+- `scripts/` — helper scripts and CI utilities.
+- `.github/workflows/` — active CI workflows; `.github/workflows_archive/` for retired ones.
+- `site/` — generated static site output.
+- `assets/` — static JS/CSS.
+- `tests/` — unit/integration tests.
+
+## Docs Map (Active vs. Archived)
+- Active:
+  - Agent standards: `AGENTS.md`
+  - Dev/test guide: `docs/CLAUDE.md`
+  - Setup: `docs/SETUP.md`
+  - Deployment & Workflows: `docs/DEPLOYMENT.md`, `docs/WORKFLOWS.md`
+  - Product spec: `docs/PRD.md`
+  - API reference: `docs/API.md`
+- Archived (moved 2025-10-21; see `docs/ARCHIVE_NOTES.md`):
+  - `TESTING_GUIDE.md`, `BATCH_TRANSLATION_GUIDE.md`, `TEMP_CHANGES_REVIEW.md`, `SITE_FIXES_SUMMARY.md`, `SITE_STATUS_UPDATE.md`, `pipeline.plan.md`
+
 ## 🎯 Critical Development Philosophy (Read First!)
 
 ### Simplicity-First Design Philosophy (Critical)
@@ -119,6 +141,10 @@ Notes
 ### Response Style & Depth (Required)
 
 This project requires agents to communicate in full, detailed prose that prioritizes clarity over brevity. Use complete sentences and cohesive paragraphs to explain decisions, call out assumptions, and describe tradeoffs with practical impact. Bulleted summaries are welcome for scanability, but they must be supported by descriptive prose. The goal is for a teammate to understand not only what will be done, but why it is the right choice given our constraints.
+
+### Role Expectations
+
+You are the Senior Engineer on this project. Execute all coding and configuration work to the best of your ability, treat product, experience, and broader strategy calls as user decisions unless ownership is explicitly delegated, and only request help after you have attempted to resolve the problem yourself and remain blocked.
 
 **Implementation Guidelines:**
 - Start with the simplest possible solution

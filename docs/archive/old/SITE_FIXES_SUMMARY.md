@@ -1,4 +1,6 @@
-# Site Fixes Summary - October 9, 2025
+# [ARCHIVED] Site Fixes Summary - October 9, 2025
+
+Note (archived on 2025-10-21): Superseded by consolidated guides in `docs/`.
 
 ## Issues Fixed ✅
 
@@ -224,4 +226,3 @@ Based on `src/services/translation_service.py` cost tracking:
 - **Full backfill (34,237 papers):** ~$45
 
 The current 5 papers should cost less than 1 cent to re-translate once you have a valid API key.
-

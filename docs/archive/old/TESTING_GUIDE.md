@@ -1,4 +1,6 @@
-# Testing Guide - Site Fixes
+# [ARCHIVED] Testing Guide - Site Fixes
+
+Note (archived on 2025-10-21): Testing instructions are consolidated in `docs/CLAUDE.md` and `docs/DEVELOPMENT.md`.
 
 ## Quick Test (No API Key Needed)
 
@@ -231,4 +233,3 @@ If you encounter issues:
 2. Review logs for error messages
 3. Test API key with `env_diagnose --validate`
 4. Check QA status in translated JSON files
-

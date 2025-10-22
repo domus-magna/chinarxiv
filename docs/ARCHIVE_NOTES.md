@@ -24,3 +24,15 @@ Notes
 - Archived code:
   - `src/harvest_ia.py` → `src/archive/harvest_ia.py`
   - Real E2E workflow and tests moved under `.github/workflows_archive/` and `docs/archive/tests/`
+
+Additional archives (2025-10-21)
+
+- Moved root scratch/status docs to `docs/archive/old/`:
+  - `TEMP_CHANGES_REVIEW.md` → `docs/archive/old/TEMP_CHANGES_REVIEW.md`
+  - `SITE_FIXES_SUMMARY.md` → `docs/archive/old/SITE_FIXES_SUMMARY.md`
+  - `SITE_STATUS_UPDATE.md` → `docs/archive/old/SITE_STATUS_UPDATE.md`
+  - `pipeline.plan.md` → `docs/archive/old/pipeline.plan.md`
+
+- Consolidated overlapping guides:
+  - `TESTING_GUIDE.md` → `docs/archive/old/TESTING_GUIDE.md` (use `docs/CLAUDE.md` and `docs/DEVELOPMENT.md`)
+  - `BATCH_TRANSLATION_GUIDE.md` → `docs/archive/old/BATCH_TRANSLATION_GUIDE.md` (use `docs/WORKFLOWS.md`/`docs/DEPLOYMENT.md`)

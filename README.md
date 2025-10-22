@@ -20,12 +20,17 @@ English translations of Chinese academic papers from ChinaXiv.
 See [SETUP.md](docs/SETUP.md) for detailed instructions.
 
 ## Documentation
+- [Agent Guide](AGENTS.md) - Required workflow and repo conventions
+- [Claude Dev Guide](docs/CLAUDE.md) - Tests, local runs, background tasks
 - [Setup Guide](docs/SETUP.md) - Complete setup instructions
 - [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment
 - [API Documentation](docs/API.md) - API reference
 - [Contributing Guide](docs/CONTRIBUTING.md) - Development guide
 - [Workflows](docs/WORKFLOWS.md) - GitHub Actions workflows
 - [PRD](docs/PRD.md) - Product requirements document
+
+Notes
+- Legacy root docs (e.g., `TESTING_GUIDE.md`, `BATCH_TRANSLATION_GUIDE.md`, status summaries) are archived under `docs/archive/old/`. Use the guides above for current instructions.
 
 ### Backfill by Month
 Use the "backfill-month" GitHub Actions workflow to backfill a single month (YYYYMM). It harvests optimized, selects unseen items, translates all in parallel, and can optionally deploy to Cloudflare Pages. The workflow also persists cross-job dedupe by committing `data/seen.json` back to the repo after a successful run.

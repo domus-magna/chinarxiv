@@ -1,4 +1,6 @@
-# Site Status Update - October 10, 2025
+# [ARCHIVED] Site Status Update - October 10, 2025
+
+Note (archived on 2025-10-21): Status updates are now tracked in GitHub Actions runs and `reports/`. See `docs/DEPLOYMENT.md` and `docs/WORKFLOWS.md`.
 
 ## ✅ **MAJOR SUCCESS: Translation Pipeline Fixed**
 
@@ -70,4 +72,3 @@ The site is now production-ready with:
 - ✅ `python -m src.render` → 5 items rendered
 - ✅ `python -m src.search_index` → 5 entries indexed
 - ✅ Homepage shows English titles and abstracts
-

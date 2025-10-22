@@ -1,4 +1,6 @@
-# Comprehensive Changes Review
+# [ARCHIVED] Comprehensive Changes Review
+
+Note (archived on 2025-10-21): This document captured a point-in-time review during refactors. For current developer workflow and testing instructions, use `AGENTS.md` and `docs/CLAUDE.md`.
 
 **Generated:** 2025-10-06
 **Branch:** feat/new-branch

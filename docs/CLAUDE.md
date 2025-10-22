@@ -15,6 +15,18 @@
 #
 # Claude Development Guide
 
+## Docs Map
+- Start here for agent workflow: `AGENTS.md`
+- Development, tests, background tasks: this file (`docs/CLAUDE.md`)
+- Setup: `docs/SETUP.md`
+- Deployment & CI workflows: `docs/DEPLOYMENT.md`, `docs/WORKFLOWS.md`
+- Product spec & API: `docs/PRD.md`, `docs/API.md`
+- Archived docs live under `docs/archive/old/` (see `docs/ARCHIVE_NOTES.md`).
+
+## Role Expectations
+
+As the Senior Engineer, execute all coding and configuration tasks personally and defer product, experience, and strategic decisions to the user unless they delegate otherwise. Ask for assistance only after you have tried to resolve an issue yourself and still cannot proceed.
+
 ## Admin CI Dashboard (Local)
 - Start with `make admin` (loads `.env` first). Required: `ADMIN_PASSWORD`, `GH_TOKEN`, `GH_REPO`.
 - Endpoints:
