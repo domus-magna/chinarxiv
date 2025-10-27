@@ -5,7 +5,10 @@ Translation service for ChinaXiv English translation.
 from __future__ import annotations
 
 import json
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 import requests
 from tenacity import (
@@ -48,6 +51,9 @@ SYSTEM_PROMPT = (
     "- Use formal scientific language appropriate for research papers\n\n"
     "Remember: Mathematical content and citations must remain untouched - only translate the Chinese text."
 )
+
+
+MAX_RESPONSE_PREVIEW = 2048
 
 
 class OpenRouterError(Exception):
@@ -112,11 +118,13 @@ class TranslationService:
             "default_slug", "deepseek/deepseek-v3.2-exp"
         )
         self.glossary = self.config.get("glossary", [])
+        self.failure_log_dir = Path("data/monitoring/openrouter_failures")
 
     @retry(
         wait=wait_exponential(min=1, max=20),
         stop=stop_after_attempt(5),
         retry=retry_if_exception_type(OpenRouterRetryableError),
+        reraise=True,
     )
     def _call_openrouter(
         self, text: str, model: str, glossary: List[Dict[str, str]]
@@ -214,11 +222,97 @@ class TranslationService:
                 raise OpenRouterFatalError(message, code=code, fallback_ok=False)
             raise OpenRouterError(message, code=code, retryable=False, fallback_ok=True)
 
-        data = resp.json()
         try:
-            return data["choices"][0]["message"]["content"].strip()
+            data = resp.json()
+        except ValueError as e:
+            self._log_malformed_response(
+                response=resp, model=model, reason="invalid_json", error=e
+            )
+            raise OpenRouterRetryableError(
+                "Malformed response from OpenRouter (invalid JSON)",
+                code="invalid_json",
+            ) from e
+
+        try:
+            content = data["choices"][0]["message"]["content"].strip()
         except Exception as e:
-            raise RuntimeError(f"Invalid OpenRouter response: {e}")
+            self._log_malformed_response(
+                response=resp,
+                model=model,
+                reason="invalid_payload",
+                error=e,
+                parsed=data,
+            )
+            raise OpenRouterRetryableError(
+                "Malformed response from OpenRouter (missing content)",
+                code="invalid_payload",
+            ) from e
+
+        if not content:
+            self._log_malformed_response(
+                response=resp,
+                model=model,
+                reason="empty_content",
+                parsed=data,
+            )
+            raise OpenRouterRetryableError(
+                "Malformed response from OpenRouter (empty content)",
+                code="empty_content",
+            )
+
+        return content
+
+    def _log_malformed_response(
+        self,
+        *,
+        response: requests.Response,
+        model: str,
+        reason: str,
+        error: Optional[Exception] = None,
+        parsed: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Persist malformed OpenRouter payload details for debugging."""
+
+        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
+        preview = response.text[:MAX_RESPONSE_PREVIEW] if response.text else ""
+        metadata = {
+            "model": model,
+            "reason": reason,
+            "status_code": response.status_code,
+            "content_type": response.headers.get("Content-Type"),
+            "error": str(error) if error else None,
+        }
+
+        # Record the failure for dashboards/alerts without leaking full body content.
+        try:
+            monitoring_service.record_error(
+                service="openrouter",
+                message=f"Malformed response: {reason}",
+                status=response.status_code,
+                code=reason,
+                metadata={**metadata, "body_preview": preview[:256]},
+            )
+        except Exception:
+            pass
+
+        # Persist a richer artifact locally for manual debugging.
+        try:
+            self.failure_log_dir.mkdir(parents=True, exist_ok=True)
+            record_path = self.failure_log_dir / f"{timestamp}_{reason}_{uuid4().hex}.json"
+            record: Dict[str, Any] = {
+                "timestamp": timestamp,
+                **metadata,
+                "body_preview": preview,
+            }
+            if parsed is not None:
+                try:
+                    record["parsed"] = parsed
+                except Exception:
+                    record["parsed"] = str(parsed)
+            with record_path.open("w", encoding="utf-8") as fh:
+                json.dump(record, fh, ensure_ascii=True, indent=2)
+        except Exception:
+            pass
 
     def translate_field(
         self,

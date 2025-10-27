@@ -1,0 +1,139 @@
+name: integration-translate
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Run identifier (matches data/records/<run_id>.json)'
+        required: true
+        default: '20251023T201111Z'
+      record_ids:
+        description: 'Comma-separated record IDs to translate (optional)'
+        required: false
+      limit:
+        description: 'Max records to translate when record_ids not provided'
+        required: false
+        default: '3'
+      workers:
+        description: 'Number of translation workers to spawn'
+        required: false
+        default: '2'
+
+jobs:
+  translate:
+    name: translate-sample
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            tesseract-ocr \
+            tesseract-ocr-chi-sim \
+            tesseract-ocr-chi-tra \
+            ghostscript \
+            pngquant \
+            qpdf \
+            unpaper
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare selection payload
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          RECORD_IDS: ${{ inputs.record_ids }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          set -euo pipefail
+          RECORD_FILE="data/records/${RUN_ID}.json"
+          if [ ! -f "$RECORD_FILE" ]; then
+            echo "::error::Record file $RECORD_FILE not found"
+            exit 1
+          fi
+          export RECORD_FILE
+          python - <<'PY'
+import json
+import os
+
+record_file = os.environ["RECORD_FILE"]
+ids_raw = os.environ.get("RECORD_IDS", "").strip()
+limit_raw = os.environ.get("LIMIT", "").strip()
+
+with open(record_file, "r", encoding="utf-8") as fh:
+    records = json.load(fh)
+
+if ids_raw:
+    target = {rid.strip() for rid in ids_raw.split(",") if rid.strip()}
+    selected = [rec for rec in records if rec.get("id") in target]
+else:
+    limit = int(limit_raw or "0")
+    selected = records[:limit] if limit > 0 else records
+
+if not selected:
+    raise SystemExit("No records selected for translation")
+
+os.makedirs("data", exist_ok=True)
+with open("data/selected.json", "w", encoding="utf-8") as out:
+    json.dump(selected, out, ensure_ascii=False, indent=2)
+
+print(f"Selected {len(selected)} records for translation")
+PY
+
+      - name: Initialize working directories
+        run: |
+          mkdir -p data/translated data/flagged data/monitoring/openrouter_failures data/costs
+
+      - name: Validate OpenRouter configuration
+        run: |
+          python -m src.tools.env_diagnose --check || true
+          python -m src.tools.env_diagnose --validate || {
+            echo "::error::OPENROUTER_API_KEY invalid or missing";
+            exit 1;
+          }
+
+      - name: Run translation pipeline (with QA)
+        env:
+          WORKERS: ${{ inputs.workers }}
+        run: |
+          set -e
+          python -m src.pipeline \
+            --skip-selection \
+            --with-qa \
+            --workers "${WORKERS:-2}" \
+            --limit $(jq 'length' data/selected.json)
+
+      - name: Collect artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-translate-${{ inputs.run_id }}-${{ github.run_id }}
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: ignore
+          path: |
+            data/selected.json
+            data/translated/*.json
+            data/flagged/*.json
+            data/monitoring/openrouter_failures/*.json
+            data/costs/*.json
+            reports/*translation*.json
+            reports/*translation*.md
