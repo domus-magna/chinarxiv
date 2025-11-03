@@ -48,6 +48,16 @@ on:
         required: false
       discord_webhook_url:
         required: false
+      backblaze_key_id:
+        required: false
+      backblaze_application_key:
+        required: false
+      backblaze_s3_endpoint:
+        required: false
+      backblaze_bucket:
+        required: false
+      backblaze_prefix:
+        required: false
 
 jobs:
   validate:
@@ -89,6 +99,11 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.openrouter_api_key }}
           BRIGHTDATA_API_KEY: ${{ secrets.brightdata_api_key }}
           BRIGHTDATA_ZONE: ${{ secrets.brightdata_zone }}
+          BACKBLAZE_KEY_ID: ${{ secrets.backblaze_key_id }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.backblaze_application_key }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.backblaze_s3_endpoint }}
+          BACKBLAZE_BUCKET: ${{ secrets.backblaze_bucket }}
+          BACKBLAZE_PREFIX: ${{ secrets.backblaze_prefix }}
           RECORDS_PATH: ${{ inputs.records_path }}
           DISCORD_WEBHOOK_URL: ${{ secrets.discord_webhook_url }}
         run: ${{ inputs.pre_command }}
@@ -99,6 +114,11 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.openrouter_api_key }}
           BRIGHTDATA_API_KEY: ${{ secrets.brightdata_api_key }}
           BRIGHTDATA_ZONE: ${{ secrets.brightdata_zone }}
+          BACKBLAZE_KEY_ID: ${{ secrets.backblaze_key_id }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.backblaze_application_key }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.backblaze_s3_endpoint }}
+          BACKBLAZE_BUCKET: ${{ secrets.backblaze_bucket }}
+          BACKBLAZE_PREFIX: ${{ secrets.backblaze_prefix }}
           RECORDS_PATH: ${{ inputs.records_path }}
           DISCORD_WEBHOOK_URL: ${{ secrets.discord_webhook_url }}
         run: ${{ inputs.command }}
@@ -118,6 +138,11 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.openrouter_api_key }}
           BRIGHTDATA_API_KEY: ${{ secrets.brightdata_api_key }}
           BRIGHTDATA_ZONE: ${{ secrets.brightdata_zone }}
+          BACKBLAZE_KEY_ID: ${{ secrets.backblaze_key_id }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.backblaze_application_key }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.backblaze_s3_endpoint }}
+          BACKBLAZE_BUCKET: ${{ secrets.backblaze_bucket }}
+          BACKBLAZE_PREFIX: ${{ secrets.backblaze_prefix }}
           RECORDS_PATH: ${{ inputs.records_path }}
           DISCORD_WEBHOOK_URL: ${{ secrets.discord_webhook_url }}
         run: ${{ inputs.post_command }}

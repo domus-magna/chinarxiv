@@ -573,15 +573,13 @@ class MonitoringService:
 
         # Optimize search index
         index_file = Path("site/search-index.json")
-        if index_file.exists():
-            success, message = self._optimize_search_index(index_file)
-            results["search_index"] = {"success": success, "message": message}
+        success, message = self._optimize_search_index(index_file)
+        results["search_index"] = {"success": success, "message": message}
 
         # Optimize images
         image_dir = Path("site/assets")
-        if image_dir.exists():
-            success, message = self._optimize_images(image_dir)
-            results["images"] = {"success": success, "message": message}
+        success, message = self._optimize_images(image_dir)
+        results["images"] = {"success": success, "message": message}
 
         return results
 

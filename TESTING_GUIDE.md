@@ -38,6 +38,56 @@ open http://localhost:8001
    - Click "Export BibTeX" - should copy valid BibTeX (check for underscores instead of dots)
    - Check browser console - no errors
 
+## OCR Toolchain Prerequisites
+
+Install OCR dependencies locally before running gate helpers:
+
+```bash
+brew install tesseract tesseract-lang ocrmypdf
+pip install -r requirements.txt  # ensures Pillow is available for fixture generation
+```
+
+Ensure the Simplified Chinese language pack is available:
+
+```bash
+tesseract --list-langs | grep chi_sim
+```
+
+After installation, reseed fixtures and run the helper/gate:
+
+```bash
+python scripts/prepare_gate_fixtures.py
+python -m src.tools.prepare_ocr_report --limit 1
+python -m src.validators.ocr_gate
+```
+
+## Running validation gates without BrightData/OpenRouter
+
+Developers can exercise the new validation gates without production credentials by seeding fixtures and using the helper scripts added for CI:
+
+1. Seed sample data (records, PDFs, translations):
+   ```bash
+   python scripts/prepare_gate_fixtures.py
+   ```
+2. Populate OCR telemetry ahead of the OCR gate:
+   ```bash
+   python -m src.tools.prepare_ocr_report --limit 1
+   ```
+3. Rebuild the site output for the render gate:
+   ```bash
+   python -m src.render
+   python -m src.search_index
+   python -m src.make_pdf  # optional
+   ```
+4. Run gates locally (they will operate on the fixtures):
+   ```bash
+   python -m src.validators.ocr_gate
+   python -m src.validators.translation_gate
+   python -m src.validators.render_gate
+   ```
+
+These steps mirror the CI pre-commands, allowing end-to-end validation even when BrightData or OpenRouter API keys are unavailable.
+
 ## Full Test (With Valid API Key)
 
 Once you have a valid OpenRouter API key:
@@ -231,4 +281,3 @@ If you encounter issues:
 2. Review logs for error messages
 3. Test API key with `env_diagnose --validate`
 4. Check QA status in translated JSON files
-

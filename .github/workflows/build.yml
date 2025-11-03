@@ -206,32 +206,22 @@ jobs:
       - name: Hydrate validated translations from B2 (pre-render)
         if: ${{ github.event_name != 'pull_request' }}
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
           BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
           BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
           BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
         run: |
           set -e
-          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ] || [ -z "${BACKBLAZE_S3_ENDPOINT}" ] || [ -z "${BACKBLAZE_BUCKET}" ]; then
+          if [ -z "${BACKBLAZE_KEY_ID}" ] || [ -z "${BACKBLAZE_APPLICATION_KEY}" ] || [ -z "${BACKBLAZE_S3_ENDPOINT}" ] || [ -z "${BACKBLAZE_BUCKET}" ]; then
             echo "❌ Missing B2 credentials for hydration";
             python -m src.tools.b2_alerts add "hydrate skipped: missing B2 credentials";
             exit 1;
           fi
           python -m pip install --upgrade pip >/dev/null 2>&1 || true
           pip install awscli >/dev/null 2>&1 || true
-          export AWS_DEFAULT_REGION=us-west-004
-          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
-          echo "🧯 Reset local translations (data/translated)"
-          rm -rf data/translated && mkdir -p data/translated
-          echo "⬇️  Syncing validated translations from ${DEST}validated/translations ..."
-          aws s3 sync "${DEST}validated/translations" data/translated --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors || true
-          COUNT=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
-          echo "Found ${COUNT} validated translation JSON files"
-          if [ "${COUNT}" = "0" ]; then
-            echo "❌ No validated translations found after hydration";
-            python -m src.tools.b2_alerts add "hydrate yielded zero translations";
-            # flush and fail to avoid empty site deploy
+          if ! python scripts/hydrate_from_b2.py --target data/translated; then
+            python -m src.tools.b2_alerts add "hydrate failed";
             python -m src.tools.b2_alerts flush || true
             exit 1;
           fi

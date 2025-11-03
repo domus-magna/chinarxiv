@@ -8,6 +8,12 @@ jobs:
     uses: ./.github/workflows/validation-gate.yml
     with:
       gate_id: ocr
+      pre_command: |
+        set -e
+        python scripts/prepare_gate_fixtures.py
+        python -m src.tools.prepare_ocr_report --limit 3 || {
+          echo "⚠️ OCR preparation did not process any records"
+        }
       command: |
         set -e
         python -m src.validators.ocr_gate

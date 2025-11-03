@@ -3,17 +3,46 @@
 from __future__ import annotations
 
 import shutil
+import textwrap
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HARVEST_FIXTURE = REPO_ROOT / "tests/fixtures/harvest/records_sample.json"
-HARVEST_PDF_FIXTURE = REPO_ROOT / "tests/fixtures/harvest/sample.pdf"
 TRANSLATION_FIXTURE = REPO_ROOT / "tests/fixtures/translation/sample_translation.json"
 
 
 def copy_fixture(src: Path, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(src, dest)
+
+
+def generate_scanned_pdf(dest: Path, *, min_chars: int = 2000) -> None:
+    """Generate a synthetic scanned PDF so OCR has sufficient characters."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    base_text = (
+        "Scanned OCR benchmark text for evaluation. "
+        "This synthetic paragraph is repeated to guarantee more than the minimum "
+        "character threshold required by the OCR validation gate. "
+    )
+    repeated = base_text * ((min_chars // len(base_text)) + 2)
+    wrapped = textwrap.wrap(repeated, width=70)
+
+    width, height = 1700, 2200
+    img = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default()
+    line_height = font.getbbox("A")[3] + 10
+    y = 120
+    for line in wrapped:
+        draw.text((100, y), line, fill="black", font=font)
+        y += line_height
+        if y > height - 120:
+            break
+
+    img.save(dest, "PDF", resolution=200.0)
 
 
 def ensure_harvest_fixtures() -> bool:
@@ -26,8 +55,7 @@ def ensure_harvest_fixtures() -> bool:
     copy_fixture(HARVEST_FIXTURE, dest_dir / HARVEST_FIXTURE.name)
 
     pdf_dest = REPO_ROOT / "data/pdfs/sample.pdf"
-    if not pdf_dest.exists():
-        copy_fixture(HARVEST_PDF_FIXTURE, pdf_dest)
+    generate_scanned_pdf(pdf_dest)
     return True
 
 

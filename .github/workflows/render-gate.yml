@@ -8,6 +8,18 @@ jobs:
     uses: ./.github/workflows/validation-gate.yml
     with:
       gate_id: render
+      pre_command: |
+        set -e
+        python scripts/prepare_gate_fixtures.py
+        if [ -n "$BACKBLAZE_KEY_ID" ] && [ -n "$BACKBLAZE_APPLICATION_KEY" ] && [ -n "$BACKBLAZE_S3_ENDPOINT" ] && [ -n "$BACKBLAZE_BUCKET" ]; then
+          python -m pip install --quiet awscli
+          python scripts/hydrate_from_b2.py --target data/translated
+        else
+          echo "ℹ️ Backblaze credentials not provided; using fixtures only."
+        fi
+        python -m src.render
+        python -m src.search_index
+        python -m src.make_pdf || true
       command: |
         set -e
         python -m src.validators.render_gate
@@ -20,3 +32,8 @@ jobs:
       openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
       brightdata_api_key: ${{ secrets.BRIGHTDATA_API_KEY }}
       brightdata_zone: ${{ secrets.BRIGHTDATA_ZONE }}
+      backblaze_key_id: ${{ secrets.BACKBLAZE_KEY_ID }}
+      backblaze_application_key: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+      backblaze_s3_endpoint: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+      backblaze_bucket: ${{ secrets.BACKBLAZE_BUCKET }}
+      backblaze_prefix: ${{ secrets.BACKBLAZE_PREFIX }}

@@ -39,7 +39,7 @@ class _FakeGHClient:
 @pytest.fixture(autouse=True)
 def _set_env(monkeypatch):
     # Configure hashed password
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", generate_password_hash("pw"))
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", generate_password_hash("pw", method="pbkdf2:sha256"))
     # Provide GH envs but we will mock GH client
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("GH_REPO", "owner/repo")
@@ -92,4 +92,3 @@ def test_dispatch_requires_confirmation(monkeypatch):
     )
     assert r.status_code == 400
     assert b"Please confirm dispatch" in r.data
-

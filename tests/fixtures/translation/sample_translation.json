@@ -5,5 +5,6 @@
   "body_en": [
     "The translation highlights that validation gates now require actual artifacts, preventing false positives caused by empty inputs.",
     "It also confirms that harvest and translation checks run deterministically using committed fixtures when real data is absent."
-  ]
+  ],
+  "source_url": "https://example.org/sample-paper"
 }
