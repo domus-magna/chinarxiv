@@ -149,6 +149,7 @@
    - Local validation: `python -m src.tools.compact_cloud_queue --queue-file data/cloud_jobs_unit.json --archive-file data/cloud_jobs_unit_archive.json --retain-completed 5` (unit sample proves archival).
    - CI validation pending: trigger `.github/workflows/queue-maintenance.yml` once merged; rollback by restoring `data/cloud_jobs.json` from archive artifacts.
    - Hydration helper: `python scripts/hydrate_from_b2.py --target data/translated` centralises Backblaze sync logic for build and gates.
+    - Automated Claude review workflows require repository variable `CLAUDE_CODE_ENABLED=true` and secret `CLAUDE_CODE_OAUTH_TOKEN`; otherwise they skip gracefully.
 6. **Local dev guidance without secrets** (`chinaxiv-english-8`) – Document scripts/fixtures so gates can run without BrightData/OpenRouter credentials.
 7. **QA & review** (`chinaxiv-english-9`) – Run targeted automation (pytest + gate workflows) and self-review prior to handoff.
 8. **OCR toolchain availability** (`chinaxiv-english-17`) – Bundle OCR prerequisites and synthetic fixture generation so gate helpers succeed locally and in CI.
