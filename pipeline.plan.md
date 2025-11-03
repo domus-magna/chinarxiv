@@ -137,6 +137,35 @@
 4. Wire orchestrator gating logic (halt downstream stages on previous failure; poll for completion) and add Discord notifications.
 5. Begin structured logging and dashboard upload (Stage 6).
 
+## Follow-up implementation plan (2025‑10‑16)
+
+**Sequencing**
+
+1. **Plan consolidation** (`chinaxiv-english-3`) – Expand this document section with scope, assumptions, and validation strategy (complete with this update).
+2. **OCR gate artifact generation** (`chinaxiv-english-4`) – Add an execution step to populate `reports/ocr_report.json` before the gate runs, covering both fixture and hydrated data paths.
+3. **Render gate hydration & rebuild** (`chinaxiv-english-5`) – Ensure render validation jobs hydrate from Backblaze (or fixtures locally) and rebuild the site prior to counting artifacts.
+4. **Orchestrator failure handling** (`chinaxiv-english-6`) – Modify `pipeline-orchestrator.yml` so failures short-circuit later stages and raise Discord alerts.
+5. **Queue maintenance automation** (`chinaxiv-english-7`) – Introduce tooling/workflows to compact `data/cloud_jobs.json`, archive completed items, and minimise merge conflicts.
+   - Local validation: `python -m src.tools.compact_cloud_queue --queue-file data/cloud_jobs_unit.json --archive-file data/cloud_jobs_unit_archive.json --retain-completed 5` (unit sample proves archival).
+   - CI validation pending: trigger `.github/workflows/queue-maintenance.yml` once merged; rollback by restoring `data/cloud_jobs.json` from archive artifacts.
+   - Hydration helper: `python scripts/hydrate_from_b2.py --target data/translated` centralises Backblaze sync logic for build and gates.
+    - Automated Claude review workflows require repository variable `CLAUDE_CODE_ENABLED=true` and secret `CLAUDE_CODE_OAUTH_TOKEN`; otherwise they skip gracefully.
+6. **Local dev guidance without secrets** (`chinaxiv-english-8`) – Document scripts/fixtures so gates can run without BrightData/OpenRouter credentials.
+7. **QA & review** (`chinaxiv-english-9`) – Run targeted automation (pytest + gate workflows) and self-review prior to handoff.
+8. **OCR toolchain availability** (`chinaxiv-english-17`) – Bundle OCR prerequisites and synthetic fixture generation so gate helpers succeed locally and in CI.
+
+**Key assumptions**
+
+- Backblaze credentials remain available in CI, but local developers may rely on fixtures.
+- OCR execution can reuse `src/pdf_pipeline.process_paper` on a limited set of IDs without exhausting time limits.
+- GitHub Actions concurrency permits an additional queue-maintenance workflow without hitting rate limits.
+
+**Testing approach**
+
+- Unit/integration coverage: exercise `scripts/prepare_gate_fixtures.py`, new OCR execution helpers, and queue compaction utilities via pytest.
+- Workflow validation: run `preflight.yml`, `ocr-gate.yml`, `render-gate.yml`, and orchestrator dry runs using `act` or stub dispatches where practical.
+- Manual sanity: inspect updated `reports/*.json` to confirm metrics reflect hydrated assets, and verify queue size reduction on sample data.
+
 ## Branching & verification strategy
 
 - Work currently resides on feature branch `ci/validation-gates`. For isolation/testing, create a fresh branch (e.g., `feat/pipeline-harden-20251015`) from the latest main commit and cherry-pick the dated commits or push the current state after rebase.

@@ -1,0 +1,143 @@
+name: run-gate
+description: Dispatch a workflow and wait for completion.
+
+inputs:
+  workflow:
+    description: Workflow file name to dispatch.
+    required: true
+  ref:
+    description: Git ref to run against (defaults to current ref).
+    required: true
+  head-branch:
+    description: Branch name override for workflow run lookup.
+    required: false
+  inputs-json:
+    description: JSON string of workflow inputs.
+    required: false
+  matrix-size:
+    description: Number of matrix runs to trigger (0 = single run).
+    required: false
+    default: "0"
+  matrix-input-name:
+    description: Workflow input name for matrix index.
+    required: false
+    default: "matrix_index"
+
+outputs:
+  conclusion:
+    description: Conclusion of the final workflow run.
+  run-ids:
+    description: Comma-separated workflow run IDs dispatched by this action.
+
+runs:
+  using: composite
+  steps:
+    - name: Dispatch and wait
+      uses: actions/github-script@v7
+      env:
+        WORKFLOW_FILE: ${{ inputs.workflow }}
+        REF: ${{ inputs.ref }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
+        INPUTS_JSON: ${{ inputs.inputs-json }}
+        MATRIX_SIZE: ${{ inputs.matrix-size }}
+        MATRIX_INPUT_NAME: ${{ inputs.matrix-input-name }}
+      with:
+        script: |
+          const workflowFile = process.env.WORKFLOW_FILE;
+          const ref = process.env.REF;
+          const headBranchInput = process.env.HEAD_BRANCH;
+          const headBranch = headBranchInput
+            ? headBranchInput
+            : (ref && ref.startsWith('refs/heads/'))
+              ? ref.replace('refs/heads/', '')
+              : undefined;
+          const inputsJson = process.env.INPUTS_JSON;
+          const baseInputs = inputsJson ? JSON.parse(inputsJson) : {};
+          const matrixSize = Number(process.env.MATRIX_SIZE || "0");
+          const matrixInputName = process.env.MATRIX_INPUT_NAME || 'matrix_index';
+
+          core.info(`Dispatching workflow ${workflowFile} on ref ${ref}`);
+
+          const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+          const findRun = async (startedAtIso, seenIds = new Set()) => {
+            const maxAttempts = 24;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const params = {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: workflowFile,
+                event: 'workflow_dispatch',
+                per_page: 25,
+              };
+              if (headBranch) {
+                params.branch = headBranch;
+              }
+              const { data } = await github.rest.actions.listWorkflowRuns(params);
+              const targetRun = data.workflow_runs.find(
+                (run) => new Date(run.created_at) >= new Date(startedAtIso) && !seenIds.has(run.id)
+              );
+              if (targetRun) {
+                core.info(`Found run ${targetRun.id} on attempt ${attempt}.`);
+                return targetRun;
+              }
+              core.info(`Waiting for workflow run to start (attempt ${attempt}/${maxAttempts})...`);
+              await sleep(5000);
+            }
+            throw new Error(`Timed out waiting for ${workflowFile} run to start.`);
+          };
+
+          const waitForCompletion = async (runId) => {
+            const maxAttempts = 160;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const { data: run } = await github.rest.actions.getWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId,
+              });
+              if (run.status === 'completed') {
+                core.info(`Run ${runId} completed with conclusion ${run.conclusion}.`);
+                return run;
+              }
+              core.info(`Run ${runId} status ${run.status}; waiting...`);
+              await sleep(15000);
+            }
+            throw new Error(`${workflowFile} run ${runId} did not complete before timeout.`);
+          };
+
+          const dispatchAndAwait = async (dispatchInputs, seenIds) => {
+            const startedAtIso = new Date(Date.now() - 1000).toISOString();
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflowFile,
+              ref,
+              inputs: dispatchInputs && Object.keys(dispatchInputs).length ? dispatchInputs : undefined,
+            });
+            core.info(`Triggered ${workflowFile} with inputs: ${JSON.stringify(dispatchInputs || {})}`);
+            const run = await findRun(startedAtIso, seenIds);
+            const completed = await waitForCompletion(run.id);
+            if (completed.conclusion !== 'success') {
+              core.setFailed(`${workflowFile} failed with conclusion ${completed.conclusion}`);
+            }
+            return completed;
+          };
+
+          const seenIds = new Set();
+          const runIds = [];
+
+          if (matrixSize > 0) {
+            for (let i = 0; i < matrixSize; i++) {
+              const dispatchInputs = { ...baseInputs, [matrixInputName]: String(i) };
+              const run = await dispatchAndAwait(dispatchInputs, seenIds);
+              seenIds.add(run.id);
+              runIds.push(run.id);
+            }
+            core.setOutput('conclusion', 'success');
+            core.setOutput('run-ids', runIds.join(','));
+          } else {
+            const run = await dispatchAndAwait(baseInputs, seenIds);
+            runIds.push(run.id);
+            core.setOutput('conclusion', run.conclusion);
+            core.setOutput('run-ids', runIds.join(','));
+          }
