@@ -144,7 +144,7 @@ def ensure_env_consistency(
         )
 
     # Resolve by preferring selected source (shell by default)
-    resolved = resolve_env_mismatches(keys, prefer_file=prefer_file, env_file=env_file)
+    resolve_env_mismatches(keys, prefer_file=prefer_file, env_file=env_file)
 
     log(f"Resolved {len(mismatches)} environment variable mismatches")
 

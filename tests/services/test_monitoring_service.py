@@ -2,12 +2,9 @@
 Tests for consolidated monitoring service functionality.
 """
 
-import os
-import json
 import tempfile
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from pathlib import Path
 
 from src.monitoring import MonitoringService

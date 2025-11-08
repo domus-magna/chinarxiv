@@ -1,4 +1,3 @@
-import os
 from glob import glob
 
 from src.translate import translate_record

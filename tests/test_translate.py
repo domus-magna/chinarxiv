@@ -2,7 +2,7 @@
 Tests for translation functionality.
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 from src.translate import translate_field, translate_paragraphs, translate_record
 from src.services.translation_service import MathPreservationError
 from src.services.translation_service import TranslationService
@@ -217,7 +217,7 @@ class TestTranslation:
         
         glossary = [{"zh": "机器学习", "en": "machine learning"}]
         
-        result = translate_record(record, "model", glossary, dry_run=False)
+        translate_record(record, "model", glossary, dry_run=False)
         
         # Check that glossary was passed to translation
         assert mock_translate.call_count >= 2  # At least title and abstract
@@ -236,7 +236,7 @@ class TestTranslation:
         }
         
         with patch('src.services.translation_service.append_cost_log') as mock_cost_log:
-            result = translate_record(record, "model", [], dry_run=False)
+            translate_record(record, "model", [], dry_run=False)
             
             # Should log cost
             mock_cost_log.assert_called_once()

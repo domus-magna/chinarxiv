@@ -3,12 +3,10 @@ Simplified end-to-end test for the ChinaXiv English translation pipeline.
 
 This test validates the core workflow components individually and together.
 """
-import json
 import os
 import tempfile
 import shutil
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -207,7 +205,7 @@ class TestE2ESimple:
         
         service = TranslationService()
         text = "这是关于机器学习的内容。"
-        result = service.translate_field(text, dry_run=False)
+        service.translate_field(text, dry_run=False)
         
         # Verify glossary was included in the call
         call_args = mock_translate.call_args
@@ -242,7 +240,7 @@ class TestE2ESimple:
                 "license": {"derivatives_allowed": True}
             }
             
-            result = service.translate_record(record, dry_run=False)
+            service.translate_record(record, dry_run=False)
             
             # Verify cost was logged
             mock_cost_log.assert_called_once()

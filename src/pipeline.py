@@ -241,7 +241,7 @@ def run_cli() -> None:
     if args.with_qa:
         total_qa = qa_passed_count + qa_flagged_count
         pass_rate = (qa_passed_count / total_qa * 100) if total_qa > 0 else 0.0
-        log(f"\nQA Summary:")
+        log("\nQA Summary:")
         log(f"  Passed: {qa_passed_count}")
         log(f"  Flagged: {qa_flagged_count}")
         log(f"  Pass rate: {pass_rate:.1f}%")

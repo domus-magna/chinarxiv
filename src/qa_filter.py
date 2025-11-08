@@ -411,7 +411,6 @@ def filter_translation_file(
         Tuple of (should_publish: bool, qa_result: QAResult)
     """
     import json
-    import os
     from pathlib import Path
 
     qa_filter = TranslationQAFilter()

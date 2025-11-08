@@ -271,7 +271,7 @@ def run_cli() -> None:
     parser = argparse.ArgumentParser(
         description="Render static site from translated records."
     )
-    args = parser.parse_args()
+    parser.parse_args()
     items = load_translated()
     render_site(items)
     log(f"Rendered site with {len(items)} items → site/")
