@@ -1,5 +1,5 @@
 import sys
-from src.make_pdf import run_cli, has_binary
+from src.make_pdf import run_cli
 
 
 def test_make_pdf_no_pandoc(monkeypatch):

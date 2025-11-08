@@ -5,7 +5,7 @@ import json
 import os
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import List
 
 from src.reporting import build_markdown_report, save_validation_report
 

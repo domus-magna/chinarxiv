@@ -4,7 +4,6 @@ import json
 import shutil
 from pathlib import Path
 
-import pytest
 
 from src.validators import translation_gate
 from src.validators.translation_gate import run_translation_gate

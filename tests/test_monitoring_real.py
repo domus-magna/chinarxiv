@@ -4,16 +4,15 @@ Real E2E Test Monitoring utilities (no tests in this module).
 Note: This module is intentionally excluded from active test collection
 to avoid "no tests collected" edge cases in some environments.
 """
-import pytest
-pytestmark = pytest.mark.skip("Utility module only; no tests to run")
-
-import os
 import json
 import time
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any
-import requests
+from typing import Dict, Any
+
+import pytest
+
+pytestmark = pytest.mark.skip("Utility module only; no tests to run")
 
 
 class RealE2ETestMonitor:
@@ -150,12 +149,12 @@ class RealE2ETestMonitor:
         print(f"Duration: {summary['total_duration']:.2f} seconds")
         print(f"Total Cost: ${summary['total_cost']:.4f}")
         
-        print(f"\nPerformance:")
+        print("\nPerformance:")
         print(f"  Papers/Minute: {self.performance_metrics['papers_per_minute']:.2f}")
         print(f"  Avg Response Time: {self.performance_metrics['average_response_time']:.2f}s")
         print(f"  Error Rate: {self.performance_metrics['error_rate']:.2%}")
         
-        print(f"\nCost Breakdown:")
+        print("\nCost Breakdown:")
         for model, usage in self.cost_tracking["model_usage"].items():
             print(f"  {model}:")
             print(f"    Calls: {usage['calls']}")

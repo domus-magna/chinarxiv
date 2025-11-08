@@ -69,7 +69,7 @@ class MonitoringService:
         self.analytics = {}
         self.performance = {}
         self.data_dir = Path("data/monitoring")
-        self.data_dir.mkdir(exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # Configuration
         self.discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL")

@@ -2,17 +2,24 @@
   "pass": true,
   "checks": {
     "env_vars": {
-      "OPENROUTER_API_KEY": true,
+      "OPENROUTER_API_KEY": false,
       "BRIGHTDATA_API_KEY": false,
-      "BRIGHTDATA_ZONE": false
+      "BRIGHTDATA_ZONE": false,
+      "BACKBLAZE_KEY_ID": false,
+      "BACKBLAZE_APPLICATION_KEY": false,
+      "BACKBLAZE_S3_ENDPOINT": false,
+      "BACKBLAZE_BUCKET": false,
+      "BACKBLAZE_PREFIX": false,
+      "CF_API_TOKEN": false,
+      "DISCORD_WEBHOOK_URL": false
     },
     "openrouter_api": {
       "ok": true
     },
     "brightdata": {
-      "available": false,
-      "status_code": null,
-      "error": "BRIGHTDATA_API_KEY not found in shell or .env file"
+      "available": true,
+      "status_code": 200,
+      "error": null
     },
     "binaries": {
       "tesseract": {
@@ -27,7 +34,7 @@
     },
     "disk": {
       "ok": true,
-      "free_gb": 543.74,
+      "free_gb": 436.58,
       "min_gb": 1.0
     }
   }

@@ -1,9 +1,8 @@
 import io
-import os
 import tarfile
 from pathlib import Path
 
-from src.body_extract import extract_body_paragraphs, extract_from_latex, extract_from_pdf
+from src.body_extract import extract_body_paragraphs, extract_from_latex
 
 
 def make_tex_tar(tmp_path: Path, name: str = "paper.tar.gz") -> str:

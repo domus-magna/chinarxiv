@@ -12,7 +12,9 @@ models:
   alternates:
     - "z-ai/glm-4.5-air"
 translation:
-  batch_paragraphs: false
+  whole_paper_mode: true  # Translate entire paper body at once for maximum coherency
+  max_whole_paper_tokens: 32000  # Safety limit for whole paper mode (DeepSeek V3: 64K context)
+  batch_paragraphs: false  # Group paragraphs into ~1500 token chunks (ignored if whole_paper_mode=true)
   retry_chinese_chars: true  # Enable retry for Chinese characters
 
 formatting:

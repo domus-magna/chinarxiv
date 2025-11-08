@@ -1,7 +1,6 @@
-import os
 import json
 
-from src.render import render_site
+from src.render import render_site, load_translated
 
 
 def test_render_smoke(tmp_path, monkeypatch):
@@ -32,3 +31,38 @@ def test_render_smoke(tmp_path, monkeypatch):
     render_site(items)
     assert (tmp_path / "site" / "index.html").exists()
     assert (tmp_path / "site" / "items" / "2025-12345" / "index.html").exists()
+
+
+def test_load_translated_skips_missing_body(tmp_path, monkeypatch):
+    """Only translations with a full body should be returned for rendering."""
+    monkeypatch.chdir(tmp_path)
+    translated_dir = tmp_path / "data" / "translated"
+    translated_dir.mkdir(parents=True, exist_ok=True)
+
+    good = {
+        "id": "with-body",
+        "title_en": "Title",
+        "_qa_status": "pass",
+        "body_en": ["Paragraph"],
+        "_has_full_body": True,
+    }
+    missing = {
+        "id": "no-body",
+        "title_en": "Title",
+        "_qa_status": "pass",
+        "body_en": [],
+        "_has_full_body": False,
+        "_full_body_reason": "missing_assets",
+    }
+    with open(translated_dir / "good.json", "w", encoding="utf-8") as f:
+        json.dump(good, f)
+    with open(translated_dir / "missing.json", "w", encoding="utf-8") as f:
+        json.dump(missing, f)
+
+    items = load_translated()
+    assert [it["id"] for it in items] == ["with-body"]
+    report_path = tmp_path / "reports" / "missing_full_body.json"
+    assert report_path.exists()
+    with open(report_path, "r", encoding="utf-8") as f:
+        report = json.load(f)
+    assert report[0]["id"] == "no-body"

@@ -157,7 +157,7 @@ class ChinaXivScraper:
                     # Parse format: "2025-03-29 22:43:15"
                     dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
                     date_iso = dt.isoformat() + "Z"
-                except:
+                except Exception:
                     # Use paper ID to infer date (YYYYMM)
                     year = paper_id[:4]
                     month = paper_id[4:6]

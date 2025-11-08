@@ -1,8 +1,9 @@
 {
   "summary": {
-    "translated_docs": 3,
-    "indexed_docs": 5,
-    "html_items": 8,
-    "pass": false
+    "translated_docs": 1,
+    "indexed_docs": 1,
+    "html_items": 1,
+    "pass": true,
+    "reasons": []
   }
 }

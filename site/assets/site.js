@@ -44,30 +44,24 @@
     const q = query.trim().toLowerCase();
     if (!q) { results.innerHTML = ''; return; }
     
-    // Show loading state
-    results.innerHTML = '<div class="search-loading"><div class="loading-spinner"></div><div>Searching...</div></div>';
+    const out = [];
+    for (const it of index) {
+      const hay = [it.title, it.authors, it.abstract, it.subjects].join(' ').toLowerCase();
+      if (hay.includes(q)) out.push(it);
+      if (out.length >= 50) break;
+    }
     
-    // Simulate search delay for better UX
-    setTimeout(() => {
-      const out = [];
-      for (const it of index) {
-        const hay = [it.title, it.authors, it.abstract, it.subjects].join(' ').toLowerCase();
-        if (hay.includes(q)) out.push(it);
-        if (out.length >= 50) break;
-      }
-      
-      if (out.length === 0) {
-        results.innerHTML = '<div class="res"><div class="no-results">No papers found matching your search. Try different keywords or check your spelling.</div></div>';
-      } else {
-        results.innerHTML = out.map(it => `
-          <div class="res">
-            <div><a href="./items/${it.id}/"><strong>${escapeHtml(it.title || '')}</strong></a></div>
-            <div class="meta">${it.date || ''} — ${escapeHtml(it.authors || '')}</div>
-            <div>${escapeHtml((it.abstract || '').slice(0, 280))}…</div>
-          </div>
-        `).join('');
-      }
-    }, 150);
+    if (out.length === 0) {
+      results.innerHTML = '<div class="res"><div>No papers found matching your search.</div></div>';
+    } else {
+      results.innerHTML = out.map(it => `
+        <div class="res">
+          <div><a href="/items/${it.id}/"><strong>${escapeHtml(it.title || '')}</strong></a></div>
+          <div class="meta">${it.date || ''} — ${escapeHtml(it.authors || '')}</div>
+          <div>${escapeHtml((it.abstract || '').slice(0, 280))}…</div>
+        </div>
+      `).join('');
+    }
   }
   
   let timer = null;

@@ -10,6 +10,7 @@
       <div class="paper-main">
         {# Subject classification line, arXiv-style #}
         {% set _subjects = (item.subjects_en if item.subjects_en else (item.subjects if item.subjects else [])) %}
+        {% set _source_url = item.source_url or ('https://chinaxiv.org/abs/' ~ item.id) %}
         {% if _subjects and (_subjects|length) > 0 %}
           <div class="subheader">
             <h1>{{ _subjects[0] }}</h1>
@@ -86,7 +87,7 @@
         {% endif %}
 
         <div class="source">
-          <a href="{{ item.source_url }}" target="_blank" rel="noopener">View original on ChinaXiv</a>
+          <a href="{{ _source_url }}" target="_blank" rel="noopener">View original on ChinaXiv</a>
         </div>
 
         {# Submission history (single entry, we do not have versions) #}
@@ -189,7 +190,7 @@
       const title = escapeBibTeX({{ item.title_en|tojson }});
       const authors = escapeBibTeX({{ ', '.join(item.creators_en or item.creators or ['Unknown'])|tojson }});
       const year = {{ item.date[:4] if item.date else 'N/A'|tojson }};
-      const url = escapeBibTeX({{ item.source_url|tojson }});
+      const url = escapeBibTeX({{ _source_url|tojson }});
       // Replace dots and hyphens with underscores for valid BibTeX ID
       const id = {{ item.id|tojson }}.replace(/[.-]/g, '_');
       

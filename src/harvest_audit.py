@@ -6,10 +6,8 @@ Audits the current harvest pipeline for issues and provides remediation.
 """
 
 import argparse
-import json
 import os
 import re
-import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -326,7 +324,7 @@ def run_cli():
     # Print summary
     if "overall_summary" in result:
         summary = result["overall_summary"]
-        print(f"\nHarvest Audit Summary:")
+        print("\nHarvest Audit Summary:")
         print(f"  Total records: {summary.get('total_records', 0)}")
         print(f"  Valid percentage: {summary.get('valid_percentage', 0)}%")
         print(f"  PDF failure rate: {summary.get('pdf_failure_percentage', 0)}%")

@@ -1,5 +1,10 @@
 # ChinaXiv Translations
 
+[![Daily Build](https://github.com/domus-magna/chinaxiv-english/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinaxiv-english/actions/workflows/build.yml)
+[![Preflight Checks](https://github.com/domus-magna/chinaxiv-english/actions/workflows/preflight.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinaxiv-english/actions/workflows/preflight.yml)
+[![Render Gate](https://github.com/domus-magna/chinaxiv-english/actions/workflows/render-gate.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinaxiv-english/actions/workflows/render-gate.yml)
+[![Translation Gate](https://github.com/domus-magna/chinaxiv-english/actions/workflows/translation-gate.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinaxiv-english/actions/workflows/translation-gate.yml)
+
 English translations of Chinese academic papers from ChinaXiv.
 
 ## Features

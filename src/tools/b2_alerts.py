@@ -16,11 +16,10 @@ messages and last_sent is older than 15 minutes, otherwise no-op.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Dict
+from typing import List
 
 # Import DiscordAlerts from src
 from ..discord_alerts import DiscordAlerts

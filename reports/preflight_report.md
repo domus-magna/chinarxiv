@@ -5,6 +5,6 @@ Status: PASS
 ## Checks
 - env_vars: FAIL
 - openrouter_api: OK
-- brightdata: FAIL
+- brightdata: OK
 - binaries: FAIL
 - disk: OK

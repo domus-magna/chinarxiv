@@ -1,5 +1,4 @@
 import base64
-import os
 from werkzeug.security import generate_password_hash
 
 import pytest

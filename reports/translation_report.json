@@ -1,29 +1,27 @@
 {
   "summary": {
-    "passed": 3,
-    "flagged": 0
+    "total": 1,
+    "passed": 1,
+    "flagged": 0,
+    "flagged_ratio": 0.0,
+    "completeness_flagged": 0,
+    "reasons": [],
+    "thresholds": {
+      "max_flagged_ratio": 0.05,
+      "max_flagged_absolute": 10
+    }
   },
   "results": {
-    "demo-0001.json": {
+    "dev-1.json": {
       "status": "pass",
       "score": 1.0,
       "issues": [],
       "chinese_ratio": 0.0,
-      "flagged_fields": []
-    },
-    "chinaxiv-202510.00001.json": {
-      "status": "pass",
-      "score": 1.0,
-      "issues": [],
-      "chinese_ratio": 0.0,
-      "flagged_fields": []
-    },
-    "chinaxiv-202310.01722.json": {
-      "status": "pass",
-      "score": 1.0,
-      "issues": [],
-      "chinese_ratio": 0.0,
-      "flagged_fields": []
+      "flagged_fields": [],
+      "completeness": {
+        "ok": true,
+        "issues": []
+      }
     }
   }
 }

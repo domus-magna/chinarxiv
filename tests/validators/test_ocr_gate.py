@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from src.validators.ocr_gate import run_ocr_gate
 

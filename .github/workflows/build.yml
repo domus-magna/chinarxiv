@@ -66,6 +66,12 @@ jobs:
           set -e
           echo "🔎 PR preflight: diagnostics only (no key validation)"
           python -m src.tools.env_diagnose --check || true
+      - name: Run lint (pull_request)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: ruff check src tests
+      - name: Run tests (pull_request)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: python -m pytest tests/ -q
       - name: Run tests (blocking on schedule/manual)
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.skip_harvest || 'false') != 'true') }}
         run: python -m pytest tests/ -q
@@ -76,9 +82,6 @@ jobs:
         if: ${{ github.event_name == 'push' }}
         continue-on-error: true
         run: python -m pytest tests/ -q
-      - name: Skip tests on pull_request
-        if: ${{ github.event_name == 'pull_request' }}
-        run: echo "ℹ️ Skipping tests on PR"
       - name: Build pipeline (harvest/translate only)
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

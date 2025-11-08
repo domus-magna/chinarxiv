@@ -1,8 +1,6 @@
-import os
 import json
 from pathlib import Path
 
-import types
 
 from src.select_and_fetch import process_records
 
