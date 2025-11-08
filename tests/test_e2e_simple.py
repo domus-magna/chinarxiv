@@ -62,7 +62,32 @@ class TestE2ESimple:
         
         assert len(result) == 2
         assert all("Translated paragraph" in p for p in result)
-        assert mock_translate.call_count == 2
+        assert mock_translate.call_count >= len(paragraphs)
+        # The final calls should correspond to per-paragraph fallbacks
+        tail_calls = mock_translate.call_args_list[-len(paragraphs):]
+        for call, para in zip(tail_calls, paragraphs):
+            assert para in call.args[0]
+
+    @patch('src.services.translation_service.TranslationService.translate_field')
+    def test_translation_service_paragraphs_full_fallback(self, mock_translate_field):
+        """Ensure whole-paper mode falls back through all stages when validation fails."""
+        paragraphs = ["第一段内容", "第二段内容"]
+        mock_translate_field.side_effect = [
+            "bad output",        # Whole-paper attempt (missing tags)
+            "still bad output",  # Strict retry (still missing tags)
+            "bad chunk output",  # Chunked translation result (missing sentinel split)
+            "Paragraph 1 translated",
+            "Paragraph 2 translated",
+        ]
+
+        service = TranslationService()
+        result = service.translate_paragraphs(paragraphs, dry_run=False)
+
+        assert result == ["Paragraph 1 translated", "Paragraph 2 translated"]
+        assert mock_translate_field.call_count == 5
+        # The last two calls should translate each paragraph individually
+        assert mock_translate_field.call_args_list[-2][0][0] == paragraphs[0]
+        assert mock_translate_field.call_args_list[-1][0][0] == paragraphs[1]
     
     @patch('src.services.translation_service.TranslationService._call_openrouter')
     def test_translation_service_record(self, mock_translate):
