@@ -61,6 +61,37 @@ class FormattingService:
         )
         self.temperature: float = float(fmt.get("temperature", 0.1))
 
+    def _parse_formatter_json(self, content: str) -> Dict[str, Any]:
+        """
+        Parse formatter output into JSON, tolerating surrounding commentary.
+
+        The formatter occasionally returns extra prose before/after the JSON
+        payload. We try the straightforward load first, then fall back to
+        scanning for the first JSON object in the response.
+        """
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            decoder = json.JSONDecoder()
+            stripped = content.strip()
+            parsed = None
+
+            for idx, ch in enumerate(stripped):
+                if ch not in "{[":
+                    continue
+                try:
+                    parsed_candidate, _ = decoder.raw_decode(stripped[idx:])
+                except json.JSONDecodeError:
+                    continue
+                parsed = parsed_candidate
+                break
+
+            if parsed is None:
+                raise
+        if not isinstance(parsed, dict):
+            raise ValueError("Formatter output was not a JSON object")
+        return parsed
+
     def format_translation(
         self, translation: Dict[str, Any], *, dry_run: bool = False
     ) -> Dict[str, Any]:
@@ -201,7 +232,7 @@ class FormattingService:
                 if inner.startswith("json\n"):
                     inner = inner[5:]
                 content_str = inner
-            parsed = json.loads(content_str)
+            parsed = self._parse_formatter_json(content_str)
         except Exception as e:
             raise RuntimeError(
                 f"Failed to parse formatter JSON: {e}; content head: {content[:120]}"

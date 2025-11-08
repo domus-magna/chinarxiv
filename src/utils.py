@@ -34,7 +34,7 @@ from .token_utils import estimate_tokens, chunk_paragraphs
 from .logging_utils import log
 
 # Data utilities
-from .data_utils import utc_date_range_str, stable_id_from_oai
+from .data_utils import utc_date_range_str, stable_id_from_oai, has_full_body_content
 
 # Constants
 DEFAULT_TIMEOUT = (10, 60)  # connect, read
@@ -74,6 +74,7 @@ __all__ = [
     # Data utilities
     "utc_date_range_str",
     "stable_id_from_oai",
+    "has_full_body_content",
     # Constants
     "DEFAULT_TIMEOUT",
     "USER_AGENT",

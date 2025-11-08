@@ -23,7 +23,7 @@ from ..http_client import openrouter_headers, parse_openrouter_error
 from ..monitoring import monitoring_service, alert_critical
 from ..tex_guard import mask_math, unmask_math, verify_token_parity
 from ..body_extract import extract_body_paragraphs
-from ..token_utils import chunk_paragraphs
+from ..token_utils import chunk_paragraphs, estimate_tokens
 from ..cost_tracker import compute_cost, append_cost_log
 from ..logging_utils import log
 from ..models import Paper, Translation
@@ -35,22 +35,33 @@ SYSTEM_PROMPT = (
     "CRITICAL REQUIREMENTS:\n"
     "1. Preserve ALL LaTeX commands and ⟪MATH_*⟫ placeholders exactly - do not modify, translate, or rewrite any mathematical formulas\n"
     "2. Preserve ALL citation commands (\\cite{}, \\ref{}, \\eqref{}, etc.) exactly as they appear\n"
-    "3. Maintain academic tone and formal scientific writing style\n"
-    "4. Use precise technical terminology - obey the glossary strictly\n"
-    "5. Preserve section structure and paragraph organization\n"
-    "6. Translate all content completely - do not omit any information\n\n"
+    "3. **PRESERVE ALL <PARA id=\"N\">...</PARA> paragraph wrapper tags EXACTLY** - these are structural markers that identify paragraphs and MUST remain untouched with their IDs\n"
+    "4. Maintain academic tone and formal scientific writing style\n"
+    "5. Use precise technical terminology - obey the glossary strictly\n"
+    "6. Preserve section structure and paragraph organization\n"
+    "7. Translate all content completely - do not omit any information\n\n"
     "OUTPUT RULES:\n"
     "- Return ONLY the translated text for the given input (no explanations, no quotes, no headings you invent).\n"
-    "- Keep one output paragraph per input paragraph; do not merge or split.\n"
+    "- Keep one output paragraph per input paragraph; do not merge or split paragraphs.\n"
+    "- **Maintain exact count and IDs of <PARA id=\"N\">...</PARA> tags** - if input has N paragraph tags, output must have exactly N paragraph tags with matching IDs\n"
     "- Do NOT add Markdown formatting unless it is present in the source.\n"
     "- Preserve original line breaks within the paragraph when meaningful; otherwise use standard English sentence spacing.\n\n"
     "FORMATTING GUIDELINES:\n"
     "- Keep mathematical expressions in their original LaTeX format\n"
     "- Preserve equation numbers and references\n"
     "- Maintain proper academic paragraph structure\n"
-    "- Use formal scientific language appropriate for research papers\n\n"
-    "Remember: Mathematical content and citations must remain untouched - only translate the Chinese text."
+    "- Use formal scientific language appropriate for research papers\n"
+    "- Never remove or modify <PARA id=\"N\">...</PARA> tags - they are structural elements that must be preserved with their IDs intact\n\n"
+    "Remember: Mathematical content, citations, and <PARA> wrapper tags must remain untouched - only translate the Chinese text inside the tags."
 )
+
+
+DEFAULT_TRANSLATION_CONFIG: Dict[str, Any] = {
+    "whole_paper_mode": True,
+    "max_whole_paper_tokens": 32000,
+    "batch_paragraphs": False,
+    "chunk_token_limit": 1500,
+}
 
 
 MAX_RESPONSE_PREVIEW = 2048
@@ -320,6 +331,7 @@ class TranslationService:
         model: Optional[str] = None,
         dry_run: bool = False,
         glossary_override: Optional[List[Dict[str, str]]] = None,
+        validation_source: Optional[str] = None,
     ) -> str:
         """
         Translate a single field with math preservation.
@@ -328,6 +340,8 @@ class TranslationService:
             text: Text to translate
             model: Model to use (defaults to service model)
             dry_run: If True, skip actual translation
+            validation_source: Optional original text for validation when input text
+                includes additional instructions or wrappers
 
         Returns:
             Translated text
@@ -357,7 +371,8 @@ class TranslationService:
         unmasked = unmask_math(translated, mappings)
 
         # Additional validation checks
-        self._validate_translation(text, unmasked)
+        original_for_validation = validation_source if validation_source else text
+        self._validate_translation(original_for_validation, unmasked)
 
         return unmasked
 
@@ -371,6 +386,11 @@ class TranslationService:
         """
         Translate multiple paragraphs.
 
+        Translation modes (priority order):
+        1. whole_paper_mode: Translate entire paper body in one API call for maximum coherency
+        2. batch_paragraphs: Group paragraphs into ~1500 token chunks
+        3. Default: Translate each paragraph individually
+
         Args:
             paragraphs: List of paragraphs to translate
             model: Model to use (defaults to service model)
@@ -381,11 +401,101 @@ class TranslationService:
         """
         model = model or self.model
         glossary_eff = self.glossary if glossary_override is None else glossary_override
-        # Optional batching to reduce API calls; disabled by default
-        batch_enabled = (self.config.get("translation") or {}).get(
-            "batch_paragraphs"
-        ) is True
+        user_trans_config = self.config.get("translation") or {}
+        trans_config = {**DEFAULT_TRANSLATION_CONFIG, **user_trans_config}
+
+        # Check for whole paper mode (highest priority)
+        whole_paper_mode = trans_config.get("whole_paper_mode") is True
+        max_whole_paper_tokens = trans_config.get("max_whole_paper_tokens", 32000)
+        chunk_token_limit = trans_config.get("chunk_token_limit", 1500)
+
+        if whole_paper_mode:
+            # Estimate total tokens for all paragraphs
+            total_tokens = sum(estimate_tokens(p) for p in paragraphs)
+
+            if total_tokens > max_whole_paper_tokens:
+                log(
+                    f"Warning: Paper exceeds max_whole_paper_tokens "
+                    f"({total_tokens} > {max_whole_paper_tokens}), "
+                    f"falling back to batch mode"
+                )
+                # Fall through to batch mode
+            else:
+                # Whole paper mode: translate entire body at once with numbered paragraph tags
+                import re
+
+                # Wrap each paragraph with numbered tags
+                wrapped_paras = [f"<PARA id=\"{i}\">{p}</PARA>" for i, p in enumerate(paragraphs)]
+                joined = "\n".join(wrapped_paras)
+
+                translated = self.translate_field(
+                    joined, model, dry_run, glossary_override=glossary_eff
+                )
+
+                # Extract paragraphs by matching tags
+                para_pattern = re.compile(r'<PARA id="(\d+)">(.*?)</PARA>', re.DOTALL)
+                matches = para_pattern.findall(translated)
+
+                # Check if we got all paragraphs
+                if len(matches) != len(paragraphs):
+                    log(
+                        f"Warning: Paragraph tag mismatch in whole_paper_mode "
+                        f"(expected {len(paragraphs)}, got {len(matches)}), "
+                        f"retrying with strict numbered paragraph mode"
+                    )
+
+                    # Retry with explicit paragraph count instruction
+                    retry_prompt = (
+                        f"CRITICAL INSTRUCTION: This text contains EXACTLY {len(paragraphs)} "
+                        f"numbered paragraphs wrapped in <PARA id=\"N\">...</PARA> tags.\n\n"
+                        f"Your translation MUST preserve ALL {len(paragraphs)} paragraph tags with their IDs.\n"
+                        f"DO NOT merge paragraphs - each <PARA id=\"N\">...</PARA> block must remain separate.\n\n"
+                        f"Example of correct preservation:\n"
+                        f"Input:\n"
+                        f"<PARA id=\"0\">第一段。</PARA>\n"
+                        f"<PARA id=\"1\">第二段。</PARA>\n\n"
+                        f"Output:\n"
+                        f"<PARA id=\"0\">First paragraph.</PARA>\n"
+                        f"<PARA id=\"1\">Second paragraph.</PARA>\n\n"
+                        f"Text to translate ({len(paragraphs)} paragraphs):\n{joined}"
+                    )
+
+                    retry_translated = self.translate_field(
+                        retry_prompt,
+                        model,
+                        dry_run,
+                        glossary_override=glossary_eff,
+                        validation_source=joined,
+                    )
+                    retry_matches = para_pattern.findall(retry_translated)
+
+                    if len(retry_matches) == len(paragraphs):
+                        log(f"✓ Retry successful: got {len(retry_matches)} paragraphs as expected")
+                        # Sort by ID and extract text
+                        sorted_matches = sorted(retry_matches, key=lambda x: int(x[0]))
+                        return [text.strip() for _, text in sorted_matches]
+                    else:
+                        log(
+                            f"Warning: Retry also failed (expected {len(paragraphs)}, got {len(retry_matches)}), "
+                            f"falling back to chunked translation"
+                        )
+                        return self._translate_chunked_paragraphs(
+                            paragraphs,
+                            model,
+                            dry_run,
+                            glossary_eff,
+                            chunk_token_limit,
+                        )
+                else:
+                    # Sort by ID and extract text
+                    sorted_matches = sorted(matches, key=lambda x: int(x[0]))
+                    return [text.strip() for _, text in sorted_matches]
+
+        # Check for batch mode
+        batch_enabled = trans_config.get("batch_paragraphs") is True
+
         if not batch_enabled:
+            # Default: translate each paragraph individually
             out: List[str] = []
             for p in paragraphs:
                 out.append(
@@ -395,25 +505,53 @@ class TranslationService:
                 )
             return out
 
-        # Batch mode: chunk paragraphs into token-limited groups and join/split
+        return self._translate_chunked_paragraphs(
+            paragraphs, model, dry_run, glossary_eff, chunk_token_limit
+        )
+
+    def _translate_chunked_paragraphs(
+        self,
+        paragraphs: List[str],
+        model: str,
+        dry_run: bool,
+        glossary_override: Optional[List[Dict[str, str]]],
+        max_chunk_tokens: int,
+    ) -> List[str]:
+        """
+        Translate paragraphs in token-bounded groups while preserving math handling.
+
+        Args:
+            paragraphs: Paragraphs to translate
+            model: Model slug to use
+            dry_run: Whether to skip API calls
+            glossary_override: Optional glossary entries
+            max_chunk_tokens: Token budget per chunk
+        """
+        if not paragraphs:
+            return []
+
         out: List[str] = []
-        SENTINEL = "\n\n⟪PARA_BREAK⟫\n\n"
-        for group in chunk_paragraphs(paragraphs):
+        SENTINEL = "\n<PARA_BREAK/>\n"
+
+        for group in chunk_paragraphs(paragraphs, max_tokens=max_chunk_tokens):
             joined = SENTINEL.join(group)
             translated = self.translate_field(
-                joined, model, dry_run, glossary_override=glossary_eff
+                joined, model, dry_run, glossary_override=glossary_override
             )
             parts = [s.strip() for s in translated.split(SENTINEL)]
-            # Ensure we preserve count; if mismatch, fall back to per-paragraph
             if len(parts) != len(group):
+                log(
+                    "Paragraph chunk mismatch detected; falling back to per-paragraph translation for this chunk"
+                )
                 for p in group:
                     out.append(
                         self.translate_field(
-                            p, model, dry_run, glossary_override=glossary_eff
+                            p, model, dry_run, glossary_override=glossary_override
                         )
                     )
             else:
                 out.extend(parts)
+
         return out
 
     def translate_record(
@@ -488,6 +626,11 @@ class TranslationService:
                         # Fallback to original if translation fails
                         translation.subjects_en.append(subject)
 
+        has_full_body = False
+        body_reason: Optional[str] = None
+        body_source: Optional[str] = None
+        paras: Optional[List[str]] = None
+
         # Translate body if allowed
         if allow_full:
             paras = extract_body_paragraphs(record)
@@ -495,6 +638,18 @@ class TranslationService:
                 translation.body_en = self.translate_paragraphs(
                     paras, dry_run=dry_run, glossary_override=glossary_override
                 )
+                has_full_body = True
+                files = record.get("files") or {}
+                if files.get("latex_source_path"):
+                    body_source = "latex"
+                elif files.get("pdf_path"):
+                    body_source = "pdf"
+                else:
+                    body_source = "unknown"
+            else:
+                body_reason = self._infer_body_missing_reason(record)
+        else:
+            body_reason = "full_text_disabled"
 
         # Cost tracking (approximate)
         from ..token_utils import estimate_tokens
@@ -505,13 +660,23 @@ class TranslationService:
         )
 
         if translation.body_en:
-            in_toks += sum(estimate_tokens(p) for p in paras)
+            in_toks += sum(estimate_tokens(p) for p in paras or [])
             out_toks += sum(estimate_tokens(p) for p in translation.body_en)
 
         cost = compute_cost(self.model, in_toks, out_toks, self.config)
         append_cost_log(paper.id, self.model, in_toks, out_toks, cost)
 
-        return translation.to_dict()
+        translation_dict = translation.to_dict()
+        translation_dict["_has_full_body"] = has_full_body
+        if body_source:
+            translation_dict["_body_source"] = body_source
+        if translation.body_en:
+            translation_dict["_body_paragraphs"] = len(translation.body_en)
+        if not has_full_body:
+            translation_dict["_full_body_reason"] = body_reason or "missing_full_text"
+            translation_dict["_body_paragraphs"] = 0
+
+        return translation_dict
 
     def translate_paper(
         self, paper_id: str, dry_run: bool = False, with_full_text: bool = True
@@ -713,6 +878,25 @@ class TranslationService:
             retry_translation["body_en"] = new_body
 
         return retry_translation
+
+    def _infer_body_missing_reason(self, record: Dict[str, Any]) -> str:
+        """
+        Provide a coarse reason when full-text extraction fails.
+        """
+        files = record.get("files") or {}
+        pdf_path = files.get("pdf_path")
+        latex_path = files.get("latex_source_path")
+
+        if not pdf_path and not latex_path:
+            return "missing_assets"
+
+        if pdf_path and not Path(pdf_path).exists():
+            return "pdf_missing_on_disk"
+
+        if latex_path and not Path(latex_path).exists():
+            return "latex_missing_on_disk"
+
+        return "extraction_failed"
 
     def _validate_translation(self, original: str, translated: str) -> None:
         """

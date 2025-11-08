@@ -117,3 +117,88 @@ def test_pipeline_records_merge_and_limit(monkeypatch):
         assert Path("site/index.html").exists()
     finally:
         _restore_tmp(tmp, cwd)
+
+
+def test_pipeline_qa_summary_counts(monkeypatch):
+    tmp, cwd = _chdir_tmp()
+    try:
+        os.makedirs("data", exist_ok=True)
+        selected = [
+            {"id": "qa-pass", "title": "A", "abstract": "B", "license": {"raw": ""}},
+            {"id": "qa-flag", "title": "C", "abstract": "D", "license": {"raw": ""}},
+        ]
+        with open("data/selected.json", "w", encoding="utf-8") as f:
+            json.dump(selected, f, ensure_ascii=False)
+
+        # Create translation artifacts without hitting external services
+        from src import pipeline as pipeline_mod
+        from src.services.translation_service import TranslationService
+        from src import qa_filter
+        from types import SimpleNamespace
+
+        def fake_translate_paper(self, paper_id: str, dry_run: bool = False, with_full_text: bool = True) -> str:
+            out_dir = Path("data/translated")
+            out_dir.mkdir(parents=True, exist_ok=True)
+            path = out_dir / f"{paper_id}.json"
+            payload = {
+                "id": paper_id,
+                "title_en": f"{paper_id} title",
+                "abstract_en": f"{paper_id} abstract",
+                "body_en": ["paragraph"],
+            }
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh)
+            return str(path)
+
+        def fake_filter(translation, *, save_passed: bool, save_flagged: bool):
+            status = "pass" if translation["id"] == "qa-pass" else "flag_chinese"
+            qa_passed = status == "pass"
+            result = SimpleNamespace(
+                status=SimpleNamespace(value=status),
+                score=0.99 if qa_passed else 0.2,
+                issues=[] if qa_passed else ["contains Chinese"],
+                chinese_chars=[],
+                chinese_ratio=0.0,
+                flagged_fields=[],
+            )
+            return qa_passed, result
+
+        messages: list[str] = []
+
+        def fake_log(message: str) -> None:
+            messages.append(message)
+
+        # Stub os.system to avoid invoking external modules
+        import os as _os
+
+        def fake_system(cmd: str) -> int:
+            if "src.render" in cmd or "src.search_index" in cmd or "src.make_pdf" in cmd:
+                Path("site").mkdir(parents=True, exist_ok=True)
+                (Path("site") / "index.html").write_text("<html></html>", encoding="utf-8")
+            return 0
+
+        monkeypatch.setattr(_os, "system", fake_system)
+        monkeypatch.setattr(TranslationService, "translate_paper", fake_translate_paper, raising=False)
+        monkeypatch.setattr(qa_filter, "filter_translation_file", fake_filter)
+        monkeypatch.setattr(pipeline_mod, "log", fake_log)
+
+        import sys
+
+        old_argv = sys.argv[:]
+        sys.argv = [
+            "pipeline",
+            "--skip-selection",
+            "--workers",
+            "1",
+            "--with-qa",
+        ]
+        try:
+            pipeline_run()
+        finally:
+            sys.argv = old_argv
+
+        joined = "\n".join(messages)
+        assert "Passed: 1" in joined
+        assert "Flagged: 1" in joined
+    finally:
+        _restore_tmp(tmp, cwd)

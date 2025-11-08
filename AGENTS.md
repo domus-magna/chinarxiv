@@ -101,6 +101,53 @@ Notes
 - **Render**: `python -m src.render && python -m src.search_index`
 - **Background tasks**: `nohup command &` (see Background Task Guidelines)
 - **Seed validation fixtures**: `python scripts/prepare_gate_fixtures.py` (populates sample harvest/translation artifacts when `data/` is empty so the CI gates never pass on empty input)
+- **Regenerate OCR fixture PDF** (when real data prevents auto-seeding): 
+  ```bash
+  python - <<'PY'
+  from scripts.prepare_gate_fixtures import generate_scanned_pdf, REPO_ROOT
+  generate_scanned_pdf(REPO_ROOT / "data/pdfs/sample.pdf")
+  PY
+  rm -f data/pdfs/chinaxiv-202501.00001.pdf
+  ```
+  This recreates the synthetic `sample.pdf` so `src.tools.prepare_ocr_report` has a valid local asset even when production PDFs are absent or broken.
+
+### Pipeline Workflow Reference (GitHub Actions)
+Each CI/CD workflow below must stay in sync with our Backblaze-first source of truth and Cloudflare deploy target. If a workflow diverges from the description, fix the workflow (preferred) or immediately update this section (minimum) so later agents do not inherit stale guidance.
+
+**Production build flows**
+- `build-and-deploy` (`.github/workflows/build.yml`): Nightly 03:00 UTC plus push/PR/manual triggers. Installs deps, optionally harvests current + previous month, merges/ selects records, persists selections to B2 (including `latest.json` pointer), runs translation pipeline with QA, publishes validated + flagged translations/PDF manifests to B2, hydrates validated translations back before running render/search-index/PDF, and deploys to Cloudflare Pages.
+- `backfill-month` (`backfill.yml`): Manual month-specific run. Harvests the requested `YYYYMM` if records missing, selects unseen items, uploads the selection to B2 (optionally skipping `latest`), runs translation with configurable worker count, publishes artifacts to B2, hydrates validated translations, and (when `deploy=true`) renders/search-indexes/PDFs before deploying.
+- `rebuild-from-b2` (`rebuild-from-b2.yml`): Manual (optional scheduled) workflow that wipes `data/translated`, hydrates validated translations from B2, renders/search indexes/makes PDFs, then deploys via Wrangler without running harvest or translation.
+
+**Gate + orchestrator flows**
+- `validation-gate.yml`: Reusable workflow call template that installs OCR tooling, runs optional `pre_command`, executes the gate command, uploads artifacts, and optionally runs `post_command`. All gate workflows below delegate here.
+- `preflight` (`preflight.yml`): Runs `python -m src.tools.env_diagnose --preflight`, uploading JSON/MD diagnostics. Fails fast when required secrets/binaries are missing.
+- `harvest-gate` (`harvest-gate.yml`): Seeds fixtures, optionally accepts `records_path`, then runs `src.validators.harvest_gate`, uploading harvest reports and posting a Discord summary via `scripts/post_harvest_summary.py`.
+- `ocr-gate` (`ocr-gate.yml`): Seeds fixtures, runs `src.tools.prepare_ocr_report --limit 3` to generate execution data, and validates OCR health via `src.validators.ocr_gate`.
+- `translation-gate` (`translation-gate.yml`): Seeds fixtures and executes `src.validators.translation_gate`; supports matrix inputs for orchestrated load.
+- `render-gate` (`render-gate.yml`): Seeds fixtures, optionally hydrates validated translations from B2 before rendering/search-index/PDF, then runs `src.validators.render_gate`.
+- `pipeline-orchestrator` (`pipeline-orchestrator.yml`): Manual dispatcher that sequences any subset of stages (`preflight,harvest,ocr,translate,qa,render`). It invokes the gate workflows above (and translation gate in matrix mode), tracks completion, and notifies Discord on success/failure.
+
+**Translation execution & queue health**
+- `batch_translate` (`batch_translate.yml`): Cloud-mode worker that installs OCR deps, validates OpenRouter, pulls queue state, runs `src.pipeline --cloud-mode --with-qa` for a configurable batch/worker count, commits queue progress, and uploads flagged outputs.
+- `test_batch_trigger` (`test_batch_trigger.yml`): Manual 50-paper batch run on 8-core runners; mirrors `batch_translate` but with fixed limits to validate queue settings.
+- `batch_test` (`batch_test.yml`): Lightweight workflow for verifying dispatch inputs only; prints the requested batch size.
+- `smoke-translate` (`smoke-translate.yml`): Manual smoke test that can harvest a month if missing, runs `scripts/smoke_translate.py` for a small sample, and optionally deploys the rendered site.
+- `integration-translate` (`integration-translate.yml`): Manual targeted translator that selects IDs from `data/records/<run_id>.json`, prepares `data/selected.json`, and runs `src.pipeline --with-qa` for a bounded sample while collecting artifacts (including failure logs).
+- `translate_orchestrator` (`translate_orchestrator.yml`): CLI-driven loop that repeatedly dispatches `batch_translate.yml` runs until the cloud queue empties (or a fixed number of batches completes), polling queue stats between runs and optionally triggering QA report + site rebuild at the end.
+- `translation-orchestrator` (`translation-orchestrator.yml`): Backfill dispatcher that iterates over a month range and fires `backfill.yml` for each via the GitHub API, respecting requested parallelism, worker counts, and deploy toggles.
+- `queue-maintenance` (`queue-maintenance.yml`): Nightly job that runs `src.tools.compact_cloud_queue --retain-completed 100`, committing updates to `data/cloud_jobs*.json` to keep queue files manageable.
+
+**Quality reporting + ad-hoc testing**
+- `qa_report` (`qa_report.yml`): Daily/manual job that counts passed vs flagged translations, raises GitHub issues if pass rate <90%, writes `data/qa_report.md`, and uploads the report artifact.
+- `test_dispatch` (`test_dispatch.yml`): Minimal “hello world” dispatcher used to verify workflow dispatch plumbing.
+- `smoke-translate` artifacts plus `qa_report` outputs feed manual QA reviews; always capture run links.
+
+**Automation assist**
+- `claude-code-review` (`claude-code-review.yml`): Runs Anthropics’ CLAUDE review action on PR open/update events when `CLAUDE_CODE_ENABLED` and tokens are present.
+- `claude` (`claude.yml`): ChatOps hook that lets contributors summon Claude via `@claude` mentions across issues, PR comments, and reviews; ensures the bot can read CI status when granted `actions: read`.
+
+Keep `.github/workflows/validation-gate.yml` in sync with any new system dependencies; every gate inherits its install block, so mismatched packages there manifest everywhere.
 
 ### Troubleshooting
 - **API keys**: `python -m src.tools.env_diagnose --check`

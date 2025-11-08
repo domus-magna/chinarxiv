@@ -1,22 +1,28 @@
 {
   "summary": {
-    "records_path": "data/records/ia_batch_20251005_011539.json",
-    "total": 2,
-    "schema_pass": 2,
-    "pdf_ok": 0,
+    "records_path": "data/records/records_sample.json",
+    "total": 1,
+    "schema_pass": 1,
+    "pdf_ok": 1,
     "dup_ids": 0,
     "schema_rate": 100.0,
-    "pdf_rate": 0.0,
-    "pass": false
+    "pdf_rate": 100.0,
+    "pass": true,
+    "reasons": [],
+    "thresholds": {
+      "min_schema_rate": 95.0,
+      "min_pdf_rate": 98.0
+    }
   },
   "results": {
-    "ia-ChinaXiv-201601.00051V1": {
+    "chinaxiv-202501.00001": {
       "schema": true,
-      "pdf_ok": false
-    },
-    "ia-ChinaXiv-201601.00052V2": {
-      "schema": true,
-      "pdf_ok": false
+      "schema_errors": [],
+      "pdf": {
+        "pdf_ok": true,
+        "resolved_url": "data/pdfs/sample.pdf",
+        "issues": []
+      }
     }
   }
 }

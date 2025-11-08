@@ -50,14 +50,45 @@ class TestTranslation:
     @patch('src.services.translation_service.TranslationService._call_openrouter')
     def test_translate_paragraphs(self, mock_translate):
         """Test translation of multiple paragraphs."""
-        mock_translate.return_value = "Translated paragraph"
-        
+        # Mock needs to handle whole-paper mode with numbered paragraph tags
+        def mock_response(text, model, glossary):
+            # If input has PARA tags, preserve them in output
+            if '<PARA id="0">' in text:
+                return '<PARA id="0">Translated first paragraph</PARA>\n<PARA id="1">Translated second paragraph</PARA>'
+            # Otherwise individual paragraph translation
+            return "Translated paragraph"
+
+        mock_translate.side_effect = mock_response
+
         paragraphs = ["First paragraph", "Second paragraph"]
         result = translate_paragraphs(paragraphs, "model", [], dry_run=False)
-        
+
         assert len(result) == 2
-        assert all("Translated paragraph" in p for p in result)
-        assert mock_translate.call_count == 2
+        assert "Translated first paragraph" in result[0]
+        assert "Translated second paragraph" in result[1]
+        # With whole_paper_mode, should be 1 call for all paragraphs
+        assert mock_translate.call_count == 1
+
+    @patch('src.services.translation_service.TranslationService._call_openrouter')
+    def test_translate_paragraphs_default_config(self, mock_translate):
+        """Whole-paper mode should remain enabled even if config lacks translation block."""
+
+        def mock_response(text, model, glossary):
+            if '<PARA id="0">' in text:
+                return '<PARA id="0">Default config first</PARA>\n<PARA id="1">Default config second</PARA>'
+            return "Translated paragraph"
+
+        mock_translate.side_effect = mock_response
+
+        service = TranslationService(config={})
+        paragraphs = ["First paragraph", "Second paragraph"]
+
+        result = service.translate_paragraphs(paragraphs, dry_run=False)
+
+        assert len(result) == 2
+        assert "Default config first" in result[0]
+        assert "Default config second" in result[1]
+        assert mock_translate.call_count == 1
     
     @patch('src.services.translation_service.TranslationService._call_openrouter')
     def test_translate_record_basic(self, mock_translate):
@@ -82,6 +113,53 @@ class TestTranslation:
         assert result["creators"] == ["Author 1"]
         assert result["subjects"] == ["cs.AI"]
         assert result["date"] == "2024-01-01"
+    
+    @patch('src.services.translation_service.extract_body_paragraphs')
+    def test_translate_record_sets_full_body_flags(self, mock_extract):
+        """Translation records should carry full-body metadata for publishing filters."""
+        mock_extract.side_effect = [
+            ["段落一", "段落二"],
+            [],
+        ]
+
+        record = {
+            "id": "test-full",
+            "title": "Test Title",
+            "abstract": "测试摘要" * 20,
+            "creators": ["Author 1"],
+            "subjects": ["cs.AI"],
+            "date": "2024-01-01",
+            "license": {"derivatives_allowed": True},
+            "files": {"pdf_path": "/tmp/test.pdf"},
+        }
+        record_missing = {
+            "id": "test-missing",
+            "title": "Test Title",
+            "abstract": "测试摘要" * 20,
+            "creators": ["Author 1"],
+            "subjects": ["cs.AI"],
+            "date": "2024-01-01",
+            "license": {"derivatives_allowed": True},
+            "files": {},
+        }
+
+        cfg = {"models": {"default_slug": "mock-model"}}
+
+        with patch.object(TranslationService, "translate_field", return_value="Translated field"), patch.object(
+            TranslationService, "translate_paragraphs", return_value=["Translated paragraph"]
+        ):
+            service = TranslationService(config=cfg)
+            full = service.translate_record(record, dry_run=False)
+            missing = service.translate_record(record_missing, dry_run=False)
+
+        assert full["_has_full_body"] is True
+        assert full.get("_full_body_reason") is None
+        assert full["_body_paragraphs"] == 1
+        assert full.get("_body_source") == "pdf"
+
+        assert missing["_has_full_body"] is False
+        assert missing["_full_body_reason"] == "missing_assets"
+        assert missing["_body_paragraphs"] == 0
     
     @patch('src.services.translation_service.TranslationService._call_openrouter')
     def test_translate_record_no_derivatives(self, mock_translate):

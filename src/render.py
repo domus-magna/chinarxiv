@@ -9,12 +9,14 @@ from typing import Any, Dict, List
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound, select_autoescape
 import time
 
-from .utils import ensure_dir, log, read_json, write_text
+from .utils import ensure_dir, log, read_json, write_text, write_json
+from .data_utils import has_full_body_content
 
 
 def load_translated() -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     flagged_count = 0
+    missing_body: List[Dict[str, Any]] = []
 
     # Check for bypass file first, but only use if explicitly enabled
     bypass_file = os.path.join("data", "translated_bypass.json")
@@ -44,10 +46,32 @@ def load_translated() -> List[Dict[str, Any]]:
             )
             continue
 
+        if not has_full_body_content(item):
+            missing_body.append(
+                {
+                    "id": item.get("id"),
+                    "reason": item.get("_full_body_reason", "missing_full_text"),
+                    "pdf_url": item.get("pdf_url"),
+                    "source_url": item.get("source_url"),
+                    "body_paragraphs": item.get("_body_paragraphs", 0),
+                    "path": path,
+                }
+            )
+            continue
+
         items.append(item)
 
     if flagged_count > 0:
         log(f"Skipped {flagged_count} flagged translations")
+
+    report_path = os.path.join("reports", "missing_full_body.json")
+    if missing_body:
+        log(f"Skipped {len(missing_body)} translations without full-text body")
+        ensure_dir(os.path.dirname(report_path))
+        write_json(report_path, missing_body)
+    else:
+        if os.path.exists(report_path):
+            os.remove(report_path)
 
     return items
 

@@ -1,6 +1,9 @@
 # OCR Gate Report
 
-Flagged: 0
-Improved: 0
+Flagged: 1
+Improved: 1
+Missing execution records: 0
+Unimproved OCR runs: 0
+Quality issues: 0
 Pass rate: 100.0%
 Status: PASS

@@ -2,51 +2,110 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://chinaxiv-english.pages.dev/</loc>
-    <lastmod>2025-01-08</lastmod>
+    <lastmod>2025-11-08</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://chinaxiv-english.pages.dev/search/</loc>
-    <lastmod>2025-01-08</lastmod>
+    <loc>https://chinaxiv-english.pages.dev/donation.html</loc>
+    <lastmod>2025-11-08</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://chinaxiv-english.pages.dev/search/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://chinaxiv-english.pages.dev/browse/</loc>
-    <lastmod>2025-01-08</lastmod>
+    <lastmod>2025-11-08</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://chinaxiv-english.pages.dev/help/</loc>
-    <lastmod>2025-01-08</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://chinaxiv-english.pages.dev/contact/</loc>
-    <lastmod>2025-01-08</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://chinaxiv-english.pages.dev/stats/</loc>
-    <lastmod>2025-01-08</lastmod>
+    <lastmod>2025-11-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://chinaxiv-english.pages.dev/api/</loc>
-    <lastmod>2025-01-08</lastmod>
-    <changefreq>monthly</changefreq>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://chinaxiv-english.pages.dev/donation.html</loc>
-    <lastmod>2025-01-08</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.4</priority>
+    <loc>https://chinaxiv-english.pages.dev/items/chinaxiv-202511.00007/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
   </url>
-  <!-- Individual paper pages will be added dynamically -->
+  <url>
+    <loc>https://chinaxiv-english.pages.dev/abs/chinaxiv-202511.00007/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://chinaxiv-english.pages.dev/items/dev-1/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://chinaxiv-english.pages.dev/abs/dev-1/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://chinaxiv-english.pages.dev/items/chinaxiv-202501.00001/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://chinaxiv-english.pages.dev/abs/chinaxiv-202501.00001/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://chinaxiv-english.pages.dev/items/test-body-1/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://chinaxiv-english.pages.dev/abs/test-body-1/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://chinaxiv-english.pages.dev/items/test-whole-paper-1/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://chinaxiv-english.pages.dev/abs/test-whole-paper-1/</loc>
+    <lastmod>2025-11-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
 </urlset>

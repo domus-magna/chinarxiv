@@ -1,6 +1,6 @@
 # Render Gate Report
 
-Translated docs: 3
-Indexed docs: 5
-HTML items: 8
-Status: FAIL
+Translated docs: 1
+Indexed docs: 1
+HTML items: 1
+Status: PASS

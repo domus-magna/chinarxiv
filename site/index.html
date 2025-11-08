@@ -7,25 +7,22 @@
     <meta name="description" content="Machine-translated preprints from ChinaXiv (Chinese arXiv)" />
     <meta name="keywords" content="ChinaXiv, Chinese research, academic papers, machine translation, arXiv, science, research" />
     <meta name="author" content="ChinaXiv Translations" />
-    
-    <!-- OpenGraph / Social Media -->
+    <!-- OpenGraph / Social Meta -->
     <meta property="og:title" content="ChinaXiv Translations" />
     <meta property="og:description" content="Machine-translated preprints from ChinaXiv (Chinese arXiv)" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://chinaxiv-english.pages.dev" />
     <meta property="og:site_name" content="ChinaXiv Translations" />
-    
-    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="ChinaXiv Translations" />
     <meta name="twitter:description" content="Machine-translated preprints from ChinaXiv (Chinese arXiv)" />
-    
-    <link rel="stylesheet" href="./assets/style.css?v=1760095859" />
+    <link rel="canonical" href="https://chinaxiv-english.pages.dev" />
+    <link rel="stylesheet" href="./assets/style.css?v=1762580298" />
     <script>
       window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
-    <script src="./assets/pako.min.js?v=1760095859"></script>
+    <script src="./assets/pako.min.js?v=1762580298"></script>
   </head>
   <body>
     <header class="site-header">
@@ -33,10 +30,10 @@
         <div class="header-main">
           <a href="./" class="brand">ChinaXiv Translations</a>
           <div class="header-search">
-            <input type="text" id="header-search-input" placeholder="Search papers..." />
-            <button id="header-search-btn">Search</button>
+            <input type="text" id="header-search-input" placeholder="Search papers..." aria-label="Search papers" />
+            <button id="header-search-btn" aria-label="Run search">Search</button>
           </div>
-          <a href="./donation.html" class="donate-btn">Donate</a>
+          <a href="./donation.html" class="donate-btn" aria-label="Donate to support translations">Donate</a>
         </div>
         
   <div class="header-breadcrumbs">
@@ -60,6 +57,29 @@
       <input id="search-input" placeholder="Search by title, authors, or abstract…" />
       <button class="search-btn">Search</button>
     </div>
+    <div class="search-filters">
+      <div class="filter-group">
+        <label for="category-filter">Category:</label>
+        <select id="category-filter">
+          <option value="">All Categories</option>
+          <option value="cs">Computer Science</option>
+          <option value="math">Mathematics</option>
+          <option value="physics">Physics</option>
+          <option value="biology">Biology</option>
+          <option value="chemistry">Chemistry</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="date-filter">Date:</label>
+        <select id="date-filter">
+          <option value="">All Dates</option>
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+          <option value="year">This Year</option>
+        </select>
+      </div>
+    </div>
     <div id="search-results"></div>
   </div>
 
@@ -67,87 +87,83 @@
     
       <dt>
         <span class='descriptor'>Title:</span>
-        <a href="./items/chinaxiv-202508.00001/" title="Abstract" id="chinaxiv-202508.00001" class="mathjax list-title-link">Threat Stimuli Facilitate Learned Distraction Suppression Based on Location Probability</a>
-        [<a href="./items/chinaxiv-202508.00001/" title="HTML">html</a>, <a href="https://chinaxiv.org/user/download.htm?uuid=c0c2beed-d147-4959-a26f-bff9d780b017&amp;filetype=pdf" title="Download PDF">pdf</a>]
+        <a href="./items/chinaxiv-202511.00007/" title="Abstract" id="chinaxiv-202511.00007" class="mathjax list-title-link">Study on the Characteristics and Patterns of High-Altitude Strong Pulsed Gamma Environment</a>
+        [<a href="./items/chinaxiv-202511.00007/" title="HTML">html</a>, <a href="https://chinaxiv.org/user/download.htm?uuid=3edabe14-edbc-4a91-b055-006e9637ffb5&amp;filetype=pdf" title="Download PDF">pdf</a>]
       </dt>
       <dd>
-        <div class='list-authors'><span class='descriptor'>Authors:</span> Nian Jingqing, Tan Jiang, Zhang Di, Zhang Yu, Luo Yu, Luo Yu</div>
+        <div class='list-authors'><span class='descriptor'>Authors:</span> Zhang Dongya, Dong Jinzhuang, Liu Li, Niu Shengli, Shang Peng, Zuo Yinghong, Zhu Jinhui</div>
         
-        <div class='list-subjects'><span class='descriptor'>Subjects:</span> <span class="primary-subject">Psychology</span>; Cognitive Psychology</div>
+        <div class='list-subjects'><span class='descriptor'>Subjects:</span> <span class="primary-subject">Nuclear Science and Technology</span>; Particle Accelerator</div>
         
-        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="https://chinaxiv.org/abs/202508.00001" target="_blank" rel="noopener">chinaxiv-202508.00001</a></div>
+        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="https://chinaxiv.org/abs/202511.00007" target="_blank" rel="noopener">chinaxiv-202511.00007</a></div>
         
-        <div class='dateline'>Submitted: 2025-08-01T08:36:15Z</div>
+        <div class='dateline'>Submitted: 2025-10-30T23:52:06Z</div>
         
-        <p class='mathjax'>Threat stimuli have a hard-wired priority in attentional processing, but whether they facilitate or interfere with the formation of learned distractor suppression remains unclear. This study investigated the influence of threat stimuli on the formation of learned distractor suppression based on location probability through three experiments. The results of all three experiments consistently revealed that when distractors appeared at high-probability distractor locations, individuals responded si…</p>
+        <p class='mathjax'>High-altitude intense pulsed gamma rays propagating through the upper atmosphere generate strong radiation fields, which can degrade the performance or cause functional failures of electronic systems in orbiting spacecraft. By employing the Monte Carlo method combined with variance reduction techniques, high-precision simulation of long-distance transport of intense pulsed gamma rays at high altitudes has been achieved, calculating the spatial distributions of gamma peak dose rate (silicon) and …</p>
       </dd>
     
       <dt>
         <span class='descriptor'>Title:</span>
-        <a href="./items/chinaxiv-202508.00002/" title="Abstract" id="chinaxiv-202508.00002" class="mathjax list-title-link">The Impact of Childbearing Experience on the Psychological Processing of Infant Auditory Cues</a>
-        [<a href="./items/chinaxiv-202508.00002/" title="HTML">html</a>, <a href="https://chinaxiv.org/user/download.htm?uuid=4c4a6da3-1753-441f-a44f-c46cd523c7bb&amp;filetype=pdf" title="Download PDF">pdf</a>]
+        <a href="./items/dev-1/" title="Abstract" id="dev-1" class="mathjax list-title-link">Applications of Deep Learning in Natural Language Processing</a>
+        [<a href="./items/dev-1/" title="HTML">html</a>]
       </dt>
       <dd>
-        <div class='list-authors'><span class='descriptor'>Authors:</span> Wang Xinyue, Youliandong, Li Ming, Li Ming</div>
+        <div class='list-authors'><span class='descriptor'>Authors:</span> Li, Hua, Wang, Ming</div>
         
-        <div class='list-subjects'><span class='descriptor'>Subjects:</span> <span class="primary-subject">Psychology</span>; Cognitive Psychology</div>
+        <div class='list-subjects'><span class='descriptor'>Subjects:</span> <span class="primary-subject">cs.AI</span>; cs.CL</div>
         
-        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="https://chinaxiv.org/abs/202508.00002" target="_blank" rel="noopener">chinaxiv-202508.00002</a></div>
+        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="https://example.org/" target="_blank" rel="noopener">dev-1</a></div>
         
-        <div class='dateline'>Submitted: 2025-08-04T18:56:46Z</div>
+        <div class='dateline'>Submitted: 2025-10-03</div>
         
-        <p class='mathjax'>Mothers, particularly human mothers, exhibit heightened sensitivity to the unique acoustic characteristics, emotional valence, and survival cues embedded in infant cries and laughter. This article evaluates various cognitive experimental paradigms developed using infant cry stimuli and examines maternal performance in psychological functions such as perceptual sensitivity to infant cries, attentional allocation, and emotional processing. Mothers demonstrate significantly enhanced capabilities in…</p>
+        <p class='mathjax'>This paper investigates the application of deep learning techniques in natural language processing tasks. We propose a novel neural network architecture capable of better capturing semantic information in language. Experimental results demonstrate that the proposed method achieves excellent performance on multiple benchmark datasets, with formula $E=mc^2$ representing energy conservation.</p>
       </dd>
     
       <dt>
         <span class='descriptor'>Title:</span>
-        <a href="./items/chinaxiv-202509.00001/" title="Abstract" id="chinaxiv-202509.00001" class="mathjax list-title-link">Human-Computer Harmony from the Perspective of Medium Naturalness</a>
-        [<a href="./items/chinaxiv-202509.00001/" title="HTML">html</a>, <a href="https://chinaxiv.org/user/download.htm?uuid=7dc33a05-1f19-4707-a329-ba93370920b7&amp;filetype=pdf" title="Download PDF">pdf</a>]
+        <a href="./items/chinaxiv-202501.00001/" title="Abstract" id="chinaxiv-202501.00001" class="mathjax list-title-link">Sample Research on Pipeline Hardening</a>
+        [<a href="./items/chinaxiv-202501.00001/" title="HTML">html</a>]
       </dt>
       <dd>
-        <div class='list-authors'><span class='descriptor'>Authors:</span> Sudi, Liao Jiangqun, Peng Kaiping, Liao Jiangqun</div>
+        <div class='list-authors'><span class='descriptor'>Authors:</span> Unknown</div>
         
-        <div class='list-subjects'><span class='descriptor'>Subjects:</span> <span class="primary-subject">Psychology</span>; Applied Psychology</div>
+        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="https://example.org/sample-paper" target="_blank" rel="noopener">chinaxiv-202501.00001</a></div>
         
-        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="https://chinaxiv.org/abs/202509.00001" target="_blank" rel="noopener">chinaxiv-202509.00001</a></div>
-        
-        <div class='dateline'>Submitted: 2025-08-29T20:59:05Z</div>
-        
-        <p class='mathjax'>With the widespread application of artificial intelligence (AI), establishing high-quality human-AI interaction relationships has become a research hotspot. This paper deeply analyzes the possibility of harmonious coexistence between humans and AI, proposing the concept of &#34;Human-AI Rapport&#34; (HAR) and its components—relational harmony, mutual understanding, and seamless coordination. This paper integrates this concept with Media Naturalness Theory (MINT), innovatively proposing a human-AI rappor…</p>
+        <p class='mathjax'>This English abstract explains the hardened validation pipeline in more than fifty characters, ensuring QA acceptance.</p>
       </dd>
     
       <dt>
         <span class='descriptor'>Title:</span>
-        <a href="./items/chinaxiv-202510.00001/" title="Abstract" id="chinaxiv-202510.00001" class="mathjax list-title-link">Heart in Harmony, Love in Tune: Spousal Similarity and Marital Satisfaction</a>
-        [<a href="./items/chinaxiv-202510.00001/" title="HTML">html</a>, <a href="https://chinaxiv.org/user/download.htm?uuid=a9dc6310-34ae-4c1a-bc5e-3fd610221ee3&amp;filetype=pdf" title="Download PDF">pdf</a>]
+        <a href="./items/test-body-1/" title="Abstract" id="test-body-1" class="mathjax list-title-link">Applications of Deep Learning in Natural Language Processing</a>
+        [<a href="./items/test-body-1/" title="HTML">html</a>]
       </dt>
       <dd>
-        <div class='list-authors'><span class='descriptor'>Authors:</span> Su Wei, Fang Xiaoyi, Hou Juan, Hou Juan</div>
+        <div class='list-authors'><span class='descriptor'>Authors:</span> Li, Hua, Wang, Ming</div>
         
-        <div class='list-subjects'><span class='descriptor'>Subjects:</span> <span class="primary-subject">Psychology</span>; Developmental Psychology</div>
+        <div class='list-subjects'><span class='descriptor'>Subjects:</span> <span class="primary-subject">cs.AI</span>; cs.CL</div>
         
-        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="https://chinaxiv.org/abs/202510.00001" target="_blank" rel="noopener">chinaxiv-202510.00001</a></div>
+        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="https://example.org/" target="_blank" rel="noopener">test-body-1</a></div>
         
-        <div class='dateline'>Submitted: 2025-10-03T16:11:50Z</div>
+        <div class='dateline'>Submitted: 2025-10-03</div>
         
-        <p class='mathjax'>Similarity is an important component of marital satisfaction for couples; however, current research on the relationship between the two presents conflicting conclusions. So, in which dimensions are couples actually similar, and how does similarity affect marital satisfaction? This study recruited 638 Chinese couples as participants and adopted the Couple-Centered Approach (CCA). Using Profile Correlation Similarity (PCS) and Absolute Difference Score (ADS) as indicators, it integrated actor effe…</p>
+        <p class='mathjax'>This paper investigates the application of deep learning techniques in natural language processing tasks. We propose a novel neural network architecture that can better capture semantic information of language.</p>
       </dd>
     
       <dt>
         <span class='descriptor'>Title:</span>
-        <a href="./items/demo-0001/" title="Abstract" id="demo-0001" class="mathjax list-title-link">Demo Paper: arXiv-Style Layout Preview</a>
-        [<a href="./items/demo-0001/" title="HTML">html</a>]
+        <a href="./items/test-whole-paper-1/" title="Abstract" id="test-whole-paper-1" class="mathjax list-title-link">Applications of Deep Learning in Image Recognition</a>
+        [<a href="./items/test-whole-paper-1/" title="HTML">html</a>]
       </dt>
       <dd>
-        <div class='list-authors'><span class='descriptor'>Authors:</span> Alice Example, Bob Example</div>
+        <div class='list-authors'><span class='descriptor'>Authors:</span> Zhang, Wei, Li, Ming</div>
         
-        <div class='list-subjects'><span class='descriptor'>Subjects:</span> <span class="primary-subject">Computer Science</span>; Machine Learning</div>
+        <div class='list-subjects'><span class='descriptor'>Subjects:</span> <span class="primary-subject">cs.CV</span>; cs.AI</div>
         
-        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="https://www.chinaxiv.org/abs/2025-0001" target="_blank" rel="noopener">demo-0001</a></div>
+        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="https://example.org/test-whole-paper-1" target="_blank" rel="noopener">test-whole-paper-1</a></div>
         
-        <div class='dateline'>Submitted: 2025-01-01</div>
+        <div class='dateline'>Submitted: 2025-11-08</div>
         
-        <p class='mathjax'>This is a demonstration abstract to preview the new arXiv-inspired layout including breadcrumb, typography, and metadata blocks.</p>
+        <p class='mathjax'>This paper explores the latest advancements in deep learning techniques within the field of image recognition. We propose an improved convolutional neural network architecture that achieves higher recognition accuracy in complex scenarios.</p>
       </dd>
     
   </dl>
@@ -176,6 +192,17 @@
             </div>
           </div>
           <div class="footer-section">
+            <h4>Resources</h4>
+            <div class="footer-links">
+              <a href="./search">Advanced Search</a>
+              <a href="./browse">Browse All</a>
+              <a href="./stats">Statistics</a>
+              <a href="./api">API</a>
+              <a href="./help">Help</a>
+              <a href="./contact">Contact</a>
+            </div>
+          </div>
+          <div class="footer-section">
             <h4>About</h4>
             <p class="footer-description">
               Translations from <a href="https://www.chinaxiv.org" target="_blank" rel="noopener">ChinaXiv</a>.
@@ -193,6 +220,6 @@
         </div>
       </div>
     </footer>
-    <script src="./assets/site.js?v=1760095859"></script>
+    <script src="./assets/site.js?v=1762580298"></script>
   </body>
   </html>

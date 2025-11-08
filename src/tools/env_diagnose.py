@@ -253,6 +253,13 @@ def main():
             "OPENROUTER_API_KEY": bool(os.getenv("OPENROUTER_API_KEY")),
             "BRIGHTDATA_API_KEY": bool(os.getenv("BRIGHTDATA_API_KEY")),
             "BRIGHTDATA_ZONE": bool(os.getenv("BRIGHTDATA_ZONE")),
+            "BACKBLAZE_KEY_ID": bool(os.getenv("BACKBLAZE_KEY_ID")),
+            "BACKBLAZE_APPLICATION_KEY": bool(os.getenv("BACKBLAZE_APPLICATION_KEY")),
+            "BACKBLAZE_S3_ENDPOINT": bool(os.getenv("BACKBLAZE_S3_ENDPOINT")),
+            "BACKBLAZE_BUCKET": bool(os.getenv("BACKBLAZE_BUCKET")),
+            "BACKBLAZE_PREFIX": bool(os.getenv("BACKBLAZE_PREFIX")),
+            "CF_API_TOKEN": bool(os.getenv("CF_API_TOKEN")),
+            "DISCORD_WEBHOOK_URL": bool(os.getenv("DISCORD_WEBHOOK_URL")),
         }
         # API key validation (translation)
         checks["openrouter_api"] = {"ok": validate_api_key("OPENROUTER_API_KEY")}

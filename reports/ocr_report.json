@@ -1,0 +1,47 @@
+{
+  "chinaxiv-202501.00001": {
+    "pdf_path": "data/pdfs/ocr/chinaxiv-202501.00001.pdf",
+    "need_ocr": true,
+    "pre_ocr_chars": 0,
+    "pre_alpha_ratio": 0.0,
+    "pre_most_common_ratio": 1.0,
+    "ran_ocr": true,
+    "ocr_pdf_path": "data/pdfs/ocr/chinaxiv-202501.00001.pdf",
+    "post_ocr_chars": 2153,
+    "post_alpha_ratio": 0.8699,
+    "post_most_common_ratio": 0.1245,
+    "improved": true,
+    "improvement": 2153,
+    "quality_ok": true
+  },
+  "chinaxiv-202511.00010": {
+    "pdf_path": "data/pdfs/chinaxiv-202511.00010.pdf",
+    "need_ocr": false,
+    "pre_ocr_chars": 21952,
+    "pre_alpha_ratio": 0.7133,
+    "pre_most_common_ratio": 0.0371,
+    "ran_ocr": false,
+    "ocr_pdf_path": null,
+    "post_ocr_chars": 21952,
+    "post_alpha_ratio": 0.7133,
+    "post_most_common_ratio": 0.0371,
+    "improved": false,
+    "improvement": 0,
+    "quality_ok": true
+  },
+  "chinaxiv-202511.00021": {
+    "pdf_path": "data/pdfs/chinaxiv-202511.00021.pdf",
+    "need_ocr": false,
+    "pre_ocr_chars": 47883,
+    "pre_alpha_ratio": 0.7225,
+    "pre_most_common_ratio": 0.0422,
+    "ran_ocr": false,
+    "ocr_pdf_path": null,
+    "post_ocr_chars": 47883,
+    "post_alpha_ratio": 0.7225,
+    "post_most_common_ratio": 0.0422,
+    "improved": false,
+    "improvement": 0,
+    "quality_ok": true
+  }
+}

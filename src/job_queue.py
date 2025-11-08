@@ -14,7 +14,7 @@ class JobQueue:
 
     def __init__(self):
         self.jobs_dir = Path("data/jobs")
-        self.jobs_dir.mkdir(exist_ok=True)
+        self.jobs_dir.mkdir(parents=True, exist_ok=True)
 
     def add_jobs(self, paper_ids: List[str]) -> int:
         """Add jobs to queue."""

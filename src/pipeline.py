@@ -220,11 +220,13 @@ def run_cli() -> None:
 
                     if qa_passed is False:
                         cloud_queue.complete_job(pid, qa_passed=False)
-                        qa_flagged_count += 1
                     else:
                         cloud_queue.complete_job(pid, qa_passed=True)
-                        if qa_passed is True:
-                            qa_passed_count += 1
+
+                if qa_passed is True:
+                    qa_passed_count += 1
+                elif qa_passed is False:
+                    qa_flagged_count += 1
             else:
                 failures += 1
                 log(f"✗ {pid} failed: {info}")
