@@ -230,8 +230,8 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
-            paper_id = request.args.get("paper_id")
+            request.args.get("days", 7, type=int)
+            request.args.get("paper_id")
             # Downloads are not tracked in the consolidated service yet
             return jsonify([])
 
@@ -268,7 +268,7 @@ class MonitoringDashboard:
                 return jsonify({"error": "Unauthorized"}), 401
 
             data = request.get_json() or {}
-            optimization_type = data.get("type", "all")
+            data.get("type", "all")
 
             results = monitoring_service.optimize_site()
 
@@ -363,7 +363,7 @@ class MonitoringDashboard:
                 cloudflare_status = (
                     "Online" if response.status_code == 200 else "Offline"
                 )
-            except:
+            except Exception:
                 cloudflare_status = "Unknown"
 
             return SystemStats(

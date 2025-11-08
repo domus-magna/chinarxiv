@@ -6,8 +6,7 @@ import pytest
 import json
 import os
 import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.services.translation_service import TranslationService
 from src.job_queue import JobQueue
@@ -52,7 +51,6 @@ class TestTranslationServiceBugs:
     
     def test_translation_service_math_preservation(self):
         """Test math preservation in translation."""
-        from src.tex_guard import mask_math, unmask_math
         
         service = TranslationService()
         

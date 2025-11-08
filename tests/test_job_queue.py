@@ -3,8 +3,6 @@ Tests for simplified job queue functionality.
 """
 import pytest
 import tempfile
-import os
-import json
 from pathlib import Path
 from unittest.mock import patch
 from src.job_queue import JobQueue, add_jobs, claim_job, complete_job, fail_job, get_stats

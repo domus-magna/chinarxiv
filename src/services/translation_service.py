@@ -608,7 +608,7 @@ class TranslationService:
                             creator, dry_run=dry_run, glossary_override=glossary_override
                         )
                         translation.creators_en.append(translated_name)
-                    except Exception as e:
+                    except Exception:
                         # Fallback to original if translation fails
                         translation.creators_en.append(creator)
 
@@ -622,7 +622,7 @@ class TranslationService:
                             subject, dry_run=dry_run, glossary_override=glossary_override
                         )
                         translation.subjects_en.append(translated_subject)
-                    except Exception as e:
+                    except Exception:
                         # Fallback to original if translation fails
                         translation.subjects_en.append(subject)
 

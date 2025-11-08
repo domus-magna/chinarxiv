@@ -22,84 +22,84 @@ class TestChineseCharacterDetector:
     
     def test_chinese_ideographs(self):
         """Test Chinese ideograph detection."""
-        assert self.detector.is_chinese_ideograph("中") == True
-        assert self.detector.is_chinese_ideograph("文") == True
-        assert self.detector.is_chinese_ideograph("学") == True
-        assert self.detector.is_chinese_ideograph("机") == True
-        assert self.detector.is_chinese_ideograph("器") == True
-        assert self.detector.is_chinese_ideograph("学") == True
-        assert self.detector.is_chinese_ideograph("习") == True
+        assert self.detector.is_chinese_ideograph("中") is True
+        assert self.detector.is_chinese_ideograph("文") is True
+        assert self.detector.is_chinese_ideograph("学") is True
+        assert self.detector.is_chinese_ideograph("机") is True
+        assert self.detector.is_chinese_ideograph("器") is True
+        assert self.detector.is_chinese_ideograph("学") is True
+        assert self.detector.is_chinese_ideograph("习") is True
         
         # English characters should not be detected
-        assert self.detector.is_chinese_ideograph("a") == False
-        assert self.detector.is_chinese_ideograph("A") == False
-        assert self.detector.is_chinese_ideograph("1") == False
-        assert self.detector.is_chinese_ideograph(" ") == False
-        assert self.detector.is_chinese_ideograph(".") == False
+        assert self.detector.is_chinese_ideograph("a") is False
+        assert self.detector.is_chinese_ideograph("A") is False
+        assert self.detector.is_chinese_ideograph("1") is False
+        assert self.detector.is_chinese_ideograph(" ") is False
+        assert self.detector.is_chinese_ideograph(".") is False
     
     def test_chinese_punctuation(self):
         """Test Chinese punctuation detection."""
         # Chinese punctuation
-        assert self.detector.is_chinese_char("：") == True
-        assert self.detector.is_chinese_char("；") == True
-        assert self.detector.is_chinese_char("，") == True
-        assert self.detector.is_chinese_char("。") == True
-        assert self.detector.is_chinese_char("！") == True
-        assert self.detector.is_chinese_char("？") == True
-        assert self.detector.is_chinese_char("（") == True
-        assert self.detector.is_chinese_char("）") == True
-        assert self.detector.is_chinese_char("【") == True
-        assert self.detector.is_chinese_char("】") == True
-        assert self.detector.is_chinese_char("《") == True
-        assert self.detector.is_chinese_char("》") == True
-        assert self.detector.is_chinese_char("、") == True
-        assert self.detector.is_chinese_char("…") == True
-        assert self.detector.is_chinese_char("～") == True
+        assert self.detector.is_chinese_char("：") is True
+        assert self.detector.is_chinese_char("；") is True
+        assert self.detector.is_chinese_char("，") is True
+        assert self.detector.is_chinese_char("。") is True
+        assert self.detector.is_chinese_char("！") is True
+        assert self.detector.is_chinese_char("？") is True
+        assert self.detector.is_chinese_char("（") is True
+        assert self.detector.is_chinese_char("）") is True
+        assert self.detector.is_chinese_char("【") is True
+        assert self.detector.is_chinese_char("】") is True
+        assert self.detector.is_chinese_char("《") is True
+        assert self.detector.is_chinese_char("》") is True
+        assert self.detector.is_chinese_char("、") is True
+        assert self.detector.is_chinese_char("…") is True
+        assert self.detector.is_chinese_char("～") is True
         
         # English punctuation should not be detected
-        assert self.detector.is_chinese_char(":") == False
-        assert self.detector.is_chinese_char(";") == False
-        assert self.detector.is_chinese_char(",") == False
-        assert self.detector.is_chinese_char(".") == False
-        assert self.detector.is_chinese_char("!") == False
-        assert self.detector.is_chinese_char("?") == False
-        assert self.detector.is_chinese_char("(") == False
-        assert self.detector.is_chinese_char(")") == False
-        assert self.detector.is_chinese_char("[") == False
-        assert self.detector.is_chinese_char("]") == False
-        assert self.detector.is_chinese_char("<") == False
-        assert self.detector.is_chinese_char(">") == False
+        assert self.detector.is_chinese_char(":") is False
+        assert self.detector.is_chinese_char(";") is False
+        assert self.detector.is_chinese_char(",") is False
+        assert self.detector.is_chinese_char(".") is False
+        assert self.detector.is_chinese_char("!") is False
+        assert self.detector.is_chinese_char("?") is False
+        assert self.detector.is_chinese_char("(") is False
+        assert self.detector.is_chinese_char(")") is False
+        assert self.detector.is_chinese_char("[") is False
+        assert self.detector.is_chinese_char("]") is False
+        assert self.detector.is_chinese_char("<") is False
+        assert self.detector.is_chinese_char(">") is False
         # Note: "..." is 3 characters, not a single character
-        assert self.detector.is_chinese_char("~") == False
+        assert self.detector.is_chinese_char("~") is False
     
     def test_chinese_metadata_markers(self):
         """Test Chinese metadata marker detection."""
-        assert self.detector.has_chinese_metadata("作者：张三") == True
-        assert self.detector.has_chinese_metadata("提交时间：2025-03-08") == True
-        assert self.detector.has_chinese_metadata("摘要: This is an abstract") == True
-        assert self.detector.has_chinese_metadata("分类：Physics") == True
-        assert self.detector.has_chinese_metadata("引用：ChinaXiv:202503.00001") == True
-        assert self.detector.has_chinese_metadata("DOI: 10.12074/202503.00001") == True
-        assert self.detector.has_chinese_metadata("CSTR: 32003.36.ChinaXiv.202503.00001") == True
-        assert self.detector.has_chinese_metadata("推荐引用方式：") == True
-        assert self.detector.has_chinese_metadata("版本历史") == True
-        assert self.detector.has_chinese_metadata("下载全文") == True
-        assert self.detector.has_chinese_metadata("来自：ChinaXiv") == True
-        assert self.detector.has_chinese_metadata("关键词") == True
+        assert self.detector.has_chinese_metadata("作者：张三") is True
+        assert self.detector.has_chinese_metadata("提交时间：2025-03-08") is True
+        assert self.detector.has_chinese_metadata("摘要: This is an abstract") is True
+        assert self.detector.has_chinese_metadata("分类：Physics") is True
+        assert self.detector.has_chinese_metadata("引用：ChinaXiv:202503.00001") is True
+        assert self.detector.has_chinese_metadata("DOI: 10.12074/202503.00001") is True
+        assert self.detector.has_chinese_metadata("CSTR: 32003.36.ChinaXiv.202503.00001") is True
+        assert self.detector.has_chinese_metadata("推荐引用方式：") is True
+        assert self.detector.has_chinese_metadata("版本历史") is True
+        assert self.detector.has_chinese_metadata("下载全文") is True
+        assert self.detector.has_chinese_metadata("来自：ChinaXiv") is True
+        assert self.detector.has_chinese_metadata("关键词") is True
         
         # English text should not be detected
-        assert self.detector.has_chinese_metadata("Authors: John Smith") == False
-        assert self.detector.has_chinese_metadata("Submission Date: 2025-03-08") == False
-        assert self.detector.has_chinese_metadata("Abstract: This is an abstract") == False
-        assert self.detector.has_chinese_metadata("Category: Physics") == False
-        assert self.detector.has_chinese_metadata("Citation: ChinaXiv:202503.00001") == False
+        assert self.detector.has_chinese_metadata("Authors: John Smith") is False
+        assert self.detector.has_chinese_metadata("Submission Date: 2025-03-08") is False
+        assert self.detector.has_chinese_metadata("Abstract: This is an abstract") is False
+        assert self.detector.has_chinese_metadata("Category: Physics") is False
+        assert self.detector.has_chinese_metadata("Citation: ChinaXiv:202503.00001") is False
         # Note: "DOI:" is in Chinese metadata markers, so this will be True
-        assert self.detector.has_chinese_metadata("Digital Object Identifier: 10.12074/202503.00001") == False
-        assert self.detector.has_chinese_metadata("Recommended Citation:") == False
-        assert self.detector.has_chinese_metadata("Version History") == False
-        assert self.detector.has_chinese_metadata("Download Full Text") == False
-        assert self.detector.has_chinese_metadata("From: ChinaXiv") == False
-        assert self.detector.has_chinese_metadata("Keywords") == False
+        assert self.detector.has_chinese_metadata("Digital Object Identifier: 10.12074/202503.00001") is False
+        assert self.detector.has_chinese_metadata("Recommended Citation:") is False
+        assert self.detector.has_chinese_metadata("Version History") is False
+        assert self.detector.has_chinese_metadata("Download Full Text") is False
+        assert self.detector.has_chinese_metadata("From: ChinaXiv") is False
+        assert self.detector.has_chinese_metadata("Keywords") is False
     
     def test_ratio_calculations(self):
         """Test ratio calculations."""
@@ -143,7 +143,7 @@ class TestTranslationQAFilter:
         assert result.chinese_chars == []
         assert result.issues == []
         assert result.flagged_fields == []
-        assert self.qa_filter.should_display(result) == True
+        assert self.qa_filter.should_display(result) is True
     
     def test_chinese_characters_flag(self):
         """Test Chinese characters are flagged."""
@@ -163,7 +163,7 @@ class TestTranslationQAFilter:
         assert len(result.chinese_chars) > 0
         assert len(result.issues) > 0
         assert len(result.flagged_fields) > 0
-        assert self.qa_filter.should_display(result) == False
+        assert self.qa_filter.should_display(result) is False
     
     def test_chinese_metadata_flag(self):
         """Test Chinese metadata markers are flagged."""
@@ -181,7 +181,7 @@ class TestTranslationQAFilter:
         assert result.score < 1.0
         assert len(result.issues) > 0
         assert len(result.flagged_fields) > 0
-        assert self.qa_filter.should_display(result) == False
+        assert self.qa_filter.should_display(result) is False
     
     def test_short_abstract_flag(self):
         """Test short abstract is flagged."""
@@ -199,7 +199,7 @@ class TestTranslationQAFilter:
         assert result.score < 1.0
         assert len(result.issues) > 0
         assert len(result.flagged_fields) > 0
-        assert self.qa_filter.should_display(result) == False
+        assert self.qa_filter.should_display(result) is False
     
     def test_english_punctuation_passes(self):
         """Test English punctuation passes."""
@@ -219,7 +219,7 @@ class TestTranslationQAFilter:
         assert result.chinese_chars == []
         assert result.issues == []
         assert result.flagged_fields == []
-        assert self.qa_filter.should_display(result) == True
+        assert self.qa_filter.should_display(result) is True
     
     def test_chinese_punctuation_flag(self):
         """Test Chinese punctuation is flagged."""
@@ -239,7 +239,7 @@ class TestTranslationQAFilter:
         assert len(result.chinese_chars) > 0
         assert len(result.issues) > 0
         assert len(result.flagged_fields) > 0
-        assert self.qa_filter.should_display(result) == False
+        assert self.qa_filter.should_display(result) is False
     
     def test_edge_cases(self):
         """Test various edge cases."""
@@ -324,7 +324,7 @@ class TestTranslationQAFilter:
         result = self.qa_filter.check_translation(translation)
         assert result.status in (QAStatus.FLAG_FORMATTING, QAStatus.FLAG_CONTENT)
         assert 'title_en does not start with real English content' in ' '.join(result.issues)
-        assert self.qa_filter.should_display(result) == False
+        assert self.qa_filter.should_display(result) is False
     
     def test_unicode_edge_cases(self):
         """Test Unicode edge cases."""
@@ -344,7 +344,7 @@ class TestTranslationQAFilter:
         assert result.chinese_chars == []
         assert result.issues == []
         assert result.flagged_fields == []
-        assert self.qa_filter.should_display(result) == True
+        assert self.qa_filter.should_display(result) is True
     
     def test_numbers_and_symbols(self):
         """Test numbers and symbols pass."""
@@ -364,7 +364,7 @@ class TestTranslationQAFilter:
         assert result.chinese_chars == []
         assert result.issues == []
         assert result.flagged_fields == []
-        assert self.qa_filter.should_display(result) == True
+        assert self.qa_filter.should_display(result) is True
     
     def test_single_chinese_character_flags(self):
         """Test that even a single Chinese character flags the translation."""
@@ -384,7 +384,7 @@ class TestTranslationQAFilter:
         assert len(result.chinese_chars) > 0
         assert len(result.issues) > 0
         assert len(result.flagged_fields) > 0
-        assert self.qa_filter.should_display(result) == False
+        assert self.qa_filter.should_display(result) is False
     
     def test_chinese_punctuation_only_flags(self):
         """Test that Chinese punctuation only flags the translation."""
@@ -404,7 +404,7 @@ class TestTranslationQAFilter:
         assert len(result.chinese_chars) > 0
         assert len(result.issues) > 0
         assert len(result.flagged_fields) > 0
-        assert self.qa_filter.should_display(result) == False
+        assert self.qa_filter.should_display(result) is False
 
 
 if __name__ == "__main__":

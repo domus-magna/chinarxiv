@@ -228,19 +228,10 @@ def render_site(items: List[Dict[str, Any]]) -> None:
 
         lastmod = datetime.utcnow().strftime("%Y-%m-%d")
         urls: List[str] = []
-        # Static top-level pages that currently exist
-        urls.extend(
-            [
-                f"{site_base}/",
-                f"{site_base}/donation.html",
-                f"{site_base}/search/",
-                f"{site_base}/browse/",
-                f"{site_base}/help/",
-                f"{site_base}/contact/",
-                f"{site_base}/stats/",
-                f"{site_base}/api/",
-            ]
-        )
+        # Static top-level pages that currently exist (only include files we actually generated)
+        for rel_path in ("donation.html", "monitor.html"):
+            if os.path.exists(os.path.join(base_out, rel_path)):
+                urls.append(f"{site_base}/{rel_path}")
         # Item pages and /abs aliases
         for it in items:
             pid = it.get("id")
@@ -280,7 +271,7 @@ def run_cli() -> None:
     parser = argparse.ArgumentParser(
         description="Render static site from translated records."
     )
-    args = parser.parse_args()
+    parser.parse_args()
     items = load_translated()
     render_site(items)
     log(f"Rendered site with {len(items)} items → site/")

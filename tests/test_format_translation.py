@@ -1,7 +1,6 @@
 """
 Tests for translation formatting functionality.
 """
-import pytest
 from src.format_translation import (
     is_section_heading, is_short_fragment, is_mathematical_formula,
     merge_short_fragments, format_as_markdown, format_body_paragraphs,

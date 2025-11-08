@@ -3,12 +3,10 @@ Simplified end-to-end test for the ChinaXiv English translation pipeline.
 
 This test validates the core workflow components individually and together.
 """
-import json
 import os
 import tempfile
 import shutil
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -62,7 +60,32 @@ class TestE2ESimple:
         
         assert len(result) == 2
         assert all("Translated paragraph" in p for p in result)
-        assert mock_translate.call_count == 2
+        assert mock_translate.call_count >= len(paragraphs)
+        # The final calls should correspond to per-paragraph fallbacks
+        tail_calls = mock_translate.call_args_list[-len(paragraphs):]
+        for call, para in zip(tail_calls, paragraphs):
+            assert para in call.args[0]
+
+    @patch('src.services.translation_service.TranslationService.translate_field')
+    def test_translation_service_paragraphs_full_fallback(self, mock_translate_field):
+        """Ensure whole-paper mode falls back through all stages when validation fails."""
+        paragraphs = ["第一段内容", "第二段内容"]
+        mock_translate_field.side_effect = [
+            "bad output",        # Whole-paper attempt (missing tags)
+            "still bad output",  # Strict retry (still missing tags)
+            "bad chunk output",  # Chunked translation result (missing sentinel split)
+            "Paragraph 1 translated",
+            "Paragraph 2 translated",
+        ]
+
+        service = TranslationService()
+        result = service.translate_paragraphs(paragraphs, dry_run=False)
+
+        assert result == ["Paragraph 1 translated", "Paragraph 2 translated"]
+        assert mock_translate_field.call_count == 5
+        # The last two calls should translate each paragraph individually
+        assert mock_translate_field.call_args_list[-2][0][0] == paragraphs[0]
+        assert mock_translate_field.call_args_list[-1][0][0] == paragraphs[1]
     
     @patch('src.services.translation_service.TranslationService._call_openrouter')
     def test_translation_service_record(self, mock_translate):
@@ -182,7 +205,7 @@ class TestE2ESimple:
         
         service = TranslationService()
         text = "这是关于机器学习的内容。"
-        result = service.translate_field(text, dry_run=False)
+        service.translate_field(text, dry_run=False)
         
         # Verify glossary was included in the call
         call_args = mock_translate.call_args
@@ -217,7 +240,7 @@ class TestE2ESimple:
                 "license": {"derivatives_allowed": True}
             }
             
-            result = service.translate_record(record, dry_run=False)
+            service.translate_record(record, dry_run=False)
             
             # Verify cost was logged
             mock_cost_log.assert_called_once()

@@ -4,7 +4,6 @@ import json
 import shutil
 from pathlib import Path
 
-import pytest
 
 from src.validators.harvest_gate import run_harvest_gate
 

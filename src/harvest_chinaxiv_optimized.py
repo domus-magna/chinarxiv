@@ -154,7 +154,7 @@ class OptimizedChinaXivScraper:
                         year_month, num_str = paper_id.split(".")
                         num = int(num_str)
                         by_month[year_month].append(num)
-                    except:
+                    except Exception:
                         continue
 
         # Find max for each month
@@ -262,7 +262,7 @@ class OptimizedChinaXivScraper:
                 try:
                     dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
                     date_iso = dt.isoformat() + "Z"
-                except:
+                except Exception:
                     year = paper_id[:4]
                     month = paper_id[4:6]
                     date_iso = f"{year}-{month}-01T00:00:00Z"

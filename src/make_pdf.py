@@ -28,7 +28,7 @@ def run_cli() -> None:
     parser = argparse.ArgumentParser(
         description="Generate PDFs from rendered Markdown using pandoc if available."
     )
-    args = parser.parse_args()
+    parser.parse_args()
 
     if not has_binary("pandoc"):
         log("pandoc not found; skipping PDF generation")

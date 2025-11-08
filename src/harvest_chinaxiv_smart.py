@@ -122,7 +122,7 @@ class SmartChinaXivScraper:
                 try:
                     dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
                     date_iso = dt.isoformat() + "Z"
-                except:
+                except Exception:
                     pass
 
             if not date_iso:

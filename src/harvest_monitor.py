@@ -36,7 +36,7 @@ def get_harvest_stats() -> Dict:
             with open(file) as f:
                 data = json.load(f)
                 stats["papers_scraped"] += len(data)
-        except:
+        except Exception:
             pass
 
     # Check if still running
@@ -98,7 +98,7 @@ def show_status():
                     with open(file) as f:
                         data = json.load(f)
                         print(f"  {month}: {len(data):,} papers")
-                except:
+                except Exception:
                     print(f"  {month}: error reading file")
             print()
 

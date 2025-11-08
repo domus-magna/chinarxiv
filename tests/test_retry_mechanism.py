@@ -12,7 +12,6 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from src.services.translation_service import TranslationService
-from src.qa_filter import QAStatus
 
 
 class TestRetryMechanism:
@@ -29,12 +28,12 @@ class TestRetryMechanism:
     
     def test_retry_enabled_by_config(self):
         """Test that retry is enabled by config."""
-        assert self.service.config.get('translation', {}).get('retry_chinese_chars', True) == True
+        assert self.service.config.get('translation', {}).get('retry_chinese_chars', True) is True
     
     def test_retry_disabled_by_config(self):
         """Test that retry can be disabled by config."""
         self.service.config['translation']['retry_chinese_chars'] = False
-        assert self.service.config.get('translation', {}).get('retry_chinese_chars', True) == False
+        assert self.service.config.get('translation', {}).get('retry_chinese_chars', True) is False
     
     def test_retry_conditions(self):
         """Test retry conditions."""
@@ -60,7 +59,7 @@ class TestRetryMechanism:
             len(mock_qa_result.chinese_chars) <= 5
         )
         
-        assert should_retry == True
+        assert should_retry is True
     
     def test_retry_prompt_generation(self):
         """Test retry prompt generation."""
@@ -118,14 +117,14 @@ class TestRetryMechanism:
         
         # Test quality improvement
         is_improvement = len(retry_qa.chinese_chars) < len(original_qa.chinese_chars)
-        assert is_improvement == True
+        assert is_improvement is True
         
         # Test no improvement
         retry_qa_no_improvement = Mock()
         retry_qa_no_improvement.chinese_chars = ['中', '文', '学', '习']  # More Chinese characters
         
         is_no_improvement = len(retry_qa_no_improvement.chinese_chars) < len(original_qa.chinese_chars)
-        assert is_no_improvement == False
+        assert is_no_improvement is False
     
     def test_retry_attempted_flag(self):
         """Test that retry attempted flag is set."""
@@ -138,7 +137,7 @@ class TestRetryMechanism:
         translation['_retry_attempted'] = True
         
         # Verify flag is set
-        assert translation.get('_retry_attempted') == True
+        assert translation.get('_retry_attempted') is True
 
 
 if __name__ == "__main__":

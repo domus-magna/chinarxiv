@@ -1,7 +1,6 @@
 """
 Tests for math/LaTeX masking and unmasking functionality.
 """
-import pytest
 from src.tex_guard import mask_math, unmask_math, verify_token_parity, MATH_TOKEN_FMT
 
 
