@@ -13,6 +13,7 @@ from .job_queue import job_queue
 from .streaming import process_papers_streaming
 from .utils import log
 from .monitoring import alert_info, alert_warning
+from .services.translation_service import CircuitBreakerOpen
 
 
 def harvest_papers(years: List[str]) -> List[str]:
@@ -79,7 +80,6 @@ def start_workers(num_workers: int) -> None:
     # Process papers one at a time
     completed = 0
     failed = 0
-
     try:
         for result in process_papers_streaming(pending_ids):
             if result["status"] == "completed":
@@ -94,6 +94,24 @@ def start_workers(num_workers: int) -> None:
 
     except KeyboardInterrupt:
         log("Interrupted by user")
+
+    except Exception as e:
+        if isinstance(e, CircuitBreakerOpen):
+            log(f"Circuit breaker triggered: {e}")
+            from .monitoring import alert_critical
+            alert_critical(
+                "Translation Pipeline Stopped: Circuit Breaker",
+                f"Pipeline stopped after consecutive OpenRouter failures: {e}",
+                source="batch_translate",
+                metadata={
+                    "completed": completed,
+                    "failed": failed,
+                    "total": len(pending_ids),
+                },
+            )
+        else:
+            # Re-raise unexpected exceptions
+            raise
 
     # Final stats
     log(
