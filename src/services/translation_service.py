@@ -61,6 +61,10 @@ DEFAULT_TRANSLATION_CONFIG: Dict[str, Any] = {
     "max_whole_paper_tokens": 32000,
     "batch_paragraphs": False,
     "chunk_token_limit": 1500,
+    "circuit_breaker": {
+        "persistent_error_threshold": 2,
+        "transient_error_threshold": 5,
+    },
 }
 
 
@@ -141,8 +145,14 @@ class TranslationService:
         self._consecutive_persistent = 0  # payment/auth errors
         self._consecutive_transient = 0   # network/server errors
         self._circuit_open = False
-        self.PERSISTENT_ERROR_THRESHOLD = 2
-        self.TRANSIENT_ERROR_THRESHOLD = 5
+        translation_cfg = self.config.get("translation") or {}
+        circuit_cfg = translation_cfg.get("circuit_breaker") or {}
+        self.PERSISTENT_ERROR_THRESHOLD = int(
+            circuit_cfg.get("persistent_error_threshold", 2)
+        )
+        self.TRANSIENT_ERROR_THRESHOLD = int(
+            circuit_cfg.get("transient_error_threshold", 5)
+        )
 
     def _check_circuit_breaker(self) -> None:
         """
@@ -180,6 +190,8 @@ class TranslationService:
         }
 
         if error_code in persistent_codes:
+            # Reset transient counter when switching to persistent errors
+            self._consecutive_transient = 0
             self._consecutive_persistent += 1
             if self._consecutive_persistent >= self.PERSISTENT_ERROR_THRESHOLD:
                 self._circuit_open = True
@@ -199,6 +211,8 @@ class TranslationService:
                 )
         else:
             # Transient error (network, 5xx, rate limit, etc.)
+            # Reset persistent counter when switching to transient errors
+            self._consecutive_persistent = 0
             self._consecutive_transient += 1
             if self._consecutive_transient >= self.TRANSIENT_ERROR_THRESHOLD:
                 self._circuit_open = True
@@ -221,6 +235,9 @@ class TranslationService:
         """Reset circuit breaker failure counters on successful translation."""
         self._consecutive_persistent = 0
         self._consecutive_transient = 0
+        if self._circuit_open:
+            log("Circuit breaker closed after successful translation call")
+        self._circuit_open = False
 
     @retry(
         wait=wait_exponential(min=1, max=20),
@@ -510,7 +527,13 @@ class TranslationService:
                     f"({total_tokens} > {max_whole_paper_tokens}), "
                     f"falling back to batch mode"
                 )
-                # Fall through to batch mode
+                return self._translate_chunked_paragraphs(
+                    paragraphs,
+                    model,
+                    dry_run,
+                    glossary_eff,
+                    chunk_token_limit,
+                )
             else:
                 # Whole paper mode: translate entire body at once with numbered paragraph tags
                 import re
