@@ -2,16 +2,30 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from .utils import log
 from .discord_alerts import DiscordAlerts
+from .tools import b2_alerts as b2_alerts_tool
 
 
 def find_latest_records_json() -> Optional[str]:
     files = sorted(glob.glob(os.path.join("data", "records", "*.json")))
     return files[-1] if files else None
+
+
+SUMMARY_PATH = Path("reports") / "pipeline_summary.json"
+
+
+def _write_summary(payload: dict) -> None:
+    """Persist pipeline summary so CI can make decisions without parsing logs."""
+    SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    SUMMARY_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def run_cli() -> None:
@@ -39,6 +53,11 @@ def run_cli() -> None:
         help="Enable QA filtering (saves passed to data/translated/, flagged to data/flagged/)",
     )
     parser.add_argument(
+        "--allow-empty-selection",
+        action="store_true",
+        help="Permit selection step to proceed even if it produces zero items (default: fail fast).",
+    )
+    parser.add_argument(
         "--cloud-mode",
         action="store_true",
         help="Use cloud job queue (for GitHub Actions workflows)",
@@ -57,6 +76,19 @@ def run_cli() -> None:
     )
     args = parser.parse_args()
 
+    summary = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "dry_run": args.dry_run,
+        "cloud_mode": args.cloud_mode,
+        "with_qa": args.with_qa,
+        "selection_status": "skipped" if args.skip_selection else "pending",
+        "attempted": 0,
+        "successes": 0,
+        "failures": 0,
+        "qa_passed": 0,
+        "qa_flagged": 0,
+    }
+
     # Selection step (unless skipped and selected.json already exists)
     selected_path = os.path.join("data", "selected.json")
     if not args.skip_selection or not os.path.exists(selected_path):
@@ -70,6 +102,8 @@ def run_cli() -> None:
 
         if not rec_paths:
             log("No records available for selection; exiting")
+            summary["selection_status"] = "no-records"
+            _write_summary(summary)
             return
 
         # If multiple records paths were provided, merge them to a temp file first
@@ -95,38 +129,43 @@ def run_cli() -> None:
 
         log("Select & fetch step…")
         limit_arg = f" --limit {args.limit}" if args.limit and args.limit > 0 else ""
-        os.system(
+        result = os.system(
             f"python -m src.select_and_fetch --records {rec_arg}{limit_arg} --output {selected_path}"
         )
-        # Defensive: if selection step didn't create output (e.g., dry-run tests stub it),
-        # fall back to a minimal selection so downstream steps can proceed.
+        if result != 0:
+            summary["selection_status"] = "failed"
+            b2_alerts_tool.add_message("selection command failed inside pipeline")
+            b2_alerts_tool.flush_if_due()
+            _write_summary(summary)
+            raise SystemExit("Selection command failed; see logs for details.")
         if not os.path.exists(selected_path):
-            try:
-                import json as _json
+            summary["selection_status"] = "missing-output"
+            b2_alerts_tool.add_message("selection output missing inside pipeline")
+            b2_alerts_tool.flush_if_due()
+            _write_summary(summary)
+            raise SystemExit("Selection failed to produce data/selected.json")
 
-                # Use the same records source we resolved above for selection
-                _sel_src = rec_arg
-                with open(_sel_src, "r", encoding="utf-8") as f:
-                    _items = _json.load(f)
-                    if not isinstance(_items, list):
-                        _items = []
-                # Apply limit if provided; otherwise include all
-                _limit = args.limit if args.limit and args.limit > 0 else None
-                _selected = _items[:_limit] if _limit else _items
-                os.makedirs(os.path.dirname(selected_path), exist_ok=True)
-                with open(selected_path, "w", encoding="utf-8") as f:
-                    _json.dump(_selected, f, ensure_ascii=False)
-                log(
-                    f"Selection output missing; wrote fallback selection with {len(_selected)} items"
-                )
-            except Exception as e:
-                # As a last resort, create an empty selection file to avoid crashes
-                os.makedirs(os.path.dirname(selected_path), exist_ok=True)
-                with open(selected_path, "w", encoding="utf-8") as f:
-                    f.write("[]")
-                log(
-                    f"Selection output missing and fallback failed ({e}); wrote empty selection []"
-                )
+        try:
+            with open(selected_path, "r", encoding="utf-8") as f:
+                selected_preview = json.load(f)
+            if not isinstance(selected_preview, list):
+                raise ValueError("selection output not a list")
+        except Exception as exc:
+            summary["selection_status"] = "unreadable"
+            b2_alerts_tool.add_message(f"selection output unreadable: {exc}")
+            b2_alerts_tool.flush_if_due()
+            _write_summary(summary)
+            raise SystemExit(f"Selection output unreadable: {exc}")
+
+        if not selected_preview and not args.allow_empty_selection:
+            summary["selection_status"] = "empty"
+            b2_alerts_tool.add_message("selection returned zero items")
+            b2_alerts_tool.flush_if_due()
+            _write_summary(summary)
+            raise SystemExit(
+                "Selection produced zero items. Pass --allow-empty-selection if this is expected."
+            )
+        summary["selection_status"] = "complete"
     else:
         log("Skipping selection (data/selected.json present)")
 
@@ -137,6 +176,7 @@ def run_cli() -> None:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     # Determine worklist based on mode
+    worklist: list[dict] = []
     if args.cloud_mode:
         # Cloud mode: claim batch from cloud job queue
         from .cloud_job_queue import cloud_queue
@@ -155,6 +195,8 @@ def run_cli() -> None:
         selected = read_json(selected_path)
         if not isinstance(selected, list) or not selected:
             log("No selected papers to translate; exiting")
+            summary["selection_status"] = summary.get("selection_status", "skipped")
+            _write_summary(summary)
             return
 
         # Apply limit if set (>0)
@@ -162,6 +204,8 @@ def run_cli() -> None:
             worklist = selected[: args.limit]
         else:
             worklist = selected
+
+    summary["attempted"] = len(worklist)
 
     service = TranslationService()
 
@@ -237,6 +281,11 @@ def run_cli() -> None:
 
                     cloud_queue.fail_job(pid, str(info))
 
+    summary["successes"] = successes
+    summary["failures"] = failures
+    summary["qa_passed"] = qa_passed_count
+    summary["qa_flagged"] = qa_flagged_count
+
     # Print QA summary if enabled
     if args.with_qa:
         total_qa = qa_passed_count + qa_flagged_count
@@ -255,9 +304,11 @@ def run_cli() -> None:
 
         # Send success notification to Discord
         alerts = DiscordAlerts()
-        alerts.pipeline_success(successes, 0.0)  # Cost calculation TBD
+        if successes > 0:
+            alerts.pipeline_success(successes, 0.0)  # Cost calculation TBD
 
     log("Pipeline complete.")
+    _write_summary(summary)
 
 
 if __name__ == "__main__":

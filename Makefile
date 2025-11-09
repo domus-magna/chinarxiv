@@ -6,7 +6,7 @@ VPIP=$(VENV)/bin/pip
 DEV_LIMIT?=5
 MODEL?=
 
-.PHONY: setup test lint fmt smoke build serve health clean samples check-keys fix-keys ensure-env self-review gate-fixtures
+.PHONY: setup test lint fmt smoke build serve health clean samples check-keys fix-keys ensure-env self-review gate-fixtures dev-clean
 
 setup:
 	$(PY) -m pip install --upgrade pip
@@ -122,7 +122,14 @@ samples:
 clean:
 	rm -rf site data
 
-dev: clean venv ensure-env
+dev: venv ensure-env
+	@if [ -d site ] || [ -d data ]; then \
+		if [ "$$DEV_ALLOW_CLEAN" != "1" ]; then \
+			echo "Refusing to delete existing site/ or data/. Set DEV_ALLOW_CLEAN=1 make dev to proceed."; \
+			exit 1; \
+		fi; \
+	fi
+	$(MAKE) clean
 	@if [ -z "$$OPENROUTER_API_KEY" ] && [ ! -f .env ]; then echo "Set OPENROUTER_API_KEY or create .env"; exit 1; fi
 	$(VPY) -m pytest -q
 	# Try harvest via BrightData if configured
@@ -151,6 +158,9 @@ dev: clean venv ensure-env
 	-$(VPY) -m src.make_pdf
 	@echo "Starting server at http://localhost:$(PORT) (Ctrl+C to stop)"
 	$(VPY) -m http.server -d site $(PORT)
+
+dev-clean:
+	@DEV_ALLOW_CLEAN=1 $(MAKE) dev
 
 admin:
 	# Load .env first so checks see values

@@ -123,6 +123,7 @@ The script copies small sample JSON/PDF files into `data/` only when real artifa
 - Requires Python 3.11+ available as `python3.11` and `OPENROUTER_API_KEY`.
 - One-liner: `make dev DEV_LIMIT=5`
 - This creates `.venv` with Python 3.11, installs deps, runs tests + health, processes up to 5 new items live, builds site, and serves at `http://localhost:8001`.
+- To avoid accidental data loss, `make dev` refuses to delete existing `site/` or `data/` unless you confirm with `DEV_ALLOW_CLEAN=1 make dev` (or run the helper `make dev-clean`).
 
 ### Installing Python 3.11 (macOS options)
 - Homebrew: `brew install python@3.11` (then ensure `python3.11` is on PATH)

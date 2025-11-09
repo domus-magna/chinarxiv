@@ -120,14 +120,41 @@ jobs:
 
             echo "📋 Selecting new items (no limit)..."
             if [ -f data/records/_merged_current_prev.json ]; then
-              python -m src.select_and_fetch --records data/records/_merged_current_prev.json --output data/selected.json || {
-                echo "⚠️ Record selection failed, using empty selection";
-                echo '[]' > data/selected.json;
-              }
+              if ! python -m src.select_and_fetch --records data/records/_merged_current_prev.json --output data/selected.json; then
+                echo "❌ Record selection failed"
+                python -m src.tools.b2_alerts add "record selection failed"
+                python -m src.tools.b2_alerts flush || true
+                exit 1
+              fi
             else
-              echo "⚠️ No records found to select";
-              echo '[]' > data/selected.json;
+              echo "⚠️ No records found to select"
+              echo '[]' > data/selected.json
             fi
+
+            if [ ! -f data/selected.json ]; then
+              echo "❌ selection file missing after select_and_fetch"
+              python -m src.tools.b2_alerts add "selection output missing"
+              python -m src.tools.b2_alerts flush || true
+              exit 1
+            fi
+
+            SELECTION_COUNT=$(python - <<'PY'
+import json, pathlib
+path = pathlib.Path("data/selected.json")
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    print(len(data) if isinstance(data, list) else -1)
+except Exception:
+    print(-1)
+PY
+)
+            if [ "$SELECTION_COUNT" -lt 0 ]; then
+              echo "❌ Unable to read selection output"
+              python -m src.tools.b2_alerts add "selection unreadable"
+              python -m src.tools.b2_alerts flush || true
+              exit 1
+            fi
+            echo "SELECTION_COUNT=$SELECTION_COUNT" >> $GITHUB_ENV
 
           # Persist selection to B2 (dated + latest), then strictly read from B2 (skip on PRs)
           echo "🧭 Preparing selection in Backblaze B2..."
@@ -175,9 +202,42 @@ jobs:
 
             # Translate
             echo "🌐 Running translation pipeline..."
-            python -m src.pipeline --skip-selection --workers 20 --with-qa || {
-              echo "⚠️ Translation failed, continuing with existing translations"
-            }
+            python -m src.pipeline --skip-selection --workers 20 --with-qa
+
+            SUMMARY_FILE="reports/pipeline_summary.json"
+            if [ ! -f "$SUMMARY_FILE" ]; then
+              echo "❌ Missing pipeline summary"
+              python -m src.tools.b2_alerts add "pipeline summary missing"
+              python -m src.tools.b2_alerts flush || true
+              exit 1
+            fi
+
+            PIPELINE_SUCCESS_COUNT=$(python - <<'PY'
+import json, pathlib
+data = json.loads(pathlib.Path("reports/pipeline_summary.json").read_text(encoding="utf-8"))
+print(data.get("successes", 0))
+PY
+)
+            PIPELINE_QA_PASSED=$(python - <<'PY'
+import json, pathlib
+data = json.loads(pathlib.Path("reports/pipeline_summary.json").read_text(encoding="utf-8"))
+print(data.get("qa_passed", 0))
+PY
+)
+            echo "PIPELINE_SUCCESS_COUNT=$PIPELINE_SUCCESS_COUNT" >> $GITHUB_ENV
+            echo "PIPELINE_QA_PASSED=$PIPELINE_QA_PASSED" >> $GITHUB_ENV
+            echo "B2_PUBLISH_SUMMARY_PATH=reports/b2_publish_summary.json" >> $GITHUB_ENV
+
+            if [ "$SKIP_HARVEST" = "false" ] && [ "$PIPELINE_SUCCESS_COUNT" -eq 0 ]; then
+              if [ "${TRANSLATION_OPTIONAL:-false}" = "true" ]; then
+                echo "⚠️ Pipeline produced zero translations but TRANSLATION_OPTIONAL is true; continuing"
+              else
+                echo "❌ Pipeline produced zero translations; failing build"
+                python -m src.tools.b2_alerts add "pipeline produced zero translations"
+                python -m src.tools.b2_alerts flush || true
+                exit 1
+              fi
+            fi
           else
             echo "ℹ️ Skipping harvest and translation (rebuild only)"
           fi
@@ -205,6 +265,12 @@ jobs:
             echo "❌ B2 publish failed";
             exit 1;
           }
+          if [ ! -f "${B2_PUBLISH_SUMMARY_PATH:-reports/b2_publish_summary.json}" ]; then
+            echo "❌ Missing B2 publish summary"
+            python -m src.tools.b2_alerts add "b2 publish summary missing"
+            python -m src.tools.b2_alerts flush || true
+            exit 1
+          fi
 
       - name: Hydrate validated translations from B2 (pre-render)
         if: ${{ github.event_name != 'pull_request' }}
@@ -214,6 +280,7 @@ jobs:
           BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
           BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
           BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+          HYDRATE_EXPECTED_COUNT_FILE: ${{ env.B2_PUBLISH_SUMMARY_PATH }}
         run: |
           set -e
           if [ -z "${BACKBLAZE_KEY_ID}" ] || [ -z "${BACKBLAZE_APPLICATION_KEY}" ] || [ -z "${BACKBLAZE_S3_ENDPOINT}" ] || [ -z "${BACKBLAZE_BUCKET}" ]; then
@@ -238,6 +305,18 @@ jobs:
           python -m src.search_index
           echo "📄 Generating PDFs..."
           python -m src.make_pdf || echo "⚠️ PDF generation failed, continuing without PDFs"
+      - name: Publish run summary
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          set -e
+          python scripts/publish_run_summary.py
       - name: Set up Node.js
         if: ${{ github.event_name != 'pull_request' }}
         uses: actions/setup-node@v4

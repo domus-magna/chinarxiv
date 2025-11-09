@@ -4,6 +4,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from src.pipeline import run_cli as pipeline_run
 
 
@@ -17,6 +19,13 @@ def _chdir_tmp():
 def _restore_tmp(tmp: str, cwd: str):
     os.chdir(cwd)
     shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _load_summary() -> dict:
+    path = Path("reports/pipeline_summary.json")
+    assert path.exists(), "pipeline summary missing"
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
 
 
 def test_pipeline_dry_run_skip_selection(monkeypatch):
@@ -64,6 +73,10 @@ def test_pipeline_dry_run_skip_selection(monkeypatch):
         # Expect translation artifact and site output
         assert Path("data/translated/test-1.json").exists()
         assert Path("site/index.html").exists()
+
+        summary = _load_summary()
+        assert summary["successes"] == 1
+        assert summary["attempted"] == 1
     finally:
         _restore_tmp(tmp, cwd)
 
@@ -92,6 +105,10 @@ def test_pipeline_records_merge_and_limit(monkeypatch):
                 (Path("site")/"index.html").write_text("<html></html>", encoding="utf-8")
                 return 0
             if "src.select_and_fetch" in cmd:
+                Path("data").mkdir(parents=True, exist_ok=True)
+                (Path("data") / "selected.json").write_text(
+                    json.dumps([rec_a[0]], ensure_ascii=False), encoding="utf-8"
+                )
                 return 0
             return 0
         monkeypatch.setattr(_os, "system", _fake_system)
@@ -200,5 +217,81 @@ def test_pipeline_qa_summary_counts(monkeypatch):
         joined = "\n".join(messages)
         assert "Passed: 1" in joined
         assert "Flagged: 1" in joined
+
+        summary = _load_summary()
+        assert summary["qa_passed"] == 1
+        assert summary["qa_flagged"] == 1
+    finally:
+        _restore_tmp(tmp, cwd)
+
+
+def test_pipeline_selection_missing_output(monkeypatch):
+    tmp, cwd = _chdir_tmp()
+    try:
+        os.makedirs("data/records", exist_ok=True)
+        records = [{"id": "x1", "title": "T", "abstract": "A", "license": {"raw": ""}}]
+        with open("data/records/a.json", "w", encoding="utf-8") as f:
+            json.dump(records, f)
+
+        import os as _os
+
+        def fake_system(cmd: str) -> int:
+            # Pretend select_and_fetch succeeded but do not create output
+            return 0
+
+        monkeypatch.setattr(_os, "system", fake_system)
+
+        import sys
+
+        sys.argv = [
+            "pipeline",
+            "--records",
+            "data/records/a.json",
+            "--limit",
+            "1",
+            "--dry-run",
+        ]
+
+        with pytest.raises(SystemExit):
+            pipeline_run()
+
+        summary = _load_summary()
+        assert summary["selection_status"] in {"missing-output", "empty", "unreadable"}
+    finally:
+        _restore_tmp(tmp, cwd)
+
+
+def test_pipeline_allow_empty_selection(monkeypatch):
+    tmp, cwd = _chdir_tmp()
+    try:
+        os.makedirs("data/records", exist_ok=True)
+        records = [{"id": "x1", "title": "T", "abstract": "A", "license": {"raw": ""}}]
+        with open("data/records/a.json", "w", encoding="utf-8") as f:
+            json.dump(records, f)
+
+        import os as _os
+
+        def fake_system(cmd: str) -> int:
+            if "src.select_and_fetch" in cmd:
+                Path("data").mkdir(parents=True, exist_ok=True)
+                (Path("data") / "selected.json").write_text("[]", encoding="utf-8")
+            return 0
+
+        monkeypatch.setattr(_os, "system", fake_system)
+
+        import sys
+
+        sys.argv = [
+            "pipeline",
+            "--records",
+            "data/records/a.json",
+            "--allow-empty-selection",
+            "--dry-run",
+        ]
+        pipeline_run()
+
+        summary = _load_summary()
+        assert summary["attempted"] == 0
+        assert summary["selection_status"] == "complete"
     finally:
         _restore_tmp(tmp, cwd)
