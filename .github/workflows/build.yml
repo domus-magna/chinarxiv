@@ -66,6 +66,32 @@ jobs:
           set -e
           echo "🔎 PR preflight: diagnostics only (no key validation)"
           python -m src.tools.env_diagnose --check || true
+      - name: Hydrate dedupe state from B2
+        env:
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+          if [ -z "${BACKBLAZE_KEY_ID}" ] || [ -z "${BACKBLAZE_APPLICATION_KEY}" ] || [ -z "${BACKBLAZE_S3_ENDPOINT}" ] || [ -z "${BACKBLAZE_BUCKET}" ]; then
+            echo "ℹ️ B2 credentials missing; skipping seen.json hydrate"
+            exit 0
+          fi
+          python -m pip install --upgrade pip >/dev/null 2>&1 || true
+          pip install awscli >/dev/null 2>&1 || true
+          export AWS_ACCESS_KEY_ID="${BACKBLAZE_KEY_ID}"
+          export AWS_SECRET_ACCESS_KEY="${BACKBLAZE_APPLICATION_KEY}"
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}state/seen.json"
+          mkdir -p data
+          if aws s3 ls "${DEST}" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" >/dev/null 2>&1; then
+            echo "⬇️  Hydrating seen.json from ${DEST}"
+            aws s3 cp "${DEST}" data/seen.json --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors
+          else
+            echo "ℹ️ No remote seen.json found; starting fresh"
+          fi
       - name: Run lint (pull_request)
         if: ${{ github.event_name == 'pull_request' }}
         run: ruff check src tests
@@ -306,21 +332,29 @@ jobs:
           path: |
             data/records/*.json
             data/selected.json
-      - name: Persist dedupe state (seen.json)
+      - name: Persist dedupe state to B2 (seen.json)
         if: ${{ github.event_name != 'pull_request' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          B2_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          B2_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
         run: |
           set -e
-          if [ ! -f data/seen.json ]; then
-            echo "No seen.json to persist; skipping"
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ] || [ -z "${B2_S3_ENDPOINT}" ] || [ -z "${B2_BUCKET}" ]; then
+            echo "ℹ️ B2 credentials missing; skipping seen.json persist"
             exit 0
           fi
-          echo "🔒 Persisting data/seen.json..."
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/seen.json || true
-          if git diff --cached --quiet; then
-            echo "No changes in seen.json"
-          else
-            git commit -m "chore(dedupe): update seen.json [skip ci]" || true
-            git push || echo "⚠️ Push failed (non-fatal)"
+          if [ ! -f data/seen.json ]; then
+            echo "ℹ️ No seen.json found; nothing to persist"
+            exit 0
           fi
+          python -m pip install --upgrade pip >/dev/null 2>&1 || true
+          pip install awscli >/dev/null 2>&1 || true
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${B2_BUCKET}/${B2_PREFIX}state"
+          echo "📤 Uploading dedupe state to ${DEST}/seen.json"
+          aws s3 cp data/seen.json "${DEST}/seen.json" --endpoint-url "${B2_S3_ENDPOINT}" --only-show-errors
+          TS=$(date -u +"%Y%m%dT%H%M%SZ")
+          aws s3 cp data/seen.json "${DEST}/history/seen-${TS}.json" --endpoint-url "${B2_S3_ENDPOINT}" --only-show-errors || true

@@ -33,7 +33,7 @@ See [SETUP.md](docs/SETUP.md) for detailed instructions.
 - [PRD](docs/PRD.md) - Product requirements document
 
 ### Backfill by Month
-Use the "backfill-month" GitHub Actions workflow to backfill a single month (YYYYMM). It harvests optimized, selects unseen items, translates all in parallel, and can optionally deploy to Cloudflare Pages. The workflow also persists cross-job dedupe by committing `data/seen.json` back to the repo after a successful run.
+Use the "backfill-month" GitHub Actions workflow to backfill a single month (YYYYMM). It harvests optimized, selects unseen items, translates all in parallel, and can optionally deploy to Cloudflare Pages. The workflow also persists cross-job dedupe by writing `data/seen.json` to Backblaze B2 (`state/seen.json`) after a successful run so every job hydrates the canonical dedupe list before processing.
 
 ## Architecture
 - **Harvesting**: ChinaXiv via BrightData Web Unlocker (default)

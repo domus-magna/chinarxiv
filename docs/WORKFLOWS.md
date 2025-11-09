@@ -53,7 +53,7 @@ This document describes the GitHub Actions workflows used for building, testing,
 5. Select new items from `data/records/chinaxiv_YYYYMM.json`
 6. Run `src.pipeline --skip-selection --workers N` (translates all, renders site)
 7. Optionally deploy via Wrangler Pages
-8. Persist dedupe state: workflow commits `data/seen.json` back to the repo to avoid reprocessing in future runs
+8. Persist dedupe state: workflow uploads `data/seen.json` to Backblaze B2 (`state/seen.json`) so every job hydrates the same dedupe list
 
 ## Configuration
 

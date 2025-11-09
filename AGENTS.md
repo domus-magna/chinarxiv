@@ -92,7 +92,7 @@
   - `BACKBLAZE_PREFIX` — optional prefix like `prod/`
 
 Notes
-- We still avoid committing large artifacts to git. Only `data/seen.json` is committed for cross-run dedupe.
+- We still avoid committing large artifacts to git. Dedupe state (`data/seen.json`) is synced to Backblaze B2 after each workflow run, so the repo stays clean.
 - GitHub Artifacts remain enabled as a safety net for harvest JSONs and selections (90‑day retention), but B2 is the durable source of truth.
 
 ### Pipeline Operations
@@ -275,7 +275,7 @@ This process catches overengineering before it becomes technical debt.
 ### GitHub Actions Workflows
 - **Daily Build** (`.github/workflows/build.yml`): Runs at 3 AM UTC, harvests current + previous month (optimized), selects unseen items, translates, publishes to B2, then hydrates validated translations from B2 → render → search index → PDFs → deploy. This guarantees the site reflects the canonical data in B2.
 - **Configurable Backfill** (`.github/workflows/backfill.yml`): Translates a specific month, publishes to B2, then (when `deploy=true`) hydrates from B2 and rebuilds the site before deploy.
-  - Both workflows persist `data/seen.json` by committing it back to the repository, ensuring cross-job deduplication.
+  - Both workflows hydrate `data/seen.json` from Backblaze B2 at start and persist it back to `state/seen.json` afterward, ensuring cross-job deduplication.
 - **Rebuild from B2** (`.github/workflows/rebuild-from-b2.yml`): Minimal workflow to hydrate from B2 and redeploy without harvesting/translating. Trigger via `workflow_dispatch` from the Admin UI or GitHub UI.
 
 ### Manual Backfill (On Demand)
@@ -283,7 +283,7 @@ This process catches overengineering before it becomes technical debt.
 - **Select**: Merge harvested months to a single records file, then `python -m src.select_and_fetch --records <merged>.json --output data/selected.json`.
 - **Translate (parallel)**: `jq -r '.[].id' data/selected.json | xargs -n1 -P 20 -I {} sh -c 'python -m src.translate "{}" || true'`.
 - **Render + Index + PDFs**: `python -m src.render && python -m src.search_index && python -m src.make_pdf`.
- - **Persist dedupe**: Commit `data/seen.json` after successful runs to avoid reprocessing in subsequent jobs.
+- **Persist dedupe**: Upload `data/seen.json` to Backblaze B2 (`state/seen.json`) after successful runs to avoid reprocessing in subsequent jobs; every workflow hydrates this file before selecting records.
 
 ### Required GitHub Secrets
 - `CF_API_TOKEN`: Cloudflare API token with Pages:Edit permission

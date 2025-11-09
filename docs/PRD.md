@@ -72,7 +72,7 @@ References:
 
 7) Automation & Deploy
    - GitHub Actions nightly (03:00 UTC): harvest → QA gates → fetch → translate → render → index → deploy to Cloudflare Pages
-   - Idempotent via `seen.json` cache (committed back to repo to persist dedupe state)
+   - Idempotent via `seen.json` cache (synced to Backblaze B2 `state/seen.json` to persist dedupe state)
    - Persist pipeline outputs to Backblaze B2 (S3 API) to prevent loss on ephemeral runners
    - Log per-item model slug and token counts for cost tracking
 
