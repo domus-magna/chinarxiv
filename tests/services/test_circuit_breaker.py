@@ -2,7 +2,7 @@
 Tests for circuit breaker functionality in TranslationService.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 
 from src.services.translation_service import TranslationService, CircuitBreakerOpen
