@@ -133,6 +133,12 @@ class TranslationService:
 
         Args:
             config: Configuration dictionary (optional)
+
+        Thread Safety:
+            This class is NOT thread-safe. Circuit breaker state
+            (_consecutive_persistent, _consecutive_transient, _circuit_open)
+            is not protected by locks. Each instance should only be used
+            from a single thread.
         """
         self.config = config or get_config()
         self.model = self.config.get("models", {}).get(
@@ -202,8 +208,8 @@ class TranslationService:
                         source="translation_service",
                         metadata={"error_code": error_code or "unknown"},
                     )
-                except Exception:
-                    pass
+                except Exception as alert_err:
+                    log(f"Failed to send circuit breaker alert: {alert_err}")
                 raise CircuitBreakerOpen(
                     f"Circuit breaker triggered: {self._consecutive_persistent} consecutive "
                     f"persistent errors (threshold: {self.PERSISTENT_ERROR_THRESHOLD}). "
@@ -223,8 +229,8 @@ class TranslationService:
                         source="translation_service",
                         metadata={"error_code": error_code or "unknown"},
                     )
-                except Exception:
-                    pass
+                except Exception as alert_err:
+                    log(f"Failed to send circuit breaker alert: {alert_err}")
                 raise CircuitBreakerOpen(
                     f"Circuit breaker triggered: {self._consecutive_transient} consecutive "
                     f"transient errors (threshold: {self.TRANSIENT_ERROR_THRESHOLD}). "

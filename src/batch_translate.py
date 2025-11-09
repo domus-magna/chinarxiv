@@ -13,6 +13,7 @@ from .job_queue import job_queue
 from .streaming import process_papers_streaming
 from .utils import log
 from .monitoring import alert_info, alert_warning
+from .services.translation_service import CircuitBreakerOpen
 
 
 def harvest_papers(years: List[str]) -> List[str]:
@@ -95,9 +96,6 @@ def start_workers(num_workers: int) -> None:
         log("Interrupted by user")
 
     except Exception as e:
-        # Check if this is a circuit breaker exception
-        from .services.translation_service import CircuitBreakerOpen
-
         if isinstance(e, CircuitBreakerOpen):
             log(f"Circuit breaker triggered: {e}")
             from .monitoring import alert_critical
