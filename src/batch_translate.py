@@ -79,6 +79,7 @@ def start_workers(num_workers: int) -> None:
     # Process papers one at a time
     completed = 0
     failed = 0
+    circuit_breaker_triggered = False
 
     try:
         for result in process_papers_streaming(pending_ids):
@@ -95,12 +96,41 @@ def start_workers(num_workers: int) -> None:
     except KeyboardInterrupt:
         log("Interrupted by user")
 
+    except Exception as e:
+        # Check if this is a circuit breaker exception
+        from .services.translation_service import CircuitBreakerOpen
+
+        if isinstance(e, CircuitBreakerOpen):
+            circuit_breaker_triggered = True
+            log(f"Circuit breaker triggered: {e}")
+            from .monitoring import alert_critical
+            alert_critical(
+                "Translation Pipeline Stopped: Circuit Breaker",
+                f"Pipeline stopped after consecutive OpenRouter failures: {e}",
+                source="batch_translate",
+                metadata={
+                    "completed": completed,
+                    "failed": failed,
+                    "total": len(pending_ids),
+                },
+            )
+        else:
+            # Re-raise unexpected exceptions
+            raise
+
     # Final stats
     log(
         f"Processing complete: {completed}/{len(pending_ids)} completed, {failed} failed"
     )
 
-    if failed > 0:
+    if circuit_breaker_triggered:
+        from .monitoring import alert_critical
+        alert_critical(
+            "Circuit Breaker Triggered",
+            f"Stopped after {completed} completed, {failed} failed. Fix OpenRouter issues and retry.",
+            source="batch_translate",
+        )
+    elif failed > 0:
         alert_warning(
             "Processing Completed with Failures",
             f"Processing completed with {failed} failures",
