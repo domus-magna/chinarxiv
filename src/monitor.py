@@ -3,6 +3,7 @@
 Monitoring dashboard for ChinaXiv Translations.
 """
 
+import json
 import os
 import sqlite3
 from datetime import datetime, timedelta
@@ -24,6 +25,15 @@ MONITORING_PORT = int(os.getenv("MONITORING_PORT", "5000"))
 SECRET_KEY = os.getenv(
     "SECRET_KEY", "chinaxiv-monitoring-secret-key-change-in-production"
 )
+GITHUB_REPO = os.getenv("MONITORING_GITHUB_REPO") or os.getenv("GH_REPO") or os.getenv(
+    "GITHUB_REPOSITORY", "domus-magna/chinaxiv-english"
+)
+GITHUB_TOKEN = os.getenv("MONITORING_GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+MONITORED_WORKFLOWS = [
+    w.strip()
+    for w in (os.getenv("MONITORING_WORKFLOWS", "backfill.yml,build.yml").split(","))
+    if w.strip()
+]
 
 
 @dataclass
@@ -93,6 +103,14 @@ class MonitoringDashboard:
 
             logs = self.get_recent_logs()
             return jsonify(logs)
+
+        @self.app.route("/api/workflows")
+        def api_workflows():
+            """API endpoint for GitHub workflow runs."""
+            if not self.check_auth():
+                return jsonify({"error": "Unauthorized"}), 401
+
+            return jsonify(self.get_workflow_runs())
 
         @self.app.route("/login", methods=["GET", "POST"])
         def login():
@@ -287,37 +305,72 @@ class MonitoringDashboard:
         """Get job statistics from database."""
         try:
             db_path = Path("data/job_queue.db")
-            if not db_path.exists():
-                print(f"Warning: Database not found at {db_path}")
-                return JobStats(0, 0, 0, 0, 0.0)
+            if db_path.exists():
+                with sqlite3.connect(db_path) as conn:
+                    cursor = conn.cursor()
 
-            with sqlite3.connect(db_path) as conn:
-                cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM jobs")
+                    total = cursor.fetchone()[0]
 
-                # Get total jobs
-                cursor.execute("SELECT COUNT(*) FROM jobs")
-                total = cursor.fetchone()[0]
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM jobs WHERE status = 'completed'"
+                    )
+                    completed = cursor.fetchone()[0]
 
-                # Get completed jobs
-                cursor.execute("SELECT COUNT(*) FROM jobs WHERE status = 'completed'")
-                completed = cursor.fetchone()[0]
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM jobs WHERE status = 'pending'"
+                    )
+                    pending = cursor.fetchone()[0]
 
-                # Get pending jobs
-                cursor.execute("SELECT COUNT(*) FROM jobs WHERE status = 'pending'")
-                pending = cursor.fetchone()[0]
+                    cursor.execute("SELECT COUNT(*) FROM jobs WHERE status = 'failed'")
+                    failed = cursor.fetchone()[0]
 
-                # Get failed jobs
-                cursor.execute("SELECT COUNT(*) FROM jobs WHERE status = 'failed'")
-                failed = cursor.fetchone()[0]
+                    progress_percent = (completed / total * 100) if total > 0 else 0.0
 
-                # Calculate progress
-                progress_percent = (completed / total * 100) if total > 0 else 0.0
+                    estimated_completion = None
+                    if pending > 0 and completed > 0:
+                        avg_time_per_job = 30
+                        remaining_seconds = pending * avg_time_per_job
+                        estimated_completion = datetime.now() + timedelta(
+                            seconds=remaining_seconds
+                        )
+                        estimated_completion = estimated_completion.strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
 
-                # Estimate completion time
+                    return JobStats(
+                        total=total,
+                        completed=completed,
+                        pending=pending,
+                        failed=failed,
+                        progress_percent=progress_percent,
+                        estimated_completion=estimated_completion,
+                    )
+
+            # Fallback to file-based queue stats
+            jobs_dir = Path("data/jobs")
+            if jobs_dir.exists():
+                total = completed = pending = failed = in_progress = 0
+                for job_file in jobs_dir.glob("*.json"):
+                    try:
+                        data = job_file.read_text(encoding="utf-8")
+                        job = json.loads(data)
+                    except Exception:
+                        continue
+                    total += 1
+                    status = job.get("status", "pending")
+                    if status == "completed":
+                        completed += 1
+                    elif status == "failed":
+                        failed += 1
+                    elif status == "in_progress":
+                        in_progress += 1
+                    else:
+                        pending += 1
+                progress_percent = (completed / total * 100) if total else 0.0
                 estimated_completion = None
                 if pending > 0 and completed > 0:
-                    # Simple estimation based on current rate
-                    avg_time_per_job = 30  # seconds (rough estimate)
+                    avg_time_per_job = 30
                     remaining_seconds = pending * avg_time_per_job
                     estimated_completion = datetime.now() + timedelta(
                         seconds=remaining_seconds
@@ -325,11 +378,10 @@ class MonitoringDashboard:
                     estimated_completion = estimated_completion.strftime(
                         "%Y-%m-%d %H:%M:%S"
                     )
-
                 return JobStats(
                     total=total,
                     completed=completed,
-                    pending=pending,
+                    pending=pending + in_progress,
                     failed=failed,
                     progress_percent=progress_percent,
                     estimated_completion=estimated_completion,
@@ -416,6 +468,50 @@ class MonitoringDashboard:
             print(f"Error getting logs: {e}")
             return []
 
+    def fetch_workflow_runs(self, workflow_file: str, limit: int = 5) -> List[Dict]:
+        """Fetch recent GitHub workflow runs for a given workflow file."""
+        if not GITHUB_REPO or not workflow_file or not GITHUB_TOKEN:
+            return []
+
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{workflow_file}/runs"
+        params = {"per_page": limit}
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {GITHUB_TOKEN}",
+        }
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=10)
+            if resp.status_code != 200:
+                return []
+            payload = resp.json() or {}
+            runs = payload.get("workflow_runs") or []
+            out: List[Dict[str, Any]] = []
+            for run in runs:
+                out.append(
+                    {
+                        "name": run.get("name"),
+                        "status": run.get("status"),
+                        "conclusion": run.get("conclusion"),
+                        "event": run.get("event"),
+                        "run_number": run.get("run_number"),
+                        "head_branch": run.get("head_branch"),
+                        "created_at": run.get("created_at"),
+                        "updated_at": run.get("updated_at"),
+                        "html_url": run.get("html_url"),
+                    }
+                )
+            return out
+        except Exception:
+            return []
+
+    def get_workflow_runs(self) -> List[Dict[str, Any]]:
+        """Return workflow run summaries for monitored workflows."""
+        data: List[Dict[str, Any]] = []
+        for wf in MONITORED_WORKFLOWS:
+            runs = self.fetch_workflow_runs(wf)
+            data.append({"workflow": wf, "runs": runs})
+        return data
+
     def render_dashboard(self):
         """Render the main dashboard."""
         return render_template_string(self.get_dashboard_template())
@@ -451,6 +547,10 @@ class MonitoringDashboard:
         .refresh-btn { background: #3498db; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
         .refresh-btn:hover { background: #2980b9; }
         .auto-refresh { margin-left: 1rem; }
+        .workflow-run { border-bottom: 1px solid #ecf0f1; padding: 0.5rem 0; font-size: 0.9rem; }
+        .workflow-run:last-child { border-bottom: none; }
+        .workflow-name { font-weight: 600; margin-bottom: 0.5rem; }
+        .workflow-meta { color: #7f8c8d; font-size: 0.8rem; }
     </style>
 </head>
 <body>
@@ -534,6 +634,13 @@ class MonitoringDashboard:
                 <div class="log-entry">Loading logs...</div>
             </div>
         </div>
+
+        <div class="card">
+            <h3>⚙️ GitHub Workflow Runs</h3>
+            <div id="workflowStatus">
+                <div class="workflow-run">Loading workflow data...</div>
+            </div>
+        </div>
     </div>
     
     <script>
@@ -595,6 +702,35 @@ class MonitoringDashboard:
                     });
                 })
                 .catch(error => console.error('Error fetching logs:', error));
+
+            // Fetch workflow runs
+            fetch('/api/workflows')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('workflowStatus');
+                    container.innerHTML = '';
+                    if (!Array.isArray(data) || data.length === 0) {
+                        container.innerHTML = '<div class="workflow-run">No workflow data available.</div>';
+                        return;
+                    }
+                    data.forEach(entry => {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'workflow-run';
+                        const runs = entry.runs || [];
+                        const latest = runs[0];
+                        const status = latest ? `${latest.status || 'unknown'}${latest.conclusion ? ' / ' + latest.conclusion : ''}` : 'no runs yet';
+                        const link = latest && latest.html_url ? `<a href="${latest.html_url}" target="_blank" rel="noopener">#${latest.run_number}</a>` : '';
+                        wrapper.innerHTML = `
+                            <div class="workflow-name">${entry.workflow}</div>
+                            <div>Status: <strong>${status}</strong> ${link}</div>
+                            <div class="workflow-meta">
+                                ${latest ? `Branch ${latest.head_branch || '-'} · ${latest.event || '-'} · ${latest.created_at || '-'}` : ''}
+                            </div>
+                        `;
+                        container.appendChild(wrapper);
+                    });
+                })
+                .catch(error => console.error('Error fetching workflow data:', error));
         }
         
         function toggleAutoRefresh() {
