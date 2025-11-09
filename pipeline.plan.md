@@ -73,7 +73,7 @@
 
 ### Stage 0 – Preflight
 - [x] Containerised check
-- [ ] Hook report surfacing into `site/monitor.html` auto-refresh
+- [ ] Hook report surfacing into the admin monitor (`python -m src.monitor`) auto-refresh
 
 ### Stage 1 – Harvest & PDF
 - [x] Schema validator + PDF verification

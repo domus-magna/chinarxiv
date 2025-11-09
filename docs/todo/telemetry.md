@@ -111,7 +111,7 @@ Dashboards
   - Panels: Daily cost over time, Cost by model, Rate-limit budget usage (429), Auth/payment incidents (401/402)
 
 Navigation
-- Dashboard links from `site/monitor.html` to Grafana URL.
+- Dashboard links from the admin monitor (`python -m src.monitor`) to Grafana URL.
 - Keep Discord for critical auth/payment errors only.
 
 ## Local Dev Quickstart
@@ -135,4 +135,3 @@ Navigation
 - `/metrics` endpoint in `src/monitor.py`.
 - Example configs: Promtail and Prometheus under `docs/todo/`.
 - Grafana dashboard JSON(s) under `docs/dashboards/`.
-

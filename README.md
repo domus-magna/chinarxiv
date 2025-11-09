@@ -39,7 +39,7 @@ Use the "backfill-month" GitHub Actions workflow to backfill a single month (YYY
 - **Harvesting**: ChinaXiv via BrightData Web Unlocker (default)
 - **Translation**: OpenRouter API with DeepSeek V3.2-Exp model
 - **Deployment**: Cloudflare Pages with GitHub Actions
-- **Monitoring**: Consolidated monitoring service with alerts, analytics, and performance metrics
+- **Monitoring**: Consolidated monitoring service with alerts, analytics, and performance metrics (run locally via `python -m src.monitor`)
 
 ## Support ChinaXiv Translations
 
@@ -151,7 +151,7 @@ Batch translation (future option)
 ## Status
 - **Papers Translated**: 3,096 / 3,461 (89.5%)
 - **Site**: https://chinaxiv-english.pages.dev
-- **Monitoring**: https://chinaxiv-english.pages.dev/monitor
+- **Monitoring**: Run `python -m src.monitor` (local/admin dashboard only)
 
 ## Contributing
 See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for contribution guidelines.

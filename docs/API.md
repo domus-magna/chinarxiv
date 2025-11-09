@@ -8,7 +8,7 @@ This document describes the API endpoints and functionality available in the Chi
 - **Local Development**: `http://localhost:8001`
 
 ## Authentication
-Most endpoints are public. The monitoring dashboard requires authentication:
+Most endpoints are public. The monitoring dashboard is only exposed via the admin Flask app (`python -m src.monitor`)—it is not part of the public Cloudflare Pages site—and requires authentication:
 - **Username**: Set via `MONITORING_USERNAME` environment variable (default: admin)
 - **Password**: Set via `MONITORING_PASSWORD` environment variable (default: chinaxiv2024)
 
@@ -57,6 +57,8 @@ Download paper files in various formats.
 **Response:** File download
 
 ### Monitoring Endpoints
+
+> **Note:** These routes are served by the private monitoring dashboard (`python -m src.monitor`) and are reachable only on that host (default `http://127.0.0.1:5000`). They are not deployed to `chinaxiv-english.pages.dev`.
 
 #### Health Check
 ```http
@@ -443,7 +445,7 @@ curl -O "https://chinaxiv-english.pages.dev/items/paper-20241005-001.pdf"
 
 ### Create Alert
 ```bash
-curl -X POST "https://chinaxiv-english.pages.dev/monitor/alerts/create" \
+curl -X POST "http://127.0.0.1:5000/alerts/create" \
   -H "Content-Type: application/json" \
   -d '{
     "level": "info",
@@ -455,7 +457,7 @@ curl -X POST "https://chinaxiv-english.pages.dev/monitor/alerts/create" \
 
 ### Get System Status
 ```bash
-curl "https://chinaxiv-english.pages.dev/monitor/api/system"
+curl "http://127.0.0.1:5000/api/system"
 ```
 
 ## SDKs and Libraries
@@ -469,7 +471,7 @@ response = requests.get("https://chinaxiv-english.pages.dev/items/paper-20241005
 
 # Create alert
 response = requests.post(
-    "https://chinaxiv-english.pages.dev/monitor/alerts/create",
+    "http://127.0.0.1:5000/alerts/create",
     json={
         "level": "info",
         "title": "Test Alert",
@@ -487,7 +489,7 @@ fetch('https://chinaxiv-english.pages.dev/items/paper-20241005-001.html')
   .then(html => console.log(html));
 
 // Create alert
-fetch('https://chinaxiv-english.pages.dev/monitor/alerts/create', {
+fetch('http://127.0.0.1:5000/alerts/create', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',

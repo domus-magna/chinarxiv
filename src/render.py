@@ -121,11 +121,6 @@ def render_site(items: List[Dict[str, Any]]) -> None:
     html_index = tmpl_index.render(items=items, root=".", build_version=build_version)
     write_text(os.path.join(base_out, "index.html"), html_index)
 
-    # Monitor page
-    tmpl_monitor = env.get_template("monitor.html")
-    html_monitor = tmpl_monitor.render(root=".", build_version=build_version)
-    write_text(os.path.join(base_out, "monitor.html"), html_monitor)
-
     # Donations page
     try:
         tmpl_donations = env.get_template("donations.html")
