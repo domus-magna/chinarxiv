@@ -114,6 +114,12 @@ class MathPreservationError(Exception):
     pass
 
 
+class CircuitBreakerOpen(Exception):
+    """Circuit breaker triggered after consecutive failures."""
+
+    pass
+
+
 class TranslationService:
     """Service for handling translation operations."""
 
@@ -130,6 +136,91 @@ class TranslationService:
         )
         self.glossary = self.config.get("glossary", [])
         self.failure_log_dir = Path("data/monitoring/openrouter_failures")
+
+        # Circuit breaker state
+        self._consecutive_persistent = 0  # payment/auth errors
+        self._consecutive_transient = 0   # network/server errors
+        self._circuit_open = False
+        self.PERSISTENT_ERROR_THRESHOLD = 2
+        self.TRANSIENT_ERROR_THRESHOLD = 5
+
+    def _check_circuit_breaker(self) -> None:
+        """
+        Check if circuit breaker is open.
+
+        Raises:
+            CircuitBreakerOpen: If circuit breaker is triggered
+        """
+        if self._circuit_open:
+            raise CircuitBreakerOpen(
+                f"Circuit breaker triggered after consecutive failures: "
+                f"{self._consecutive_persistent} persistent, {self._consecutive_transient} transient"
+            )
+
+    def _record_failure(self, error_code: Optional[str]) -> None:
+        """
+        Record an API failure and check circuit breaker thresholds.
+
+        Persistent errors (payment/auth) trigger after 2 consecutive failures.
+        Transient errors (network/5xx) trigger after 5 consecutive failures.
+
+        Args:
+            error_code: Error code from OpenRouter API
+
+        Raises:
+            CircuitBreakerOpen: If threshold exceeded
+        """
+        # Classify error type
+        persistent_codes = {
+            "payment_required",
+            "insufficient_quota",
+            "invalid_api_key",
+            "invalid_credentials",
+            "unauthorized",
+        }
+
+        if error_code in persistent_codes:
+            self._consecutive_persistent += 1
+            if self._consecutive_persistent >= self.PERSISTENT_ERROR_THRESHOLD:
+                self._circuit_open = True
+                try:
+                    alert_critical(
+                        "Circuit Breaker: Persistent Error Threshold Reached",
+                        f"Stopped after {self._consecutive_persistent} consecutive {error_code} errors",
+                        source="translation_service",
+                        metadata={"error_code": error_code or "unknown"},
+                    )
+                except Exception:
+                    pass
+                raise CircuitBreakerOpen(
+                    f"Circuit breaker triggered: {self._consecutive_persistent} consecutive "
+                    f"persistent errors (threshold: {self.PERSISTENT_ERROR_THRESHOLD}). "
+                    f"Last error: {error_code}"
+                )
+        else:
+            # Transient error (network, 5xx, rate limit, etc.)
+            self._consecutive_transient += 1
+            if self._consecutive_transient >= self.TRANSIENT_ERROR_THRESHOLD:
+                self._circuit_open = True
+                try:
+                    alert_critical(
+                        "Circuit Breaker: Transient Error Threshold Reached",
+                        f"Stopped after {self._consecutive_transient} consecutive transient errors",
+                        source="translation_service",
+                        metadata={"error_code": error_code or "unknown"},
+                    )
+                except Exception:
+                    pass
+                raise CircuitBreakerOpen(
+                    f"Circuit breaker triggered: {self._consecutive_transient} consecutive "
+                    f"transient errors (threshold: {self.TRANSIENT_ERROR_THRESHOLD}). "
+                    f"Last error: {error_code or 'unknown'}"
+                )
+
+    def _reset_failure_counter(self) -> None:
+        """Reset circuit breaker failure counters on successful translation."""
+        self._consecutive_persistent = 0
+        self._consecutive_transient = 0
 
     @retry(
         wait=wait_exponential(min=1, max=20),
@@ -966,17 +1057,33 @@ class TranslationService:
 
         Raises:
             OpenRouterError: If all models fail
+            CircuitBreakerOpen: If circuit breaker threshold exceeded
         """
+        # Check circuit breaker before attempting translation
+        self._check_circuit_breaker()
+
         models_to_try = [model] + self.config.get("models", {}).get("alternates", [])
 
         last_error = None
         for model_to_try in models_to_try:
             try:
                 log(f"Attempting translation with model: {model_to_try}")
-                return self._call_openrouter(text, model_to_try, glossary)
+                result = self._call_openrouter(text, model_to_try, glossary)
+                # Success! Reset failure counters
+                self._reset_failure_counter()
+                return result
             except OpenRouterError as e:
                 last_error = e
                 log(f"Model {model_to_try} failed: {e}")
+
+                # Record failure for circuit breaker
+                error_code = getattr(e, "code", None)
+                try:
+                    self._record_failure(error_code)
+                except CircuitBreakerOpen:
+                    # Circuit breaker triggered - stop immediately
+                    raise
+
                 # If the failure cannot be fixed by switching models, stop early
                 if isinstance(e, OpenRouterFatalError) and not getattr(
                     e, "fallback_ok", True
