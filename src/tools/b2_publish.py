@@ -308,6 +308,24 @@ def main() -> int:
         [summary_row],
     )
 
+    # Persist summary for downstream parity + reporting
+    summary_payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
+        "git_sha": git_sha,
+        "validated_uploaded": validated_ok,
+        "flagged_uploaded": flagged_count,
+        "pdf_uploaded": pdf_uploaded,
+        "validated_manifest_key": f"indexes/validated/manifest-{day}.csv",
+        "flagged_manifest_key": f"indexes/flagged/manifest-{day}.csv",
+        "summary_key": summary_key,
+        "selection_key": select_key,
+        "records_keys": records_keys,
+    }
+    summary_path = Path("reports") / "b2_publish_summary.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(json.dumps(summary_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
     # Final flush of alerts if any
     # Decide exit code based on failures and toggle
     total_items = len(validated_files) + len(flagged_files)
