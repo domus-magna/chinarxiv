@@ -1,3 +1,14 @@
+# Site Status Update - November 10, 2025
+
+## ✅ **Nightly pipeline guardrails hardened**
+
+- Nightly GitHub Actions run now fails fast if selection output is missing or translation succeeds on zero papers. We generate `reports/pipeline_summary.json` and read it inside `.github/workflows/build.yml`, and any zero-success run now raises alerts unless `TRANSLATION_OPTIONAL=true`.
+- Hydration parity is enforced by `scripts/hydrate_from_b2.py`, which reads the manifest emitted by `src.tools.b2_publish`. If the hydrated count does not match the manifest count, we fail the job and buffer a Discord alert through `src.tools.b2_alerts`.
+- A new `scripts/publish_run_summary.py` collects pipeline, publish, and hydration summaries, uploads the aggregate JSON to Backblaze B2, and posts a concise Discord status embed so operators can see nightly throughput without digging into logs.
+- Local developers must now opt-in before `make dev` wipes `site/` or `data/` (`DEV_ALLOW_CLEAN=1 make dev` or `make dev-clean`). This prevents accidental deletion of hydrated translations when debugging CI artifacts.
+
+The October 10 status is kept below for historical context.
+
 # Site Status Update - October 10, 2025
 
 ## ✅ **MAJOR SUCCESS: Translation Pipeline Fixed**
@@ -70,4 +81,3 @@ The site is now production-ready with:
 - ✅ `python -m src.render` → 5 items rendered
 - ✅ `python -m src.search_index` → 5 entries indexed
 - ✅ Homepage shows English titles and abstracts
-
