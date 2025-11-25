@@ -269,7 +269,7 @@ class TranslationService:
 
     @retry(
         wait=wait_exponential(min=1, max=10),
-        stop=stop_after_attempt(1),
+        stop=stop_after_attempt(4),  # 3 retries with exponential backoff
         retry=retry_if_exception_type(OpenRouterRetryableError),
         reraise=True,
     )
@@ -870,9 +870,10 @@ class TranslationService:
                         log(
                             f"Macro chunk failed at {start_idx}-{end_idx-1} after {max_attempts} attempts: {exc}"
                         )
-                        # Skip the missing chunk but continue with downstream chunks
-                        translated.extend([""] * (end_idx - start_idx))
-                        break
+                        # Fail immediately - do not emit blanks that could pass QA
+                        raise TranslationValidationError(
+                            f"Macro chunk {start_idx}-{end_idx-1} failed after {max_attempts} attempts: {exc}"
+                        )
                     log(
                         f"Retrying macro chunk {start_idx}-{end_idx-1} "
                         f"(attempt {attempt+1}/{max_attempts}): {exc}"
