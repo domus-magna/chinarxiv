@@ -8,17 +8,28 @@ proxy:
   https: "http://127.0.0.1:1087"
 
 models:
-  default_slug: "deepseek/deepseek-v3.2-exp"
-  alternates:
-    - "z-ai/glm-4.5-air"
+  default_slug: "openai/gpt-5.1"
+  alternates: []
 translation:
   whole_paper_mode: true  # Translate entire paper body at once for maximum coherency
   max_whole_paper_tokens: 32000  # Safety limit for whole paper mode (DeepSeek V3: 64K context)
   batch_paragraphs: false  # Group paragraphs into ~1500 token chunks (ignored if whole_paper_mode=true)
   retry_chinese_chars: true  # Enable retry for Chinese characters
+  macro_chunk_threshold: 160  # switch to macro-chunks once we exceed this paragraph count
+  macro_chunk_target_size: 20  # target paragraphs per macro-chunk (balanced across chunks)
+  macro_chunk_max_chunks: 8  # cap total macro-chunks to avoid too many calls
+  macro_chunk_retry_attempts: 1  # retries per macro chunk (in addition to first attempt)
+  request_timeout_seconds:
+    connect: 10
+    read: 900  # Allow up to 15 minutes per call; reliability over latency
+  paper_wallclock_limit_seconds: 2400  # hard cap per paper (~40m) to avoid runaway hangs
+  fallback_models: []
+  max_retries_per_model: 1  # per-model attempts (macro chunks handle their own retries)
+  max_short_ratio: 0.1  # fail translation if translated short fragments exceed this ratio (when source is cleaner)
 
 formatting:
   # model: deepseek/deepseek-v3.2-exp  # optional override
+  fallback_model: "google/gemini-2.5-flash-preview-09-2025"
   temperature: 0.1
 
 glossary:
@@ -57,4 +68,7 @@ validation_thresholds:
 cost:
   pricing_per_mtoken:
     deepseek/deepseek-v3.2-exp: { input: 0.27, output: 0.40 }
-    z-ai/glm-4.5-air: { input: 0.14, output: 0.86 }
+    z-ai/glm-4.5-air: { input: 0.14, output: 0.85 }
+    z-ai/glm-4.6: { input: 0.40, output: 1.75 }
+    openai/gpt-5.1: { input: 1.25, output: 10.0, cache_read: 0.125 }
+    x-ai/grok-4.1-fast: { input: 0.0, output: 0.0 }

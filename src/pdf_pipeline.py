@@ -7,14 +7,18 @@ Downloads PDFs from provided URLs and extracts text using pdfminer.
 from __future__ import annotations
 
 import argparse
-import os
 import json
+import os
 import shutil
 import subprocess
 import time
+import re
 from collections import Counter
+from contextlib import suppress
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
+import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 from .http_client import get_session
 from .config import get_proxies, get_config
@@ -28,7 +32,7 @@ except ImportError:  # pragma: no cover
 
 
 @retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(3))
-def download_pdf(url: str, output_path: str) -> bool:
+def download_pdf(url: str, output_path: str, *, referer: str | None = None, session_id: str | None = None) -> bool:
     """
     Download a PDF from a URL with validation.
 
@@ -49,14 +53,61 @@ def download_pdf(url: str, output_path: str) -> bool:
         }
         if source == "config" and proxies:
             kwargs["proxies"] = proxies
+            kwargs["verify"] = False  # proxy MITM can break cert chain
+        elif source == "env" and proxies:
+            kwargs["proxies"] = proxies
+            kwargs["verify"] = False  # Bright Data proxy uses MITM cert
 
+        # Warm up cookies by hitting referer first if provided
+        if referer:
+            try:
+                ref_resp = session.get(
+                    referer,
+                    timeout=30,
+                    allow_redirects=True,
+                    verify=kwargs.get("verify", True),
+                    proxies=kwargs.get("proxies"),
+                )
+                ref_resp.raise_for_status()
+                log(f"Referer warmup ok for {referer} (status={ref_resp.status_code})")
+            except Exception as ref_err:
+                log(f"Referer warmup failed for {referer}: {ref_err}")
+
+        # Add referer header if provided (helps some endpoints)
+        if referer:
+            kwargs.setdefault("headers", {})
+            kwargs["headers"]["Referer"] = referer
         resp = session.get(url, **kwargs)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as http_err:
+            status = resp.status_code
+            content_type = resp.headers.get("content-type", "").lower()
+            preview = ""
+            with suppress(Exception):
+                preview = (resp.text or "")[:200]
+            log(
+                f"HTTP error fetching {url}: status={status}, "
+                f"content_type={content_type}, preview={preview!r}"
+            )
+            raise http_err
 
         # Validate PDF content
         content_type = resp.headers.get('content-type', '').lower()
         if 'pdf' not in content_type and not resp.content.startswith(b'%PDF-'):
-            log(f"Invalid PDF content type for {url}: {content_type}")
+            preview = ""
+            with suppress(Exception):
+                preview = (resp.text or "")[:200]
+            log(
+                f"Invalid PDF content for {url}: status={resp.status_code}, "
+                f"content_type={content_type}, length={len(resp.content)}, "
+                f"preview={preview!r}"
+            )
+            log("Falling back to Unlocker proxy, then headless browser if needed")
+            if _unlocker_raw_fetch(url, output_path, referer=referer, session_id=session_id):
+                return True
+            if _headless_pdf_fetch(url, output_path, referer=referer, session_id=session_id):
+                return True
             return False
 
         # Check file size (minimum 1KB)
@@ -82,7 +133,183 @@ def download_pdf(url: str, output_path: str) -> bool:
         return True
     except Exception as e:
         log(f"Failed to download {url}: {e}")
+        if _headless_pdf_fetch(url, output_path, referer=referer, session_id=session_id):
+            return True
+        if _unlocker_raw_fetch(url, output_path, referer=referer, session_id=session_id):
+            return True
         return False
+
+
+def _headless_pdf_fetch(
+    url: str,
+    output_path: str,
+    *,
+    referer: str | None = None,
+    session_id: str | None = None,
+) -> bool:
+    """Fetch a PDF via Bright Data's remote browser endpoint using Playwright."""
+    endpoint = os.getenv("BRIGHTDATA_BROWSER_WSS")
+    if not endpoint:
+        return False
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.sync_api import sync_playwright
+    except Exception as exc:  # pragma: no cover - optional dependency
+        log(f"Playwright not available for headless fallback: {exc}")
+        return False
+
+    page = None
+    browser = None
+    try:
+        log(f"Headless fallback: connecting to Bright Data browser for {url}")
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(endpoint, timeout=60_000)
+            context = browser.contexts[0] if browser.contexts else None
+            if context is None:
+                context = browser.new_context(ignore_https_errors=True)
+            context.set_default_timeout(60_000)
+            extra_headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+                ),
+                "Accept": "application/pdf,application/xhtml+xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cache-Control": "no-cache",
+            }
+            if referer:
+                extra_headers["Referer"] = referer
+            # Bright Data blocks overriding some headers; set what we can.
+            with suppress(Exception):
+                context.set_extra_http_headers(extra_headers)
+
+            page = context.new_page()
+            page.set_default_timeout(60_000)
+
+            if referer:
+                try:
+                    page.goto(referer, wait_until="networkidle")
+                    page.wait_for_timeout(750)
+                except PlaywrightTimeoutError:
+                    log(f"Headless referer warmup timed out for {referer}")
+                except Exception as warm_err:
+                    log(f"Headless referer warmup failed for {referer}: {warm_err}")
+
+            target = url.split("#", 1)[0]
+
+            def _match(response: Any) -> bool:
+                try:
+                    return response.url.split("#", 1)[0] == target
+                except Exception:
+                    return False
+
+            with page.expect_response(_match, timeout=60_000) as resp_info:
+                page.goto(url, wait_until="domcontentloaded")
+
+            resp = resp_info.value
+            body = resp.body()
+            content_type = (resp.headers.get("content-type") or "").lower()
+            if "pdf" not in content_type and not body.startswith(b"%PDF-"):
+                log(f"Headless response not PDF for {url} (content-type={content_type})")
+                return False
+
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, "wb") as f:
+                f.write(body)
+
+            if os.path.getsize(output_path) < 1024:
+                log(f"Downloaded PDF too small after headless fallback: {output_path}")
+                os.remove(output_path)
+                return False
+            log(f"Headless fallback succeeded for {url}")
+            return True
+    except PlaywrightTimeoutError as exc:
+        log(f"Headless Playwright timeout for {url}: {exc}")
+        return False
+    except Exception as exc:
+        # If the event loop is already running (common when invoked in some runtimes),
+        # skip headless and let the caller fall back to Unlocker.
+        if "event loop is already running" in str(exc).lower():
+            log(f"Headless Playwright fallback failed (loop running) for {url}; skipping headless and relying on Unlocker")
+            return False
+        log(f"Headless Playwright fallback failed for {url}: {exc}")
+        return False
+    finally:
+        if page:
+            with suppress(Exception):
+                page.close()
+        if browser:
+            with suppress(Exception):
+                browser.close()
+
+
+def _unlocker_raw_fetch(
+    url: str,
+    output_path: str,
+    *,
+    referer: str | None = None,
+    session_id: str | None = None,
+) -> bool:
+    """Fallback to Bright Data Web Unlocker raw API."""
+    api_key = os.getenv("BRIGHTDATA_API_KEY")
+    unlocker_zone = os.getenv("BRIGHTDATA_UNLOCKER_ZONE") or os.getenv("BRIGHTDATA_ZONE")
+    if not api_key or not unlocker_zone:
+        log("Bright Data Unlocker credentials missing; skipping Unlocker fallback")
+        return False
+    try:
+        import requests as _requests
+    except Exception as exc:  # pragma: no cover - requests is a core dep
+        log(f"Requests not available for Unlocker fallback: {exc}")
+        return False
+
+    _sess = _requests.Session()
+    _sess.trust_env = False
+    _sess.verify = False  # allow proxy MITM cert
+    username = f"brd-customer-hl_7f044a29-zone-{unlocker_zone}"
+    if session_id:
+        username += f"-session-{session_id}"
+    password = os.getenv("BRIGHTDATA_UNLOCKER_PASSWORD") or os.getenv("BRIGHTDATA_ZONE_PASSWORD") or os.getenv("BRIGHTDATA_ZONE")
+    if not password:
+        log("Bright Data Unlocker password missing; skipping Unlocker fallback")
+        return False
+    port = os.getenv("BRIGHTDATA_UNLOCKER_PORT", "33335")
+    proxy_auth = f"http://{username}:{password}@brd.superproxy.io:{port}"
+    proxies = {"http": proxy_auth, "https": proxy_auth}
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/pdf,application/xhtml+xml;q=0.9,*/*;q=0.8",
+    }
+    if referer:
+        headers["Referer"] = referer
+
+    try:
+        log(f"Unlocker fallback: requesting {url} via zone {unlocker_zone}")
+        resp = _sess.get(url, headers=headers, proxies=proxies, timeout=90)
+        resp.raise_for_status()
+    except Exception as exc:
+        log(f"Web Unlocker raw fallback failed for {url}: {exc}")
+        return False
+
+    body = resp.content or b""
+    if not body.startswith(b"%PDF-"):
+        content_type = resp.headers.get("content-type", "")
+        log(f"Web Unlocker raw fallback did not return PDF for {url} (content-type={content_type})")
+        return False
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "wb") as f:
+        f.write(body)
+
+    if os.path.getsize(output_path) < 1024:
+        log(f"Downloaded PDF too small after Unlocker fallback: {output_path}")
+        os.remove(output_path)
+        return False
+    log(f"Unlocker fallback succeeded for {url}")
+    return True
 
 
 def fix_pdf_url(pdf_url: str, paper_id: str) -> str:
@@ -149,7 +376,12 @@ def _compute_text_metrics(paragraphs: List[str]) -> Dict[str, float]:
 
 
 def process_paper(
-    paper_id: str, pdf_url: str, pdf_dir: str = "data/pdfs"
+    paper_id: str,
+    pdf_url: str,
+    pdf_dir: str = "data/pdfs",
+    *,
+    referer: str | None = None,
+    session_id: str | None = None,
 ) -> Optional[Dict]:
     """
     Download PDF and extract text for a single paper.
@@ -158,6 +390,8 @@ def process_paper(
         paper_id: Paper identifier
         pdf_url: URL to PDF
         pdf_dir: Directory to store PDFs
+        referer: Optional referer header to warm cookies/on-site auth
+        session_id: Optional session identifier for sticky proxy sessions
 
     Returns:
         Dict with pdf_path and paragraphs, or None if failed
@@ -170,7 +404,15 @@ def process_paper(
 
     if not os.path.exists(pdf_path):
         log(f"Downloading {paper_id}...")
-        success = download_pdf(pdf_url, pdf_path)
+        download_kwargs: dict[str, Any] = {}
+        if referer:
+            download_kwargs["referer"] = referer
+        download_kwargs["session_id"] = session_id or paper_id
+        try:
+            success = download_pdf(pdf_url, pdf_path, **download_kwargs)
+        except TypeError:
+            # Backward compatibility for monkeypatched downloaders without new kwargs
+            success = download_pdf(pdf_url, pdf_path)
         if not success:
             return None
     else:

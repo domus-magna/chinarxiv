@@ -1,0 +1,69 @@
+name: translation-canary
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # daily 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Preflight env check
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_UNLOCKER_PASSWORD: ${{ secrets.BRIGHTDATA_UNLOCKER_PASSWORD }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+        run: |
+          python -m src.tools.env_diagnose --check
+      - name: Seed fixtures if needed
+        run: |
+          python scripts/prepare_gate_fixtures.py
+      - name: Run canary translations
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_UNLOCKER_PASSWORD: ${{ secrets.BRIGHTDATA_UNLOCKER_PASSWORD }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          NO_PROXY: openrouter.ai,api.openrouter.ai
+        run: |
+          set -euo pipefail
+          ids=(chinaxiv-202510.00016 chinaxiv-202510.00020 chinaxiv-202510.00022)
+          for id in "${ids[@]}"; do
+            echo "=== Canary translate $id ==="
+            PYTHONUNBUFFERED=1 python -m src.translate "$id"
+          done
+      - name: Verify QA pass
+        run: |
+          set -euo pipefail
+          ids=(chinaxiv-202510.00016 chinaxiv-202510.00020 chinaxiv-202510.00022)
+          for id in "${ids[@]}"; do
+            path="data/translated/${id}.json"
+            test -f "$path"
+            status=$(jq -r '._qa_status' "$path")
+            ratio=$(jq -r '._qa_chinese_ratio' "$path")
+            if [ "$status" != "pass" ] || [ "$(python - <<'PY'\nimport sys\nval=float(sys.argv[1]); print(val>0.0)\nPY "$ratio")" = "True" ]; then
+              echo "QA failed for $id (status=$status, ratio=$ratio)"
+              exit 1
+            fi
+          done
+      - name: Upload summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-run-summaries
+          path: |
+            reports/run_summaries/*.json
+            reports/raw_translations/**/*.json
+          if-no-files-found: ignore
