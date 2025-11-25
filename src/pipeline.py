@@ -207,16 +207,17 @@ def run_cli() -> None:
 
     summary["attempted"] = len(worklist)
 
-    service = TranslationService()
-
     # Import QA if enabled
     if args.with_qa:
         from .qa_filter import filter_translation_file
 
     def _translate_one(paper_id: str) -> tuple[str, bool, str | None, bool | None]:
+        # Create per-worker TranslationService instance for thread safety
+        # (TranslationService has thread-unsafe state: _active_paper_id, circuit breaker counters, cache metrics)
+        local_service = TranslationService()
         try:
             log(f"Translating {paper_id}…")
-            result_path = service.translate_paper(paper_id, dry_run=args.dry_run)
+            result_path = local_service.translate_paper(paper_id, dry_run=args.dry_run)
 
             # QA filtering if enabled
             qa_passed = None

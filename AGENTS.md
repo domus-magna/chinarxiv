@@ -83,7 +83,7 @@
   - `pdfs/{paper_id}.pdf` (Phase B only)
 
 ### Required GitHub Secrets (CI)
-- Existing: `CF_API_TOKEN`, `OPENROUTER_API_KEY`, `BRIGHTDATA_API_KEY`, `BRIGHTDATA_ZONE`, `DISCORD_WEBHOOK_URL`.
+- Existing: `CF_API_TOKEN`, `OPENROUTER_API_KEY`, `BRIGHTDATA_API_KEY`, `BRIGHTDATA_ZONE`, `BRIGHTDATA_UNLOCKER_ZONE`, `BRIGHTDATA_UNLOCKER_PASSWORD`, `DISCORD_WEBHOOK_URL`.
 - New (Backblaze B2):
   - `BACKBLAZE_KEY_ID` — B2 S3 key ID
   - `BACKBLAZE_APPLICATION_KEY` — B2 S3 application key
@@ -110,6 +110,19 @@ Notes
   rm -f data/pdfs/chinaxiv-202501.00001.pdf
   ```
   This recreates the synthetic `sample.pdf` so `src.tools.prepare_ocr_report` has a valid local asset even when production PDFs are absent or broken.
+
+### Translation defaults (Dec 2025)
+- Default model `openai/gpt-5.1`; Grok is disabled. Formatting falls back to `google/gemini-2.5-flash-preview-09-2025`.
+- Whole-paper only; paragraph-level fallback is forbidden. Large docs auto-switch to macro chunks (~20 paras, max 8 chunks, 1 retry) with strict `###PARA i###...###END###` numbering.
+- Timeouts: 10s connect / 900s read (15m) to avoid self-imposed timeouts; we prefer reliability over latency. If a chunk still fails count checks after retries, we pad blanks and continue so the run completes. Per-paper wall-clock guard ~40m.
+- QA must pass zero-Chinese and paragraph-count gates; residual Chinese/metadata is stripped before QA with one targeted retry. QA failures are stored in `reports/raw_translations/`.
+- Default PDF fetch prefers Unlocker; headless is optional. Leave `BRIGHTDATA_BROWSER_WSS` unset unless you need headless. Order: direct → Unlocker → headless.
+- DeepSeek via OpenRouter is currently unreliable (malformed/non-JSON responses); keep it off by default. If you test it, gate behind canary+immediate fallback to GPT-5.1.
+- Daily canary CI (`translation-canary.yml`) runs 2–3 papers with QA enforcement; alerts via workflow failure if PDF fetch/QA breaks. Keep `NO_PROXY=openrouter.ai,api.openrouter.ai` in env.
+
+### Maintenance helpers
+- Prune macro chunk cache: `python scripts/prune_macro_cache.py --days 7` (default 7 days).
+- Backfill runner with logging: `scripts/run_backfill_batch.sh <paper_id...>` writes logs to `reports/backfill_runs/backfill_<timestamp>.log`.
 
 ### Pipeline Workflow Reference (GitHub Actions)
 Each CI/CD workflow below must stay in sync with our Backblaze-first source of truth and Cloudflare deploy target. If a workflow diverges from the description, fix the workflow (preferred) or immediately update this section (minimum) so later agents do not inherit stale guidance.
@@ -239,9 +252,16 @@ This process catches overengineering before it becomes technical debt.
 - Keep PRs small and focused; include `requirements.txt`/config updates when relevant.
 
 ## Security & Configuration Tips
-- Secrets: set `OPENROUTER_API_KEY` and BrightData creds (`BRIGHTDATA_API_KEY`, `BRIGHTDATA_ZONE`) in CI; never commit keys.
+- Secrets: set `OPENROUTER_API_KEY` and BrightData creds (`BRIGHTDATA_API_KEY`, `BRIGHTDATA_ZONE`, `BRIGHTDATA_UNLOCKER_ZONE`, `BRIGHTDATA_UNLOCKER_PASSWORD`) in CI; never commit keys.
 - Config: `src/config.yaml` defines model slugs, glossary, and optional proxy settings. BrightData creds are read from `.env` or CI env.
 - Data hygiene: limit `data/raw_xml/` retention; avoid large diffs in VCS.
+
+### Bright Data Headless Browser Automation
+- New env var: `BRIGHTDATA_BROWSER_WSS` points to the Bright Data Scraping Browser websocket. Local `.env` now carries the live endpoint `wss://brd-customer-hl_7f044a29-zone-china_browser1:4gi6qln6j62k@brd.superproxy.io:9222`; `.env.example` documents the placeholder. Keep it synced with GitHub secrets whenever rotated.
+- Playwright hookup: the docs at `https://docs.brightdata.com/integrations/playwright` stress launching Chromium with the Bright Data proxy credentials, passing `proxy={'server': 'http://HOST:PORT', 'username': 'USER-session-<id>', 'password': 'PASS'}`, and setting `ignoreHTTPSErrors=True` (or installing their CA) when using residential/Unlocker zones. Our Python helper does the equivalent by connecting over CDP to the websocket and injecting referer/user-agent headers before fetching the PDF.
+- Puppeteer hookup mirrors the same flow per `https://docs.brightdata.com/integrations/puppeteer`: add `--proxy-server=HOST:PORT` when launching, then call `page.authenticate({ username, password })`. Both guides emphasize copying Host/Port/User/Pass from the Bright Data dashboard, targeting `https://geo.brdtest.com/welcome.txt` for proxy tests, and using ISP/Data Center zones for browser automation (residential requires compliance review or CA install).
+- Session stickiness: docs note that Bright Data rotates IPs by default; add `-session-<paper_id>` to usernames (or pass `session_id` into our downloader) anytime you need per-paper sticky cookies.
+- Usage: the downloader now tries native requests → Playwright headless (`BRIGHTDATA_BROWSER_WSS`) → Web Unlocker raw API. When debugging fetches manually, you can also connect from Node via `puppeteer.connect({ browserWSEndpoint: process.env.BRIGHTDATA_BROWSER_WSS })` or from Python via `playwright.sync_api.sync_playwright().chromium.connect_over_cdp(os.environ['BRIGHTDATA_BROWSER_WSS'])` and then run interactive commands against the live browser.
 
 ### LLM API Key Troubleshooting (Agents)
 - Symptoms:
@@ -291,6 +311,8 @@ This process catches overengineering before it becomes technical debt.
 - `OPENROUTER_API_KEY`: OpenRouter API key for translations
 - `BRIGHTDATA_API_KEY`: BrightData API key (harvest)
 - `BRIGHTDATA_ZONE`: BrightData zone name (harvest)
+- `BRIGHTDATA_UNLOCKER_ZONE`: BrightData Unlocker zone for downloader fallback
+- `BRIGHTDATA_UNLOCKER_PASSWORD`: Unlocker zone password
 - `DISCORD_WEBHOOK_URL`: Discord webhook for notifications (optional)
 
 ### Cloudflare Pages Configuration
@@ -403,3 +425,12 @@ gh pr view --json comments,reviews
 ```
 
 **Remember**: Inline review comments are separate from regular comments and require the specific API endpoint to access!
+
+## Translation workflow (current playbook)
+- Default model: `openai/gpt-5.1`; deepseek/glm are manual-only until they can pass strict QA. Grok is disabled.
+- Whole-paper first; if source >160 paragraphs or exceeds the token guard, switch to balanced macro-chunks (target ~20 paras, max 8 chunks) with strict `###PARA i###...###END###` numbering. Allow 1 retry per chunk for count/format mismatches. Successful chunks are cached to `data/cache/macro_chunks/` for resumability. Paragraph-level translation is forbidden.
+- Request timeouts: 10s connect / 900s read (15 minutes) for OpenRouter calls. Per-paper wall-clock guard ~40m to avoid runaway hangs.
+- Always run sidecar OCR (`ocrmypdf --force-ocr --language chi_sim+eng --sidecar <pdf>.txt <pdf> <pdf>`) so extraction reads the sidecar and merges short fragments (e.g., ~178 paras for the sample paper vs. 800+ junky paras before).
+- Structural QA: fail if counts mismatch or if short-fragment ratio spikes relative to source; QA filter failure (Chinese/formatting) triggers retry/fallback. Residual Chinese characters are stripped before QA; persistent QA failures are saved to `reports/raw_translations/<paper_id>.qa_failed.json` for manual triage.
+- Formatting: aggressive Markdown reflow (no content edits); writes `.md` alongside JSON. Micro-fragments (<=3 chars, no letters) are dropped before formatting.
+- Run summaries live at `reports/run_summaries/<paper_id>.json` with attempt history and final status; translation JSON records `_model` and `_markdown_path`.
