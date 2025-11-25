@@ -11,60 +11,37 @@
         {# Subject classification line, arXiv-style #}
         {% set _subjects = (item.subjects_en if item.subjects_en else (item.subjects if item.subjects else [])) %}
         {% set _source_url = item.source_url or ('https://chinaxiv.org/abs/' ~ item.id) %}
-        {% if _subjects and (_subjects|length) > 0 %}
-          <div class="subheader">
-            <h1>{{ _subjects[0] }}</h1>
-          </div>
-        {% endif %}
-
-        <div style="margin-bottom: 12px;">
-          <span class="descriptor">Title:</span> {{ item.title_en }}
-        </div>
-
-        <div style="margin-bottom: 8px;">
-          <span class="descriptor">Authors:</span> {{ ', '.join(item.creators_en or item.creators or ['Unknown']) }}
-        </div>
-
-        {# Dateline and quick meta #}
-        <div class="meta">
-          <span class="dateline">[Submitted on {{ item.date or 'N/A' }}]</span>
+        {# Deduplicate authors #}
+        {% set _authors_raw = item.creators_en or item.creators or ['Unknown'] %}
+        {% set _authors_seen = {} %}
+        {% set _authors_unique = [] %}
+        {% for a in _authors_raw %}
+          {% if a and a not in _authors_seen %}
+            {% set _ = _authors_seen.update({a: true}) %}
+            {% set _ = _authors_unique.append(a) %}
+          {% endif %}
+        {% endfor %}
+        {# Format date for display #}
+        {% set _date_display = item.date[:10] if item.date and item.date|length >= 10 else (item.date or 'N/A') %}
+        {# Minimal clean info block #}
+        <div class="paper-title-block">{{ item.title_en }}</div>
+        <div class="paper-authors-block">{{ ', '.join(_authors_unique) }}</div>
+        <div class="paper-meta-line">
+          <span>Submitted {{ _date_display }}</span>
+          <span class="meta-sep">|</span>
+          <span>ChinaXiv: {{ item.id }}</span>
+          {% if _subjects and (_subjects|length) > 0 %}
+            <span class="meta-sep">|</span>
+            <span>{{ ', '.join(_subjects) }}</span>
+          {% endif %}
           {% if item.license and item.license.badge %}
+            <span class="meta-sep">|</span>
             <span class="badge">{{ item.license.badge }}</span>
           {% endif %}
           {% if not item._has_full_text %}
+            <span class="meta-sep">|</span>
             <span class="badge">Abstract only</span>
           {% endif %}
-        </div>
-
-        {# Cite-as line #}
-        <div class="meta">
-          <span class="descriptor">Cite as:</span> ChinaXiv: {{ item.id }}
-        </div>
-
-        {# Optional metadata table similar to arXiv (only shows present fields) #}
-        <div class="meta-table" style="margin: 16px 0 8px;">
-          <dl>
-            {% if _subjects and (_subjects|length) > 0 %}
-              <dt>Subjects:</dt>
-              <dd>{{ ', '.join(_subjects) }}</dd>
-            {% endif %}
-            {% if item.doi %}
-              <dt>DOI:</dt>
-              <dd><a href="https://doi.org/{{ item.doi }}" target="_blank" rel="noopener">{{ item.doi }}</a></dd>
-            {% endif %}
-            {% if item.journal_ref %}
-              <dt>Journal ref:</dt>
-              <dd>{{ item.journal_ref }}</dd>
-            {% endif %}
-            {% if item.comments %}
-              <dt>Comments:</dt>
-              <dd>{{ item.comments }}</dd>
-            {% endif %}
-            {% if item.report_num %}
-              <dt>Report number:</dt>
-              <dd>{{ item.report_num }}</dd>
-            {% endif %}
-          </dl>
         </div>
 
         <h2>Abstract</h2>
@@ -86,14 +63,10 @@
           </div>
         {% endif %}
 
-        <div class="source">
-          <a href="{{ _source_url }}" target="_blank" rel="noopener">View original on ChinaXiv</a>
-        </div>
-
         {# Submission history (single entry, we do not have versions) #}
         <div class="submission-history">
           <h2>Submission history</h2>
-          <div class="dateline">[v1] {{ item.date or 'N/A' }}</div>
+          <div class="dateline">[v1] {{ _date_display }}</div>
         </div>
       </div>
 
@@ -104,122 +77,182 @@
           <div class="banner" role="status">This record includes the abstract only. Full text is not available for this paper.</div>
           {% endif %}
           <ul class="sidebar-actions">
-            {% if item.pdf_url %}
-            <li><a href="{{ item.pdf_url }}" class="sidebar-btn primary" target="_blank" rel="noopener" aria-label="Open original PDF on ChinaXiv">{% if item._has_full_text %}Download PDF{% else %}Original PDF (ChinaXiv){% endif %}</a></li>
-            {% endif %}
-            <li><a href="{{ '/items/' ~ item.id ~ '/' ~ item.id ~ '.md' }}" class="sidebar-btn" aria-label="View Markdown version">{% if item._has_full_text %}View Markdown{% else %}View Abstract (MD){% endif %}</a></li>
             {% if item._has_full_text %}
-            <li><a href="{{ '/items/' ~ item.id ~ '/' ~ item.id ~ '.pdf' }}" class="sidebar-btn" aria-label="Download full text PDF">Full Text PDF</a></li>
+            <li><a href="{{ item.id ~ '.pdf' }}" class="sidebar-btn primary" aria-label="Download English translation as PDF">Download PDF (English)</a></li>
             {% endif %}
+            {% if item.pdf_url %}
+            <li><a href="{{ item.pdf_url }}" class="sidebar-btn" target="_blank" rel="noopener" aria-label="View original PDF on ChinaXiv">Original PDF (Chinese)</a></li>
+            {% endif %}
+            <li><a href="{{ _source_url }}" class="sidebar-btn" target="_blank" rel="noopener" aria-label="View original record on ChinaXiv">View on ChinaXiv</a></li>
           </ul>
         </div>
 
         <div class="sidebar-section">
           <h3>Citation</h3>
           <ul class="sidebar-actions">
-            <li><a href="#" class="sidebar-btn" onclick="copyCitation()" aria-label="Copy citation to clipboard">Copy Citation</a></li>
-            <li><a href="#" class="sidebar-btn" onclick="exportBibTeX()" aria-label="Export BibTeX citation">Export BibTeX</a></li>
+            <li><a href="#" class="sidebar-btn" onclick="openCitationModal(); return false;" aria-label="Cite this paper">Cite This Paper</a></li>
           </ul>
         </div>
 
         <div class="sidebar-section">
           <h3>Share</h3>
           <ul class="sidebar-actions">
-            <li><a href="#" class="sidebar-btn" onclick="sharePaper()" aria-label="Share this paper">Share Paper</a></li>
-            <li><a href="#" class="sidebar-btn" onclick="bookmarkPaper()" aria-label="Bookmark this paper">Bookmark</a></li>
+            <li><a href="#" class="sidebar-btn" onclick="copyLink(); return false;" aria-label="Copy link to clipboard">Copy Link</a></li>
+            <li><a href="#" class="sidebar-btn" onclick="bookmarkPaper(); return false;" aria-label="Bookmark this paper">Bookmark</a></li>
           </ul>
         </div>
 
-        <div class="sidebar-section">
-          <h3>Related</h3>
-          <ul class="sidebar-actions">
-            <li><a href="{{ root }}/" class="sidebar-btn" aria-label="Browse more papers">Browse More Papers</a></li>
-            {% set _first_subject = (_subjects[0] | lower) if (_subjects and (_subjects|length) > 0) else 'all' %}
-            <li><a href="{{ root }}/?category={{ _first_subject }}" class="sidebar-btn" aria-label="See similar papers">Similar Papers</a></li>
-          </ul>
-        </div>
       </div>
     </div>
   </article>
 
+  <!-- Citation Modal -->
+  <div id="citation-modal" class="modal" role="dialog" aria-labelledby="citation-modal-title" aria-modal="true">
+    <div class="modal-backdrop" onclick="closeCitationModal()"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="citation-modal-title">Cite This Paper</h2>
+        <button class="modal-close" onclick="closeCitationModal()" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="citation-format-row">
+          <label for="citation-format">Format:</label>
+          <select id="citation-format" onchange="updateCitationPreview()">
+            <option value="apa">APA 7th</option>
+            <option value="mla">MLA 9th</option>
+            <option value="chicago">Chicago</option>
+            <option value="bibtex">BibTeX</option>
+          </select>
+        </div>
+        <div class="citation-preview" id="citation-preview"></div>
+        <button class="btn-copy-citation" onclick="copyCitation()">Copy to Clipboard</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    // Clipboard helper with fallback
-    function copyToClipboard(text, successMessage) {
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(() => {
-          alert(successMessage);
-        }).catch(() => {
-          fallbackCopyToClipboard(text, successMessage);
-        });
-      } else {
-        fallbackCopyToClipboard(text, successMessage);
-      }
+    // Paper metadata for citation formatting
+    const paperData = {
+      id: {{ item.id|tojson }},
+      title: {{ item.title_en|tojson }},
+      authors: {{ _authors_unique|tojson }},
+      year: {{ (item.date[:4] if item.date else 'n.d.')|tojson }},
+      date: {{ (item.date or '')|tojson }},
+      url: {{ _source_url|tojson }},
+      subjects: {{ (item.subjects_en or item.subjects or [])|tojson }}
+    };
+
+    // Format author names for APA: "Author1, Author2, & Author3"
+    function formatAuthorsAPA(authors) {
+      if (!authors || authors.length === 0) return '';
+      if (authors.length === 1) return authors[0];
+      if (authors.length === 2) return authors.join(' & ');
+      return authors.slice(0, -1).join(', ') + ', & ' + authors[authors.length - 1];
     }
 
-    function fallbackCopyToClipboard(text, successMessage) {
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-999999px';
-      textArea.style.top = '-999999px';
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
-      
-      try {
-        document.execCommand('copy');
-        alert(successMessage);
-      } catch (err) {
-        console.error('Failed to copy text: ', err);
-        alert('Failed to copy to clipboard');
+    // Format author names for MLA: "Author1, and Author2" or "Author1, et al."
+    function formatAuthorsMLA(authors) {
+      if (!authors || authors.length === 0) return '';
+      if (authors.length <= 2) return authors.join(', and ');
+      return authors[0] + ', et al.';
+    }
+
+    // Format author names for BibTeX: "Author1 and Author2 and Author3"
+    function formatAuthorsBibTeX(authors) {
+      if (!authors || authors.length === 0) return '';
+      return authors.join(' and ');
+    }
+
+    function getCitationAPA() {
+      const authors = formatAuthorsAPA(paperData.authors);
+      return `${authors} (${paperData.year}). ${paperData.title}. ChinaXiv. ${paperData.url}`;
+    }
+
+    function getCitationMLA() {
+      const authors = formatAuthorsMLA(paperData.authors);
+      return `${authors}. "${paperData.title}." ChinaXiv, ${paperData.year}, ${paperData.id}. ${paperData.url}.`;
+    }
+
+    function getCitationChicago() {
+      const authors = formatAuthorsAPA(paperData.authors);
+      const dateStr = paperData.date ? new Date(paperData.date).toLocaleDateString('en-US', {month: 'long', day: 'numeric'}) : '';
+      return `${authors}. ${paperData.year}. "${paperData.title}." Preprint, ChinaXiv${dateStr ? ', ' + dateStr : ''}. ${paperData.url}.`;
+    }
+
+    function getCitationBibTeX() {
+      const id = paperData.id.replace(/[.-]/g, '_');
+      const title = (paperData.title || '').replace(/[{}\\]/g, '\\$&');
+      const authors = formatAuthorsBibTeX(paperData.authors).replace(/[{}\\]/g, '\\$&');
+      const subject = paperData.subjects.length > 0 ? paperData.subjects[0] : '';
+
+      return `@misc{chinaxiv_${id},
+  title={${title}},
+  author={${authors}},
+  year={${paperData.year}},
+  eprint={${paperData.id}},
+  archivePrefix={ChinaXiv},
+  primaryClass={${subject}},
+  url={${paperData.url}}
+}`;
+    }
+
+    function updateCitationPreview() {
+      const format = document.getElementById('citation-format').value;
+      const preview = document.getElementById('citation-preview');
+      let citation;
+
+      switch(format) {
+        case 'apa': citation = getCitationAPA(); break;
+        case 'mla': citation = getCitationMLA(); break;
+        case 'chicago': citation = getCitationChicago(); break;
+        case 'bibtex': citation = getCitationBibTeX(); break;
       }
-      
-      document.body.removeChild(textArea);
+
+      preview.textContent = citation;
+      if (format === 'bibtex') {
+        preview.classList.add('monospace');
+      } else {
+        preview.classList.remove('monospace');
+      }
     }
 
     function copyCitation() {
-      const citation = `{{ (item.creators_en or item.creators)[0] if (item.creators_en or item.creators) else 'Unknown' }} ({{ item.date[:4] if item.date else 'N/A' }}). {{ item.title_en }}. ChinaXiv: {{ item.id }}.`;
-      copyToClipboard(citation, 'Citation copied to clipboard!');
-    }
+      const format = document.getElementById('citation-format').value;
+      let citation;
 
-    function escapeBibTeX(s) {
-      return (s || '').replace(/[{}\\]/g, '\\$&');
-    }
-
-    function exportBibTeX() {
-      const title = escapeBibTeX({{ item.title_en|tojson }});
-      const authors = escapeBibTeX({{ ', '.join(item.creators_en or item.creators or ['Unknown'])|tojson }});
-      const year = {{ item.date[:4] if item.date else 'N/A'|tojson }};
-      const url = escapeBibTeX({{ _source_url|tojson }});
-      // Replace dots and hyphens with underscores for valid BibTeX ID
-      const id = {{ item.id|tojson }}.replace(/[.-]/g, '_');
-      
-      const bibtex = `@article{chinaxiv${id},
-  title={${title}},
-  author={${authors}},
-  journal={ChinaXiv},
-  year={${year}},
-  url={${url}}
-}`;
-      copyToClipboard(bibtex, 'BibTeX citation copied to clipboard!');
-    }
-
-    function sharePaper() {
-      if (navigator.share) {
-        try {
-          navigator.share({
-            title: {{ item.title_en|tojson }},
-            text: 'Check out this paper from ChinaXiv Translations',
-            url: window.location.href
-          }).catch(() => {
-            copyToClipboard(window.location.href, 'Paper URL copied to clipboard!');
-          });
-        } catch (e) {
-          copyToClipboard(window.location.href, 'Paper URL copied to clipboard!');
-        }
-      } else {
-        copyToClipboard(window.location.href, 'Paper URL copied to clipboard!');
+      switch(format) {
+        case 'apa': citation = getCitationAPA(); break;
+        case 'mla': citation = getCitationMLA(); break;
+        case 'chicago': citation = getCitationChicago(); break;
+        case 'bibtex': citation = getCitationBibTeX(); break;
       }
+
+      copyToClipboard(citation, 'Citation copied!');
+    }
+
+    // Modal functions
+    function openCitationModal() {
+      const modal = document.getElementById('citation-modal');
+      modal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      updateCitationPreview();
+    }
+
+    function closeCitationModal() {
+      const modal = document.getElementById('citation-modal');
+      modal.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeCitationModal();
+      }
+    });
+
+    function copyLink() {
+      copyToClipboard(window.location.href, 'Link copied!');
     }
 
     function bookmarkPaper() {
@@ -233,14 +266,22 @@
         };
         if (!bookmarks.find(b => b.id === bookmark.id)) {
           bookmarks.push(bookmark);
-          localStorage.setItem('chinaxiv_bookmarks', JSON.stringify(bookmarks));
-          alert('Paper bookmarked!');
+          try {
+            localStorage.setItem('chinaxiv_bookmarks', JSON.stringify(bookmarks));
+            showToast('Bookmarked!');
+          } catch (storageError) {
+            if (storageError.name === 'QuotaExceededError') {
+              showToast('Storage full - cannot bookmark');
+            } else {
+              throw storageError;
+            }
+          }
         } else {
-          alert('Paper already bookmarked!');
+          showToast('Already bookmarked');
         }
       } catch (e) {
         console.warn('Bookmarking unavailable', e);
-        alert('Bookmarking is unavailable in this browser or context.');
+        showToast('Bookmarking unavailable');
       }
     }
   </script>

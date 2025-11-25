@@ -33,11 +33,14 @@
             <input type="text" id="header-search-input" placeholder="Search papers..." aria-label="Search papers" />
             <button id="header-search-btn" aria-label="Run search">Search</button>
           </div>
-          <a href="{{ root }}/donation.html" class="donate-btn" aria-label="Donate to support translations">Donate</a>
         </div>
-        {% block header_breadcrumbs %}{% endblock %}
       </div>
     </header>
+    <nav class="breadcrumbs-bar">
+      <div class="container">
+        {% block header_breadcrumbs %}{% endblock %}
+      </div>
+    </nav>
     <main class="container">
       {% block content %}{% endblock %}
     </main>
@@ -45,39 +48,18 @@
       <div class="container">
         <div class="footer-content">
           <div class="footer-section">
-            <h4>Browse</h4>
-            <div class="footer-links">
-              <a href="{{ root }}/">Recent Papers</a>
-              <a href="{{ root }}/?category=cs">Computer Science</a>
-              <a href="{{ root }}/?category=math">Mathematics</a>
-              <a href="{{ root }}/?category=physics">Physics</a>
-              <a href="{{ root }}/?category=biology">Biology</a>
-              <a href="{{ root }}/?category=chemistry">Chemistry</a>
-            </div>
-          </div>
-          <div class="footer-section">
-            <h4>Resources</h4>
-            <div class="footer-links">
-              <a href="{{ root }}/#search-section">Search Papers</a>
-              <a href="{{ root }}/#articles">Browse Recent</a>
-              <a href="{{ root }}/donation.html">Support the Project</a>
-              <a href="https://github.com/seconds-0/chinaxiv-english" target="_blank" rel="noopener">Source Code</a>
-            </div>
-          </div>
-          <div class="footer-section">
             <h4>About</h4>
             <p class="footer-description">
-              Translations from <a href="https://www.chinaxiv.org" target="_blank" rel="noopener">ChinaXiv</a>.
-              All content is machine-translated and should be verified with the original source.
+              Translations from <a href="https://www.chinaxiv.org" target="_blank" rel="noopener">ChinaXiv</a>,
+              the Chinese preprint repository. All content is machine-translated—please verify with the original source.
             </p>
           </div>
           <div class="footer-section">
-            <h4>Project</h4>
-            <p class="footer-meta">
-              Last updated: 2025-10-05<br>
-              <a href="https://github.com/seconds-0/chinaxiv-english" target="_blank" rel="noopener">Source Code</a><br>
-              <a href="{{ root }}/donation.html">Support Us</a>
-            </p>
+            <h4>Links</h4>
+            <div class="footer-links">
+              <a href="{{ root }}/">Browse Papers</a>
+              <a href="https://x.com/seconds_0" target="_blank" rel="noopener">Built by @seconds_0</a>
+            </div>
           </div>
         </div>
       </div>

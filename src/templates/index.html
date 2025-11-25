@@ -23,11 +23,11 @@
         <label for="category-filter">Category:</label>
         <select id="category-filter">
           <option value="">All Categories</option>
-          <option value="cs">Computer Science</option>
-          <option value="math">Mathematics</option>
-          <option value="physics">Physics</option>
-          <option value="biology">Biology</option>
-          <option value="chemistry">Chemistry</option>
+          <option value="physics">Physics & Nuclear</option>
+          <option value="engineering">Engineering & Geology</option>
+          <option value="psychology">Psychology</option>
+          <option value="cs">Computer Science & Information</option>
+          <option value="astronomy">Astronomy</option>
         </select>
       </div>
       <div class="filter-group">
@@ -44,34 +44,40 @@
     <div id="search-results"></div>
   </div>
 
-  <dl id="articles">
+  <div id="articles" class="article-list">
     {% for it in items %}
-      <dt>
-        <span class='descriptor'>Title:</span>
-        <a href="{{ root }}/items/{{ it.id }}/" title="Abstract" id="{{ it.id }}" class="mathjax list-title-link">{{ it.title_en or it.title }}</a>
-        [<a href="{{ root }}/items/{{ it.id }}/" title="HTML">html</a>{% if it.pdf_url %}, <a href="{{ it.pdf_url }}" title="Download PDF">pdf</a>{% endif %}]
-      </dt>
-      <dd>
-        <div class='list-authors'><span class='descriptor'>Authors:</span> {{ ', '.join(it.creators_en or it.creators or ['Unknown']) }}</div>
-        {% if it.subjects or it.subjects_en %}
-        <div class='list-subjects'><span class='descriptor'>Subjects:</span> <span class="primary-subject">{{ (it.subjects_en or it.subjects)[0] }}</span>{% for s in (it.subjects_en or it.subjects)[1:2] %}; {{ s }}{% endfor %}</div>
-        {% endif %}
-        <div class='list-id'><span class='descriptor'>ChinaXiv Id:</span> <a href="{{ it.source_url or ('https://chinaxiv.org/abs/' ~ (it.id | replace('chinaxiv-',''))) }}" target="_blank" rel="noopener">{{ it.id }}</a></div>
-        {% if it.date %}
-        <div class='dateline'>Submitted: {{ it.date }}</div>
-        {% endif %}
-        <p class='mathjax'>{{ it.abstract_en[:500] }}{% if it.abstract_en and it.abstract_en|length > 500 %}…{% endif %}</p>
-      </dd>
+      <article class="paper-card">
+        <h3 class="paper-title">
+          <a href="{{ root }}/items/{{ it.id }}/" title="Abstract">{{ it.title_en or it.title }}</a>
+        </h3>
+        <div class="paper-meta-row">
+          <span class="paper-authors">{{ ', '.join(it.creators_en or it.creators or ['Unknown']) }}</span>
+        </div>
+        <div class="paper-meta-row secondary">
+          <span class="paper-date">{{ it.date }}</span>
+          <span class="paper-id">ChinaXiv:{{ it.id }}</span>
+          {% if it.subjects or it.subjects_en %}
+            <span class="paper-subjects">
+              {% for s in (it.subjects_en or it.subjects)[:3] %}
+                <span class="subject-tag">{{ s }}</span>
+              {% endfor %}
+            </span>
+          {% endif %}
+          <div class="paper-links">
+            <a href="{{ root }}/items/{{ it.id }}/" class="btn-sm">Abstract</a>
+            {% if it.pdf_url %}
+              <a href="{{ it.pdf_url }}" class="btn-sm">PDF</a>
+            {% endif %}
+          </div>
+        </div>
+        <p class="paper-abstract">
+          {{ it.abstract_en[:300] }}{% if it.abstract_en and it.abstract_en|length > 300 %}…{% endif %}
+        </p>
+      </article>
     {% endfor %}
-  </dl>
+  </div>
 
   {% if not items %}
     <p style="color: #777; font-style: italic; margin-top: 40px;">No translations available yet.</p>
   {% endif %}
-
-  <div class="support-section">
-    <h2>Support ChinaXiv Translations</h2>
-    <p>Help us continue translating Chinese academic papers to English. Your support covers API costs, server expenses, and ongoing development.</p>
-    <a href="{{ root }}/donation.html" class="donation-btn">Please support us by donating here</a>
-  </div>
 {% endblock %}
