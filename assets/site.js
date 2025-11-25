@@ -12,16 +12,27 @@ function searchSubject(subject) {
   const results = document.getElementById('search-results');
   const categoryFilter = document.getElementById('category-filter');
   const dateFilter = document.getElementById('date-filter');
-  const searchBtn = document.querySelector('.search-btn');
   if (!input || !results) return;
-  let index = [];
 
-  // Check for URL search parameter
-  const urlParams = new URLSearchParams(window.location.search);
-  const urlQuery = urlParams.get('q');
-  if (urlQuery && input) {
-    input.value = urlQuery;
-  }
+  let miniSearch = null;
+  let lastSearchResults = [];
+  let currentQuery = '';
+
+  // Category keywords for filtering
+  const categoryMap = {
+    cs: ['computer science', 'software', 'programming', 'algorithm', 'artificial intelligence', 'machine learning'],
+    math: ['mathematics', 'mathematical', 'algebra', 'geometry', 'calculus', 'statistics'],
+    physics: ['physics', 'quantum', 'mechanics', 'relativity', 'particle'],
+    biology: ['biology', 'biological', 'genetics', 'cell', 'organism'],
+    chemistry: ['chemistry', 'chemical', 'organic', 'inorganic']
+  };
+
+  // Date filter: days ago lookup
+  const dateDays = { today: 0, week: 7, month: 30, year: 365 };
+
+  // URL search parameter
+  const urlQuery = new URLSearchParams(window.location.search).get('q');
+  if (urlQuery) input.value = urlQuery;
 
   // Event delegation for subject tag clicks (prevents XSS from inline onclick)
   results.addEventListener('click', (e) => {
@@ -31,169 +42,87 @@ function searchSubject(subject) {
     }
   });
 
-  // Try compressed index first, fallback to uncompressed
+  // Initialize MiniSearch with field boosting
+  function initMiniSearch(docs) {
+    miniSearch = new MiniSearch({
+      fields: ['title', 'authors', 'abstract', 'subjects'],
+      storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date'],
+      searchOptions: { boost: { title: 3, authors: 2, subjects: 1.5, abstract: 1 }, fuzzy: 0.2, prefix: true }
+    });
+    miniSearch.addAll(docs);
+  }
+
+  // Load index (try compressed first)
   fetch('search-index.json.gz')
-    .then(r => {
-      if (r.ok) {
-        return r.arrayBuffer().then(buf => {
-          const decompressed = pako.inflate(new Uint8Array(buf), { to: 'string' });
-          return JSON.parse(decompressed);
-        });
-      } else {
-        return fetch('search-index.json').then(r => r.json());
+    .then(r => r.ok ? r.arrayBuffer().then(buf => JSON.parse(pako.inflate(new Uint8Array(buf), { to: 'string' }))) : fetch('search-index.json').then(r => r.json()))
+    .then(data => { initMiniSearch(data); if (urlQuery) performSearch(urlQuery); })
+    .catch(() => fetch('search-index.json').then(r => r.json()).then(data => { initMiniSearch(data); if (urlQuery) performSearch(urlQuery); })
+      .catch(() => { results.innerHTML = '<div class="res"><div>Failed to load search index.</div></div>'; }));
+
+  // Apply filters and render
+  function applyFiltersAndRender() {
+    const cat = categoryFilter?.value || '';
+    const dateRange = dateFilter?.value || '';
+
+    const filtered = lastSearchResults.filter(hit => {
+      // Category filter
+      if (cat && !(categoryMap[cat] || []).some(kw => (hit.subjects || '').toLowerCase().includes(kw))) return false;
+      // Date filter
+      if (dateRange && dateDays[dateRange] !== undefined) {
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - dateDays[dateRange]);
+        if (new Date(hit.date) < cutoff) return false;
       }
-    })
-    .then(data => {
-      index = data;
-      // Show all papers on load, or perform URL query search
-      performSearch(urlQuery || '');
-    })
-    .catch(() => {
-      // Fallback to uncompressed
-      fetch('search-index.json').then(r => r.json()).then(data => {
-        index = data;
-        performSearch(urlQuery || '');
-      }).catch(() => {
-        results.innerHTML = '<div class="search-results-count">Search unavailable. Please refresh the page.</div>';
-      });
+      return true;
     });
 
-  function escapeHtml(s) {
-    return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+    renderResults(filtered, cat || dateRange);
   }
 
-  function formatDate(isoDate) {
-    if (!isoDate) return '';
-    try {
-      const date = new Date(isoDate);
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric', month: 'short', day: 'numeric'
-      });
-    } catch { return isoDate; }
+  // Highlight search terms
+  function highlightTerms(text, query) {
+    if (!query || !text) return escapeHtml(text || '');
+    const escaped = escapeHtml(text);
+    const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
+    if (!terms.length) return escaped;
+    const pattern = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    return escaped.replace(new RegExp(`(${pattern})`, 'gi'), '<mark>$1</mark>');
   }
 
-  function categorizeSubject(subject) {
-    const s = subject.toLowerCase();
-    if (s.includes('artificial intelligence') || s.includes('machine learning') ||
-        s.includes('deep learning') || s.includes('neural') || s.includes('nlp') ||
-        s.includes('computer vision') || s.includes('ai ') || s.includes(' ai')) return 'ai';
-    if (s.includes('computer science') || s.includes('software') ||
-        s.includes('algorithm') || s.includes('information science')) return 'cs';
-    if (s.includes('psychology') || s.includes('cognitive')) return 'psychology';
-    if (s.includes('engineering') || s.includes('technical')) return 'engineering';
-    return '';
-  }
-
-  function matchesCategory(subjects, category) {
-    if (!category) return true; // "All Categories"
-    const s = (subjects || '').toLowerCase();
-    switch (category) {
-      case 'physics': return s.includes('physics') || s.includes('nuclear') || s.includes('optics');
-      case 'engineering': return s.includes('engineering') || s.includes('geology') || s.includes('technical');
-      case 'psychology': return s.includes('psychology') || s.includes('cognitive');
-      case 'cs': return s.includes('computer') || s.includes('information') || s.includes('software') || s.includes('algorithm');
-      case 'astronomy': return s.includes('astronomy');
-      default: return true;
+  // Render results
+  function renderResults(hits, hasFilters) {
+    if (!hits.length) {
+      const msg = hasFilters ? 'No papers match with selected filters. Try adjusting them.' : 'No papers found. Try different keywords.';
+      results.innerHTML = `<div class="res"><div>${msg}</div></div>`;
+    } else {
+      results.innerHTML = hits.map(hit => `
+        <div class="res">
+          <div><a href="/items/${hit.id}/"><strong>${highlightTerms(hit.title || '', currentQuery)}</strong></a></div>
+          <div class="meta">${hit.date || ''} — ${escapeHtml(hit.authors || '')}</div>
+          <div>${highlightTerms((hit.abstract || '').slice(0, 280), currentQuery)}…</div>
+        </div>`).join('');
     }
-  }
-
-  function matchesDateFilter(itemDate, dateValue) {
-    if (!dateValue || !itemDate) return true;
-    try {
-      const item = new Date(itemDate);
-      const now = new Date();
-      const diffMs = now - item;
-      const diffDays = diffMs / (1000 * 60 * 60 * 24);
-      switch (dateValue) {
-        case 'today': return diffDays < 1;
-        case 'week': return diffDays < 7;
-        case 'month': return diffDays < 30;
-        case 'year': return diffDays < 365;
-        default: return true;
-      }
-    } catch {
-      return true;
-    }
-  }
-
-  function renderResult(it) {
-    const tags = (it.subjects || '').split(',')
-      .map(s => s.trim())
-      .filter(s => s)
-      .map(s => {
-        const cat = categorizeSubject(s);
-        // Use data-subject attribute for event delegation (prevents XSS)
-        return `<span class="subject-tag" data-subject="${escapeHtml(s)}" ${cat ? `data-category="${cat}"` : ''}>${escapeHtml(s)}</span>`;
-      }).join('');
-
-    return `
-      <div class="res">
-        <div class="res-title"><a href="/items/${it.id}/">${escapeHtml(it.title || '')}</a></div>
-        <div class="res-meta">${formatDate(it.date)} — ${escapeHtml(it.authors || '')}</div>
-        <div class="res-abstract">${escapeHtml((it.abstract || '').slice(0, 280))}…</div>
-        ${tags ? `<div class="res-tags">${tags}</div>` : ''}
-      </div>
-    `;
   }
 
   function performSearch(query) {
-    const q = (query || '').trim().toLowerCase();
-    const category = categoryFilter ? categoryFilter.value : '';
-    const dateValue = dateFilter ? dateFilter.value : '';
-
-    const out = [];
-    for (const it of index) {
-      // Check category filter first
-      if (!matchesCategory(it.subjects, category)) continue;
-
-      // Check date filter
-      if (!matchesDateFilter(it.date, dateValue)) continue;
-
-      // If query provided, check text match
-      if (q) {
-        const hay = [it.title, it.authors, it.abstract, it.subjects].join(' ').toLowerCase();
-        if (!hay.includes(q)) continue;
-      }
-
-      out.push(it);
-      if (out.length >= 50) break;
-    }
-
-    if (out.length === 0) {
-      results.innerHTML = '<div class="search-results-count">No papers found matching your search.</div>';
-    } else {
-      results.innerHTML = `<div class="search-results-count">Found ${out.length} paper${out.length > 1 ? 's' : ''}</div>` +
-        out.map(renderResult).join('');
-    }
+    currentQuery = query.trim();
+    if (!currentQuery) { results.innerHTML = ''; lastSearchResults = []; return; }
+    if (!miniSearch) { results.innerHTML = '<div class="res search-loading"><div>Loading search index...</div></div>'; return; }
+    lastSearchResults = miniSearch.search(currentQuery, { limit: 100 });
+    applyFiltersAndRender();
   }
 
   let timer = null;
   input.addEventListener('input', () => {
     clearTimeout(timer);
-    timer = setTimeout(() => {
-      performSearch(input.value);
-    }, 120);
+    if (!input.value.trim()) { results.innerHTML = ''; return; }
+    timer = setTimeout(() => performSearch(input.value), 120);
   });
 
-  // Category filter triggers immediate search
-  if (categoryFilter) {
-    categoryFilter.addEventListener('change', () => {
-      performSearch(input.value);
-    });
-  }
+  if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndRender);
+  if (dateFilter) dateFilter.addEventListener('change', applyFiltersAndRender);
 
-  // Date filter triggers immediate search
-  if (dateFilter) {
-    dateFilter.addEventListener('change', () => {
-      performSearch(input.value);
-    });
-  }
-
-  // Search button triggers search
-  if (searchBtn) {
-    searchBtn.addEventListener('click', () => {
-      performSearch(input.value);
-    });
+  function escapeHtml(s) {
+    return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 })();
 
@@ -201,22 +130,22 @@ function searchSubject(subject) {
 (() => {
   const headerSearchInput = document.getElementById('header-search-input');
   const headerSearchBtn = document.getElementById('header-search-btn');
-  
+
   if (!headerSearchInput || !headerSearchBtn) return;
-  
+
   function performSearch(query) {
     if (!query.trim()) return;
-    
+
     // Redirect to homepage with search query
     const url = new URL(window.location.origin + '/');
     url.searchParams.set('q', query.trim());
     window.location.href = url.toString();
   }
-  
+
   headerSearchBtn.addEventListener('click', () => {
     performSearch(headerSearchInput.value);
   });
-  
+
   headerSearchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       performSearch(headerSearchInput.value);

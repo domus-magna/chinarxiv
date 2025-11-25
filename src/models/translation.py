@@ -4,10 +4,14 @@ Translation data model for ChinaXiv English translation.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from .paper import Paper
+
+# Pattern to match PARA tags: <PARA id="N">content</PARA>
+_PARA_TAG_PATTERN = re.compile(r"<PARA[^>]*>(.*?)</PARA>", re.IGNORECASE | re.DOTALL)
 
 
 @dataclass
@@ -125,13 +129,23 @@ class Translation:
             return False
         return bool(self.license.get("derivatives_allowed", False))
 
+    @staticmethod
+    def _strip_para_tags(text: str) -> str:
+        """Remove PARA markup tags from text, keeping content."""
+        if not text:
+            return ""
+        # Replace <PARA id="N">content</PARA> with just content
+        result = _PARA_TAG_PATTERN.sub(r"\1", text)
+        # Clean up any extra whitespace
+        return " ".join(result.split())
+
     def get_search_index_entry(self) -> Dict[str, Any]:
-        """Get search index entry for this translation."""
+        """Get search index entry for this translation (cleaned of markup)."""
         return {
             "id": self.id,
-            "title": self.get_title(),
-            "authors": self.get_authors_string(),
-            "abstract": self.get_abstract(),
-            "subjects": self.get_subjects_string(),
+            "title": self._strip_para_tags(self.get_title()),
+            "authors": self._strip_para_tags(self.get_authors_string()),
+            "abstract": self._strip_para_tags(self.get_abstract()),
+            "subjects": self._strip_para_tags(self.get_subjects_string()),
             "date": self.date or "",
         }

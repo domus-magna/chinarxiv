@@ -501,6 +501,20 @@ main {
   line-height: 1;
 }
 
+/* Search match highlighting */
+#search-results mark {
+  background: rgba(255, 213, 0, 0.4);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* Loading state */
+.search-loading {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .modal-close:hover {
   color: #333;
 }
