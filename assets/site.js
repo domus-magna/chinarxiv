@@ -12,6 +12,7 @@ function searchSubject(subject) {
   const results = document.getElementById('search-results');
   const categoryFilter = document.getElementById('category-filter');
   const dateFilter = document.getElementById('date-filter');
+  const searchBtn = document.querySelector('.search-btn');
   if (!input || !results) return;
 
   let miniSearch = null;
@@ -94,11 +95,12 @@ function searchSubject(subject) {
       const msg = hasFilters ? 'No papers match with selected filters. Try adjusting them.' : 'No papers found. Try different keywords.';
       results.innerHTML = `<div class="res"><div>${msg}</div></div>`;
     } else {
-      results.innerHTML = hits.map(hit => `
+      const count = `<div class="search-results-count">Found ${hits.length} paper${hits.length > 1 ? 's' : ''}</div>`;
+      results.innerHTML = count + hits.map(hit => `
         <div class="res">
-          <div><a href="/items/${hit.id}/"><strong>${highlightTerms(hit.title || '', currentQuery)}</strong></a></div>
-          <div class="meta">${hit.date || ''} — ${escapeHtml(hit.authors || '')}</div>
-          <div>${highlightTerms((hit.abstract || '').slice(0, 280), currentQuery)}…</div>
+          <div class="res-title"><a href="/items/${hit.id}/">${highlightTerms(hit.title || '', currentQuery)}</a></div>
+          <div class="res-meta">${hit.date || ''} — ${escapeHtml(hit.authors || '')}</div>
+          <div class="res-abstract">${highlightTerms((hit.abstract || '').slice(0, 280), currentQuery)}…</div>
         </div>`).join('');
     }
   }
@@ -120,6 +122,7 @@ function searchSubject(subject) {
 
   if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndRender);
   if (dateFilter) dateFilter.addEventListener('change', applyFiltersAndRender);
+  if (searchBtn) searchBtn.addEventListener('click', () => performSearch(input.value));
 
   function escapeHtml(s) {
     return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -198,7 +201,7 @@ function showToast(message) {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: var(--arxiv-blue, #2563eb);
+    background: var(--primary-color, #b31b1b);
     color: white;
     padding: 12px 24px;
     border-radius: 6px;
