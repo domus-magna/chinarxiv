@@ -19,13 +19,13 @@ function searchSubject(subject) {
   let lastSearchResults = [];
   let currentQuery = '';
 
-  // Category keywords for filtering
+  // Category keywords for filtering (must match template dropdown)
   const categoryMap = {
-    cs: ['computer science', 'software', 'programming', 'algorithm', 'artificial intelligence', 'machine learning'],
-    math: ['mathematics', 'mathematical', 'algebra', 'geometry', 'calculus', 'statistics'],
-    physics: ['physics', 'quantum', 'mechanics', 'relativity', 'particle'],
-    biology: ['biology', 'biological', 'genetics', 'cell', 'organism'],
-    chemistry: ['chemistry', 'chemical', 'organic', 'inorganic']
+    physics: ['physics', 'nuclear', 'optics', 'quantum', 'mechanics'],
+    engineering: ['engineering', 'geology', 'technical', 'material'],
+    psychology: ['psychology', 'cognitive', 'behavioral', 'mental'],
+    cs: ['computer', 'information', 'software', 'algorithm', 'artificial intelligence', 'machine learning'],
+    astronomy: ['astronomy', 'astrophysics', 'celestial', 'cosmic']
   };
 
   // Date filter: days ago lookup
@@ -45,12 +45,17 @@ function searchSubject(subject) {
 
   // Initialize MiniSearch with field boosting
   function initMiniSearch(docs) {
-    miniSearch = new MiniSearch({
-      fields: ['title', 'authors', 'abstract', 'subjects'],
-      storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date'],
-      searchOptions: { boost: { title: 3, authors: 2, subjects: 1.5, abstract: 1 }, fuzzy: 0.2, prefix: true }
-    });
-    miniSearch.addAll(docs);
+    try {
+      miniSearch = new MiniSearch({
+        fields: ['title', 'authors', 'abstract', 'subjects'],
+        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date'],
+        searchOptions: { boost: { title: 3, authors: 2, subjects: 1.5, abstract: 1 }, fuzzy: 0.2, prefix: true }
+      });
+      miniSearch.addAll(docs);
+    } catch (e) {
+      console.error('Failed to initialize search index:', e);
+      results.innerHTML = '<div class="res"><div>Search initialization failed. Please refresh the page.</div></div>';
+    }
   }
 
   // Load index (try compressed first)
@@ -68,10 +73,14 @@ function searchSubject(subject) {
     const filtered = lastSearchResults.filter(hit => {
       // Category filter
       if (cat && !(categoryMap[cat] || []).some(kw => (hit.subjects || '').toLowerCase().includes(kw))) return false;
-      // Date filter
+      // Date filter (reset to start of day to include papers from today)
       if (dateRange && dateDays[dateRange] !== undefined) {
-        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - dateDays[dateRange]);
-        if (new Date(hit.date) < cutoff) return false;
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - dateDays[dateRange]);
+        cutoff.setHours(0, 0, 0, 0);
+        const hitDate = new Date(hit.date);
+        if (isNaN(hitDate.getTime())) return true; // Keep papers with invalid dates
+        if (hitDate < cutoff) return false;
       }
       return true;
     });
@@ -79,14 +88,14 @@ function searchSubject(subject) {
     renderResults(filtered, cat || dateRange);
   }
 
-  // Highlight search terms
+  // Highlight search terms (using function replacement for safety)
   function highlightTerms(text, query) {
     if (!query || !text) return escapeHtml(text || '');
     const escaped = escapeHtml(text);
     const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
     if (!terms.length) return escaped;
     const pattern = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-    return escaped.replace(new RegExp(`(${pattern})`, 'gi'), '<mark>$1</mark>');
+    return escaped.replace(new RegExp(`(${pattern})`, 'gi'), (match) => '<mark>' + match + '</mark>');
   }
 
   // Render results
