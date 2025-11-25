@@ -31,13 +31,13 @@ def _load_summary() -> dict:
 def test_pipeline_dry_run_skip_selection(monkeypatch):
     tmp, cwd = _chdir_tmp()
     try:
-        # Prepare minimal selected item
+        # Prepare minimal selected item with adequate abstract length to pass QA
         os.makedirs("data", exist_ok=True)
         selected = [
             {
                 "id": "test-1",
-                "title": "Title",
-                "abstract": "Abstract",
+                "title": "A Study on Machine Learning Applications in Physics",
+                "abstract": "This paper presents a comprehensive study on machine learning applications in particle physics. We demonstrate how neural networks can be used to improve beam correction accuracy.",
                 "license": {"raw": "", "derivatives_allowed": True},
                 "source_url": "",
             }
@@ -84,13 +84,23 @@ def test_pipeline_dry_run_skip_selection(monkeypatch):
 def test_pipeline_records_merge_and_limit(monkeypatch):
     tmp, cwd = _chdir_tmp()
     try:
-        # Prepare two small records files
+        # Prepare two records files with adequate content to pass QA
         os.makedirs("data/records", exist_ok=True)
         rec_a = [
-            {"id": "test-1", "title": "A1", "abstract": "a", "license": {"raw": ""}},
+            {
+                "id": "test-1",
+                "title": "A Study on Machine Learning Applications in Physics",
+                "abstract": "This paper presents a comprehensive study on machine learning applications in particle physics. We demonstrate how neural networks can improve beam correction accuracy significantly.",
+                "license": {"raw": ""},
+            },
         ]
         rec_b = [
-            {"id": "test-2", "title": "B1", "abstract": "b", "license": {"raw": ""}},
+            {
+                "id": "test-2",
+                "title": "Advanced Deep Learning Methods for Scientific Computing",
+                "abstract": "This research explores advanced deep learning methods for scientific computing. Our approach demonstrates significant improvements in computational efficiency and accuracy across multiple domains.",
+                "license": {"raw": ""},
+            },
         ]
         with open("data/records/a.json", "w", encoding="utf-8") as f:
             json.dump(rec_a, f, ensure_ascii=False)

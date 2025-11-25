@@ -1,4 +1,3 @@
-import pytest
 
 from src.services.translation_service import TranslationService
 

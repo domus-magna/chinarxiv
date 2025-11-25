@@ -562,6 +562,12 @@ class TranslationService:
                 "Whole-paper translation was disabled, but paragraph/chunk mode is not allowed"
             )
 
+        # Extract macro-chunk config BEFORE any code path that might use them
+        macro_threshold = int(trans_config.get("macro_chunk_threshold", 300))
+        macro_target = max(1, int(trans_config.get("macro_chunk_target_size", 150)))
+        macro_max_chunks = max(1, int(trans_config.get("macro_chunk_max_chunks", 8)))
+        macro_retries = max(0, int(trans_config.get("macro_chunk_retry_attempts", 0)))
+
         para_count = len(paragraphs)
         total_tokens = sum(estimate_tokens(p) for p in paragraphs)
         if total_tokens > max_whole_paper_tokens:
@@ -578,10 +584,6 @@ class TranslationService:
                 retry_attempts=macro_retries,
             )
         # Large documents: fall back to macro-chunk translation (few large chunks)
-        macro_threshold = int(trans_config.get("macro_chunk_threshold", 300))
-        macro_target = max(1, int(trans_config.get("macro_chunk_target_size", 150)))
-        macro_max_chunks = max(1, int(trans_config.get("macro_chunk_max_chunks", 8)))
-        macro_retries = max(0, int(trans_config.get("macro_chunk_retry_attempts", 0)))
         if para_count >= macro_threshold:
             log(f"Para count {para_count} exceeds threshold {macro_threshold}; using macro-chunk translation")
             return self._translate_macro_chunks(
@@ -594,7 +596,6 @@ class TranslationService:
                 retry_attempts=macro_retries,
             )
 
-        import re
 
         def _dump_raw(label: str, raw: str) -> None:
             """Persist raw model output for post-mortem debugging."""
@@ -1320,6 +1321,9 @@ class TranslationService:
         # Reset per-run cache counters
         self._cache_hits = 0
         self._cache_chunks = 0
+        # Initialize variables that may be referenced in _write_run_summary
+        removed_chars: List[str] = []
+        formatter_retries: int = 0
 
         for model_slug in models_to_try:
             self.model = model_slug
@@ -1429,7 +1433,7 @@ class TranslationService:
                     attempt_info["status"] = "failed"
                     attempt_info["reason"] = last_error
                     attempts_summary.append(attempt_info)
-                log(f"Attempt failed for {rec['id']} with {model_slug}: {e}")
+                    log(f"Attempt failed for {rec['id']} with {model_slug}: {last_error}")
             if success_path:
                 break
 

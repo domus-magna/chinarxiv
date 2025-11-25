@@ -76,28 +76,28 @@ class TestRetryMechanism:
         assert '文' in expected_prompt
         assert 're-translate' in expected_prompt
     
-    @patch('src.services.translation_service.TranslationService._call_openrouter_with_fallback')
+    @patch('src.services.translation_service.TranslationService._call_openrouter')
     def test_retry_translate_with_prompt(self, mock_api_call):
         """Test retry translation with prompt."""
-        # Mock API response
+        # Mock API response (now uses _call_openrouter via translate_field)
         mock_api_call.return_value = "This is a corrected translation without Chinese characters."
-        
-        # Test translation
+
+        # Test translation with Chinese in abstract
         translation = {
             'id': 'test-001',
             'title_en': 'Test Paper',
             'abstract_en': 'This is a test abstract with Chinese: 中文',
             'body_en': ['This is the body text.']
         }
-        
+
         retry_prompt = "Please fix Chinese characters"
-        
+
         # Call retry method
         result = self.service._retry_translate_with_prompt(translation, retry_prompt)
-        
-        # Verify API was called
+
+        # Verify API was called (for the abstract field with Chinese characters)
         mock_api_call.assert_called_once()
-        
+
         # Verify result structure
         assert result['id'] == 'test-001'
         assert result['title_en'] == 'Test Paper'

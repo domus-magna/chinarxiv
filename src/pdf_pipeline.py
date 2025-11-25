@@ -12,11 +12,9 @@ import os
 import shutil
 import subprocess
 import time
-import re
 from collections import Counter
 from contextlib import suppress
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
 
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -133,9 +131,10 @@ def download_pdf(url: str, output_path: str, *, referer: str | None = None, sess
         return True
     except Exception as e:
         log(f"Failed to download {url}: {e}")
-        if _headless_pdf_fetch(url, output_path, referer=referer, session_id=session_id):
-            return True
+        # Fallback order: Unlocker first, then headless (consistent with invalid-content handler)
         if _unlocker_raw_fetch(url, output_path, referer=referer, session_id=session_id):
+            return True
+        if _headless_pdf_fetch(url, output_path, referer=referer, session_id=session_id):
             return True
         return False
 
@@ -265,7 +264,8 @@ def _unlocker_raw_fetch(
     _sess = _requests.Session()
     _sess.trust_env = False
     _sess.verify = False  # allow proxy MITM cert
-    username = f"brd-customer-hl_7f044a29-zone-{unlocker_zone}"
+    customer_id = os.getenv("BRIGHTDATA_CUSTOMER_ID", "hl_7f044a29")
+    username = f"brd-customer-{customer_id}-zone-{unlocker_zone}"
     if session_id:
         username += f"-session-{session_id}"
     password = os.getenv("BRIGHTDATA_UNLOCKER_PASSWORD") or os.getenv("BRIGHTDATA_ZONE_PASSWORD") or os.getenv("BRIGHTDATA_ZONE")

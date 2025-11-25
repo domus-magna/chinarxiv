@@ -429,7 +429,7 @@ gh pr view --json comments,reviews
 ## Translation workflow (current playbook)
 - Default model: `openai/gpt-5.1`; deepseek/glm are manual-only until they can pass strict QA. Grok is disabled.
 - Whole-paper first; if source >160 paragraphs or exceeds the token guard, switch to balanced macro-chunks (target ~20 paras, max 8 chunks) with strict `###PARA i###...###END###` numbering. Allow 1 retry per chunk for count/format mismatches. Successful chunks are cached to `data/cache/macro_chunks/` for resumability. Paragraph-level translation is forbidden.
-- Request timeouts: 10s connect / 45s read for OpenRouter calls. No wall-clock cap; let long calls finish.
+- Request timeouts: 10s connect / 900s read (15 minutes) for OpenRouter calls. Per-paper wall-clock guard ~40m to avoid runaway hangs.
 - Always run sidecar OCR (`ocrmypdf --force-ocr --language chi_sim+eng --sidecar <pdf>.txt <pdf> <pdf>`) so extraction reads the sidecar and merges short fragments (e.g., ~178 paras for the sample paper vs. 800+ junky paras before).
 - Structural QA: fail if counts mismatch or if short-fragment ratio spikes relative to source; QA filter failure (Chinese/formatting) triggers retry/fallback. Residual Chinese characters are stripped before QA; persistent QA failures are saved to `reports/raw_translations/<paper_id>.qa_failed.json` for manual triage.
 - Formatting: aggressive Markdown reflow (no content edits); writes `.md` alongside JSON. Micro-fragments (<=3 chars, no letters) are dropped before formatting.

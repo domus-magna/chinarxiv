@@ -51,41 +51,33 @@ class TestE2ESimple:
     
     @patch('src.services.translation_service.TranslationService._call_openrouter')
     def test_translation_service_paragraphs(self, mock_translate):
-        """Test translation service paragraph translation."""
-        mock_translate.return_value = "Translated paragraph"
-        
+        """Test translation service paragraph translation with delimiter format."""
+        # New format uses ###PARA i###...###END### delimiters
+        mock_translate.return_value = "###PARA 0###Translated first###END###\n###PARA 1###Translated second###END###"
+
         service = TranslationService()
         paragraphs = ["First paragraph", "Second paragraph"]
         result = service.translate_paragraphs(paragraphs, dry_run=False)
-        
+
         assert len(result) == 2
-        assert all("Translated paragraph" in p for p in result)
-        assert mock_translate.call_count >= len(paragraphs)
-        # The final calls should correspond to per-paragraph fallbacks
-        tail_calls = mock_translate.call_args_list[-len(paragraphs):]
-        for call, para in zip(tail_calls, paragraphs):
-            assert para in call.args[0]
+        assert result[0] == "Translated first"
+        assert result[1] == "Translated second"
 
     @patch('src.services.translation_service.TranslationService.translate_field')
     def test_translation_service_paragraphs_full_fallback(self, mock_translate_field):
-        """Ensure whole-paper mode falls back through all stages when validation fails."""
+        """Ensure whole-paper mode retries with delimiter format when initial attempt fails."""
         paragraphs = ["第一段内容", "第二段内容"]
+        # First call returns invalid format, second call returns correct delimiter format
         mock_translate_field.side_effect = [
-            "bad output",        # Whole-paper attempt (missing tags)
-            "still bad output",  # Strict retry (still missing tags)
-            "bad chunk output",  # Chunked translation result (missing sentinel split)
-            "Paragraph 1 translated",
-            "Paragraph 2 translated",
+            "bad output",        # Initial delimiter attempt (missing delimiters)
+            "###PARA 0###Paragraph 1 translated###END###\n###PARA 1###Paragraph 2 translated###END###",  # Retry succeeds
         ]
 
         service = TranslationService()
         result = service.translate_paragraphs(paragraphs, dry_run=False)
 
         assert result == ["Paragraph 1 translated", "Paragraph 2 translated"]
-        assert mock_translate_field.call_count == 5
-        # The last two calls should translate each paragraph individually
-        assert mock_translate_field.call_args_list[-2][0][0] == paragraphs[0]
-        assert mock_translate_field.call_args_list[-1][0][0] == paragraphs[1]
+        assert mock_translate_field.call_count == 2
     
     @patch('src.services.translation_service.TranslationService._call_openrouter')
     def test_translation_service_record(self, mock_translate):
@@ -144,18 +136,19 @@ class TestE2ESimple:
     @patch('src.services.translation_service.TranslationService._call_openrouter')
     def test_backward_compatibility(self, mock_translate):
         """Test backward compatibility of translate module functions."""
-        mock_translate.return_value = "Translated text"
-        
         # Test translate_field
+        mock_translate.return_value = "Translated text"
         result = translate_field("Original text", "model", [], dry_run=False)
         assert result == "Translated text"
-        
-        # Test translate_paragraphs
+
+        # Test translate_paragraphs - now uses delimiter format
+        mock_translate.return_value = "###PARA 0###First translated###END###\n###PARA 1###Second translated###END###"
         paragraphs = ["First paragraph", "Second paragraph"]
         result = translate_paragraphs(paragraphs, "model", [], dry_run=False)
         assert len(result) == 2
-        
+
         # Test translate_record
+        mock_translate.return_value = "Translated text"
         record = {
             "id": "test-1",
             "title": "Original Title",
@@ -246,7 +239,7 @@ class TestE2ESimple:
             mock_cost_log.assert_called_once()
             call_args = mock_cost_log.call_args[0]
             assert call_args[0] == "test-1"  # paper_id
-            assert call_args[1] == "deepseek/deepseek-v3.2-exp"  # model
+            assert call_args[1] == "openai/gpt-5.1"  # model (default changed from deepseek)
             assert isinstance(call_args[2], int)  # input tokens
             assert isinstance(call_args[3], int)  # output tokens
             assert isinstance(call_args[4], float)  # cost

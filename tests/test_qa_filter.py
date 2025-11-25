@@ -79,8 +79,9 @@ class TestChineseCharacterDetector:
         assert self.detector.has_chinese_metadata("摘要: This is an abstract") is True
         assert self.detector.has_chinese_metadata("分类：Physics") is True
         assert self.detector.has_chinese_metadata("引用：ChinaXiv:202503.00001") is True
-        assert self.detector.has_chinese_metadata("DOI: 10.12074/202503.00001") is True
-        assert self.detector.has_chinese_metadata("CSTR: 32003.36.ChinaXiv.202503.00001") is True
+        # DOI and CSTR are ASCII-only markers, now skipped to avoid false positives
+        assert self.detector.has_chinese_metadata("DOI: 10.12074/202503.00001") is False
+        assert self.detector.has_chinese_metadata("CSTR: 32003.36.ChinaXiv.202503.00001") is False
         assert self.detector.has_chinese_metadata("推荐引用方式：") is True
         assert self.detector.has_chinese_metadata("版本历史") is True
         assert self.detector.has_chinese_metadata("下载全文") is True
@@ -387,7 +388,7 @@ class TestTranslationQAFilter:
         assert self.qa_filter.should_display(result) is False
     
     def test_chinese_punctuation_only_flags(self):
-        """Test that Chinese punctuation only flags the translation."""
+        """Test that Chinese punctuation flags the translation as FLAG_CHINESE (stricter QA)."""
         chinese_punct_only_translation = {
             'id': 'test-chinese-punct-only',
             'title_en': 'Machine Learning Study',
@@ -396,9 +397,10 @@ class TestTranslationQAFilter:
             'creators': ['John Smith'],
             'subjects': ['Physics']
         }
-        
+
         result = self.qa_filter.check_translation(chinese_punct_only_translation)
-        assert result.status == QAStatus.FLAG_FORMATTING
+        # QA now flags ANY Chinese characters (including punctuation) as FLAG_CHINESE
+        assert result.status == QAStatus.FLAG_CHINESE
         assert result.score < 1.0
         assert result.chinese_ratio > 0.0
         assert len(result.chinese_chars) > 0

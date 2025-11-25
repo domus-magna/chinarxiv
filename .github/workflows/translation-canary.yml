@@ -52,8 +52,10 @@ jobs:
             path="data/translated/${id}.json"
             test -f "$path"
             status=$(jq -r '._qa_status' "$path")
-            ratio=$(jq -r '._qa_chinese_ratio' "$path")
-            if [ "$status" != "pass" ] || [ "$(python - <<'PY'\nimport sys\nval=float(sys.argv[1]); print(val>0.0)\nPY "$ratio")" = "True" ]; then
+            # Check if ratio > 0 using jq (returns "true" or "false")
+            ratio_positive=$(jq '._qa_chinese_ratio > 0' "$path")
+            if [ "$status" != "pass" ] || [ "$ratio_positive" = "true" ]; then
+              ratio=$(jq -r '._qa_chinese_ratio' "$path")
               echo "QA failed for $id (status=$status, ratio=$ratio)"
               exit 1
             fi
