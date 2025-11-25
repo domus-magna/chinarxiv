@@ -11,6 +11,7 @@ function searchSubject(subject) {
   const input = document.getElementById('search-input');
   const results = document.getElementById('search-results');
   const categoryFilter = document.getElementById('category-filter');
+  const dateFilter = document.getElementById('date-filter');
   const searchBtn = document.querySelector('.search-btn');
   if (!input || !results) return;
   let index = [];
@@ -21,6 +22,14 @@ function searchSubject(subject) {
   if (urlQuery && input) {
     input.value = urlQuery;
   }
+
+  // Event delegation for subject tag clicks (prevents XSS from inline onclick)
+  results.addEventListener('click', (e) => {
+    const tag = e.target.closest('.subject-tag[data-subject]');
+    if (tag) {
+      searchSubject(tag.dataset.subject);
+    }
+  });
 
   // Try compressed index first, fallback to uncompressed
   fetch('search-index.json.gz')
@@ -44,7 +53,9 @@ function searchSubject(subject) {
       fetch('search-index.json').then(r => r.json()).then(data => {
         index = data;
         performSearch(urlQuery || '');
-      }).catch(() => {});
+      }).catch(() => {
+        results.innerHTML = '<div class="search-results-count">Search unavailable. Please refresh the page.</div>';
+      });
     });
 
   function escapeHtml(s) {
@@ -86,14 +97,33 @@ function searchSubject(subject) {
     }
   }
 
+  function matchesDateFilter(itemDate, dateValue) {
+    if (!dateValue || !itemDate) return true;
+    try {
+      const item = new Date(itemDate);
+      const now = new Date();
+      const diffMs = now - item;
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      switch (dateValue) {
+        case 'today': return diffDays < 1;
+        case 'week': return diffDays < 7;
+        case 'month': return diffDays < 30;
+        case 'year': return diffDays < 365;
+        default: return true;
+      }
+    } catch {
+      return true;
+    }
+  }
+
   function renderResult(it) {
     const tags = (it.subjects || '').split(',')
       .map(s => s.trim())
       .filter(s => s)
       .map(s => {
         const cat = categorizeSubject(s);
-        const escaped = escapeHtml(s).replace(/'/g, "\\'");
-        return `<span class="subject-tag" ${cat ? `data-category="${cat}"` : ''} onclick="searchSubject('${escaped}')">${escapeHtml(s)}</span>`;
+        // Use data-subject attribute for event delegation (prevents XSS)
+        return `<span class="subject-tag" data-subject="${escapeHtml(s)}" ${cat ? `data-category="${cat}"` : ''}>${escapeHtml(s)}</span>`;
       }).join('');
 
     return `
@@ -109,11 +139,15 @@ function searchSubject(subject) {
   function performSearch(query) {
     const q = (query || '').trim().toLowerCase();
     const category = categoryFilter ? categoryFilter.value : '';
+    const dateValue = dateFilter ? dateFilter.value : '';
 
     const out = [];
     for (const it of index) {
       // Check category filter first
       if (!matchesCategory(it.subjects, category)) continue;
+
+      // Check date filter
+      if (!matchesDateFilter(it.date, dateValue)) continue;
 
       // If query provided, check text match
       if (q) {
@@ -144,6 +178,13 @@ function searchSubject(subject) {
   // Category filter triggers immediate search
   if (categoryFilter) {
     categoryFilter.addEventListener('change', () => {
+      performSearch(input.value);
+    });
+  }
+
+  // Date filter triggers immediate search
+  if (dateFilter) {
+    dateFilter.addEventListener('change', () => {
       performSearch(input.value);
     });
   }
@@ -183,22 +224,21 @@ function searchSubject(subject) {
   });
 })();
 
-// Copy to clipboard functionality for donation page
-function copyToClipboard(text) {
+// Copy to clipboard with optional custom message
+function copyToClipboard(text, message) {
+  const msg = message || 'Copied!';
   if (navigator.clipboard && window.isSecureContext) {
-    // Use modern clipboard API
     navigator.clipboard.writeText(text).then(() => {
-      showCopyFeedback();
+      showToast(msg);
     }).catch(() => {
-      fallbackCopyToClipboard(text);
+      fallbackCopyToClipboard(text, msg);
     });
   } else {
-    // Fallback for older browsers
-    fallbackCopyToClipboard(text);
+    fallbackCopyToClipboard(text, msg);
   }
 }
 
-function fallbackCopyToClipboard(text) {
+function fallbackCopyToClipboard(text, message) {
   const textArea = document.createElement('textarea');
   textArea.value = text;
   textArea.style.position = 'fixed';
@@ -207,14 +247,15 @@ function fallbackCopyToClipboard(text) {
   document.body.appendChild(textArea);
   textArea.focus();
   textArea.select();
-  
+
   try {
     document.execCommand('copy');
-    showCopyFeedback();
+    showToast(message || 'Copied!');
   } catch (err) {
     console.error('Failed to copy text: ', err);
+    showToast('Failed to copy');
   }
-  
+
   document.body.removeChild(textArea);
 }
 

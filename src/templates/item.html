@@ -131,40 +131,6 @@
   </div>
 
   <script>
-    // Clipboard helper with fallback - uses showToast from site.js
-    function copyToClipboardWithToast(text, successMessage) {
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(() => {
-          if (typeof showToast === 'function') showToast(successMessage);
-        }).catch(() => {
-          fallbackCopyWithToast(text, successMessage);
-        });
-      } else {
-        fallbackCopyWithToast(text, successMessage);
-      }
-    }
-
-    function fallbackCopyWithToast(text, successMessage) {
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-999999px';
-      textArea.style.top = '-999999px';
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
-
-      try {
-        document.execCommand('copy');
-        if (typeof showToast === 'function') showToast(successMessage);
-      } catch (err) {
-        console.error('Failed to copy text: ', err);
-        if (typeof showToast === 'function') showToast('Failed to copy');
-      }
-
-      document.body.removeChild(textArea);
-    }
-
     // Paper metadata for citation formatting
     const paperData = {
       id: {{ item.id|tojson }},
@@ -261,7 +227,7 @@
         case 'bibtex': citation = getCitationBibTeX(); break;
       }
 
-      copyToClipboardWithToast(citation, 'Citation copied!');
+      copyToClipboard(citation, 'Citation copied!');
     }
 
     // Modal functions
@@ -286,7 +252,7 @@
     });
 
     function copyLink() {
-      copyToClipboardWithToast(window.location.href, 'Link copied!');
+      copyToClipboard(window.location.href, 'Link copied!');
     }
 
     function bookmarkPaper() {
@@ -300,14 +266,22 @@
         };
         if (!bookmarks.find(b => b.id === bookmark.id)) {
           bookmarks.push(bookmark);
-          localStorage.setItem('chinaxiv_bookmarks', JSON.stringify(bookmarks));
-          if (typeof showToast === 'function') showToast('Bookmarked!');
+          try {
+            localStorage.setItem('chinaxiv_bookmarks', JSON.stringify(bookmarks));
+            showToast('Bookmarked!');
+          } catch (storageError) {
+            if (storageError.name === 'QuotaExceededError') {
+              showToast('Storage full - cannot bookmark');
+            } else {
+              throw storageError;
+            }
+          }
         } else {
-          if (typeof showToast === 'function') showToast('Already bookmarked');
+          showToast('Already bookmarked');
         }
       } catch (e) {
         console.warn('Bookmarking unavailable', e);
-        if (typeof showToast === 'function') showToast('Bookmarking unavailable');
+        showToast('Bookmarking unavailable');
       }
     }
   </script>
