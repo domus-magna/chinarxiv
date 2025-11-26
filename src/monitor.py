@@ -17,6 +17,16 @@ from werkzeug.security import check_password_hash
 from .monitoring import monitoring_service
 from .logging_utils import log
 
+# Monitoring defaults
+DEFAULT_ANALYTICS_DAYS = 7
+DEFAULT_ALERT_LIMIT = 50
+DEFAULT_SEARCH_LIMIT = 100
+AUTH_SESSION_TIMEOUT_SECONDS = 3600
+HEALTHCHECK_TIMEOUT_SECONDS = 5
+# WARNING: Paper translation times vary widely (30s to 40min).
+# This is a rough estimate used only for UI progress display.
+ESTIMATED_JOB_DURATION_SECONDS = 30
+
 # Configuration
 MONITORING_USERNAME = os.getenv("MONITORING_USERNAME")
 MONITORING_PASSWORD = os.getenv("MONITORING_PASSWORD")
@@ -126,7 +136,7 @@ class MonitoringDashboard:
 
                 if ok:
                     response = Response(self.render_login_success())
-                    response.set_cookie("auth_token", "authenticated", max_age=3600)
+                    response.set_cookie("auth_token", "authenticated", max_age=AUTH_SESSION_TIMEOUT_SECONDS)
                     return response
                 else:
                     return self.render_login(error="Invalid credentials")
@@ -150,7 +160,7 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            limit = request.args.get("limit", 50, type=int)
+            limit = request.args.get("limit", DEFAULT_ALERT_LIMIT, type=int)
             level = request.args.get("level")
 
             alerts = monitoring_service.get_alerts(limit)
@@ -191,7 +201,7 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
+            days = request.args.get("days", DEFAULT_ANALYTICS_DAYS, type=int)
             stats = monitoring_service.get_analytics(days)
             return jsonify(stats)
 
@@ -201,7 +211,7 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
+            days = request.args.get("days", DEFAULT_ANALYTICS_DAYS, type=int)
             page = request.args.get("page")
             analytics = monitoring_service.get_analytics(days)
             page_views = analytics.get("page_views", [])
@@ -215,8 +225,8 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
-            limit = request.args.get("limit", 100, type=int)
+            days = request.args.get("days", DEFAULT_ANALYTICS_DAYS, type=int)
+            limit = request.args.get("limit", DEFAULT_SEARCH_LIMIT, type=int)
             analytics = monitoring_service.get_analytics(days)
             queries = analytics.get("search_queries", [])
             queries = queries[-limit:] if queries else []
@@ -228,8 +238,6 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            request.args.get("days", 7, type=int)
-            request.args.get("paper_id")
             # Downloads are not tracked in the consolidated service yet
             return jsonify([])
 
@@ -239,7 +247,7 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
+            days = request.args.get("days", DEFAULT_ANALYTICS_DAYS, type=int)
             stats = monitoring_service.get_performance(days)
             return jsonify(stats)
 
@@ -249,7 +257,7 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
+            days = request.args.get("days", DEFAULT_ANALYTICS_DAYS, type=int)
             # Simplified performance report
             performance = monitoring_service.get_performance(days)
             report = {
@@ -264,9 +272,6 @@ class MonitoringDashboard:
             """Run performance optimizations."""
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
-
-            data = request.get_json() or {}
-            data.get("type", "all")
 
             results = monitoring_service.optimize_site()
 
@@ -314,9 +319,8 @@ class MonitoringDashboard:
                 # Estimate completion time
                 estimated_completion = None
                 if pending > 0 and completed > 0:
-                    # Simple estimation based on current rate
-                    avg_time_per_job = 30  # seconds (rough estimate)
-                    remaining_seconds = pending * avg_time_per_job
+                    # Simple estimation based on rough average
+                    remaining_seconds = pending * ESTIMATED_JOB_DURATION_SECONDS
                     estimated_completion = datetime.now() + timedelta(
                         seconds=remaining_seconds
                     )
@@ -354,11 +358,11 @@ class MonitoringDashboard:
 
             # Check Cloudflare status
             try:
-                response = requests.get(site_url, timeout=5)
+                response = requests.get(site_url, timeout=HEALTHCHECK_TIMEOUT_SECONDS)
                 cloudflare_status = (
                     "Online" if response.status_code == 200 else "Offline"
                 )
-            except Exception:
+            except requests.RequestException:
                 cloudflare_status = "Unknown"
 
             return SystemStats(
