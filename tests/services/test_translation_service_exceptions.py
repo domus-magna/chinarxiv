@@ -106,14 +106,14 @@ class TestCircuitBreaker:
         assert service._circuit_breaker.consecutive_persistent == 0
         assert service._circuit_breaker.consecutive_transient == 1
 
-    def test_reset_failure_counter_clears_all(self):
-        """Reset clears all counters and closes circuit."""
+    def test_on_api_success_clears_all(self):
+        """API success clears all counters and closes circuit."""
         service = TranslationService()
         service._circuit_breaker._consecutive_persistent = 1
         service._circuit_breaker._consecutive_transient = 3
         service._circuit_breaker._circuit_open = True
 
-        service._reset_failure_counter()
+        service._on_api_success()
 
         assert service._circuit_breaker.consecutive_persistent == 0
         assert service._circuit_breaker.consecutive_transient == 0

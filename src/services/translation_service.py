@@ -216,9 +216,29 @@ class TranslationService:
         """Record an API failure. Raises CircuitBreakerOpen if threshold exceeded."""
         self._circuit_breaker.record_failure(error_code)
 
-    def _reset_failure_counter(self) -> None:
-        """Reset circuit breaker counters on successful translation."""
+    def _on_api_success(self) -> None:
+        """Record successful API call, resetting circuit breaker counters."""
         self._circuit_breaker.record_success()
+
+    def _build_glossary_string(self, glossary: List[Dict[str, str]]) -> str:
+        """
+        Build glossary string from list of term dicts.
+
+        Gracefully skips malformed entries (missing 'zh' or 'en' keys).
+
+        Args:
+            glossary: List of dicts with 'zh' and 'en' keys
+
+        Returns:
+            Formatted glossary string for prompt injection
+        """
+        parts = []
+        for g in glossary:
+            try:
+                parts.append(f"{g['zh']} => {g['en']}")
+            except (KeyError, TypeError):
+                log(f"Warning: Skipping malformed glossary entry: {g}")
+        return "\n".join(parts)
 
     @retry(
         wait=wait_exponential(min=1, max=10),
@@ -244,7 +264,7 @@ class TranslationService:
             OpenRouterError: On API failure
         """
         # prepend glossary as instructions
-        glossary_str = "\n".join(f"{g['zh']} => {g['en']}" for g in glossary)
+        glossary_str = self._build_glossary_string(glossary)
         system = SYSTEM_PROMPT + (
             "\nGlossary (zh => en):\n" + glossary_str if glossary_str else ""
         )
@@ -443,7 +463,7 @@ class TranslationService:
         Uses slightly higher temperature for more natural prose.
         Shares error handling logic with _call_openrouter for consistency.
         """
-        glossary_str = "\n".join(f"{g['zh']} => {g['en']}" for g in glossary)
+        glossary_str = self._build_glossary_string(glossary)
         system = SYNTHESIS_SYSTEM_PROMPT + (
             "\n\nTerminology Glossary:\n" + glossary_str if glossary_str else ""
         )
@@ -776,7 +796,7 @@ Remember: Produce flowing, readable academic English. Merge fragments into compl
                     translated = self._call_openrouter_synthesis(
                         user_prompt, model, glossary
                     )
-                    self._reset_failure_counter()
+                    self._on_api_success()
                 except OpenRouterError as e:
                     self._record_failure(getattr(e, "code", None))
                     raise
