@@ -1,0 +1,16 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "B",    # flake8-bugbear
+    "BLE",  # flake8-blind-except (bare except detection)
+    "SIM",  # flake8-simplify
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["BLE001"]  # Allow broader exception catching in tests
