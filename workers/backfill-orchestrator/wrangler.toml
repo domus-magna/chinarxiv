@@ -8,25 +8,21 @@ compatibility_flags = ["nodejs_compat"]
 name = "BACKFILL_ORCHESTRATOR"
 class_name = "BackfillOrchestrator"
 
-# Migrations for Durable Objects
+# Migrations for Durable Objects (using SQLite for free plan)
 [[migrations]]
 tag = "v1"
-new_classes = ["BackfillOrchestrator"]
+new_sqlite_classes = ["BackfillOrchestrator"]
 
 # Environment variables (secrets set via wrangler secret put)
 # ADMIN_USERNAME - Basic auth username
 # ADMIN_PASSWORD - Basic auth password
-# B2_KEY_ID - Backblaze B2 key ID
-# B2_APP_KEY - Backblaze B2 application key
-# B2_ENDPOINT - S3 endpoint
-# OPENROUTER_API_KEY - OpenRouter API key for translations
+# GITHUB_TOKEN - GitHub personal access token with workflow permissions
+# GITHUB_REPO - Repository in format "owner/repo"
 
 [vars]
-B2_BUCKET = "chinaxiv-pipeline"
-B2_PREFIX = "prod/"
-TRANSLATION_MODEL = "deepseek/deepseek-chat"
-BATCH_SIZE = "10"
-ALARM_INTERVAL_MS = "60000"
+GITHUB_REPO = "alexanderhuth/chinaxiv-translation-quality"
+WORKFLOW_FILE = "backfill.yml"
+POLL_INTERVAL_MS = "300000"  # 5 minutes
 
 # Production environment
 [env.production]
