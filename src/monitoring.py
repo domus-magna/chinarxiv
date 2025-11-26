@@ -12,6 +12,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 
 from .utils import log, getenv_bool
+from .data_utils import filter_by_timestamp
 
 
 @dataclass
@@ -344,21 +345,13 @@ class MonitoringService:
         """Clean up old alerts."""
         try:
             cutoff = datetime.now() - timedelta(days=days)
-
-            filtered_alerts = []
-            for alert in self.alerts:
-                try:
-                    alert_time = datetime.fromisoformat(alert.get("timestamp", ""))
-                    if alert_time > cutoff:
-                        filtered_alerts.append(alert)
-                except ValueError:
-                    # Keep alerts with invalid timestamps
-                    filtered_alerts.append(alert)
+            filtered_alerts = filter_by_timestamp(self.alerts, cutoff, keep_invalid=True)
 
             if len(filtered_alerts) != len(self.alerts):
+                removed_count = len(self.alerts) - len(filtered_alerts)
                 self.alerts = filtered_alerts
                 self._save_data()
-                log(f"Cleaned up {len(self.alerts) - len(filtered_alerts)} old alerts")
+                log(f"Cleaned up {removed_count} old alerts")
 
         except Exception as e:
             log(f"Failed to cleanup alerts: {e}")
@@ -482,27 +475,13 @@ class MonitoringService:
         """Get analytics summary."""
         cutoff = datetime.now() - timedelta(days=days)
 
-        # Filter page views
-        page_views = []
-        if "page_views" in self.analytics:
-            for view in self.analytics["page_views"]:
-                try:
-                    view_time = datetime.fromisoformat(view.get("timestamp", ""))
-                    if view_time > cutoff:
-                        page_views.append(view)
-                except ValueError:
-                    continue
-
-        # Filter search queries
-        search_queries = []
-        if "search_queries" in self.analytics:
-            for query in self.analytics["search_queries"]:
-                try:
-                    query_time = datetime.fromisoformat(query.get("timestamp", ""))
-                    if query_time > cutoff:
-                        search_queries.append(query)
-                except ValueError:
-                    continue
+        # Filter page views and search queries using utility function
+        page_views = filter_by_timestamp(
+            self.analytics.get("page_views", []), cutoff
+        )
+        search_queries = filter_by_timestamp(
+            self.analytics.get("search_queries", []), cutoff
+        )
 
         return {
             "page_views": page_views,
@@ -550,16 +529,10 @@ class MonitoringService:
         """Get performance summary."""
         cutoff = datetime.now() - timedelta(days=days)
 
-        # Filter metrics
-        metrics = []
-        if "metrics" in self.performance:
-            for metric in self.performance["metrics"]:
-                try:
-                    metric_time = datetime.fromisoformat(metric.get("timestamp", ""))
-                    if metric_time > cutoff:
-                        metrics.append(metric)
-                except ValueError:
-                    continue
+        # Filter metrics using utility function
+        metrics = filter_by_timestamp(
+            self.performance.get("metrics", []), cutoff
+        )
 
         return {
             "metrics": metrics,
@@ -675,44 +648,23 @@ class MonitoringService:
         # Clean up alerts
         self.cleanup_alerts(days)
 
-        # Clean up analytics
+        # Clean up analytics and performance using utility function
         cutoff = datetime.now() - timedelta(days=days)
 
-        # Clean page views
         if "page_views" in self.analytics:
-            filtered_views = []
-            for view in self.analytics["page_views"]:
-                try:
-                    view_time = datetime.fromisoformat(view.get("timestamp", ""))
-                    if view_time > cutoff:
-                        filtered_views.append(view)
-                except ValueError:
-                    continue
-            self.analytics["page_views"] = filtered_views
+            self.analytics["page_views"] = filter_by_timestamp(
+                self.analytics["page_views"], cutoff
+            )
 
-        # Clean search queries
         if "search_queries" in self.analytics:
-            filtered_queries = []
-            for query in self.analytics["search_queries"]:
-                try:
-                    query_time = datetime.fromisoformat(query.get("timestamp", ""))
-                    if query_time > cutoff:
-                        filtered_queries.append(query)
-                except ValueError:
-                    continue
-            self.analytics["search_queries"] = filtered_queries
+            self.analytics["search_queries"] = filter_by_timestamp(
+                self.analytics["search_queries"], cutoff
+            )
 
-        # Clean performance metrics
         if "metrics" in self.performance:
-            filtered_metrics = []
-            for metric in self.performance["metrics"]:
-                try:
-                    metric_time = datetime.fromisoformat(metric.get("timestamp", ""))
-                    if metric_time > cutoff:
-                        filtered_metrics.append(metric)
-                except ValueError:
-                    continue
-            self.performance["metrics"] = filtered_metrics
+            self.performance["metrics"] = filter_by_timestamp(
+                self.performance["metrics"], cutoff
+            )
 
         # Save cleaned data
         self._save_data()
