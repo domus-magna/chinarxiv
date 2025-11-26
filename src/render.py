@@ -114,6 +114,15 @@ def render_site(items: List[Dict[str, Any]]) -> None:
     if os.path.exists(assets_src):
         shutil.copytree(assets_src, assets_dst)
 
+    # Copy admin templates (backfill dashboard, etc.)
+    admin_templates_src = os.path.join("templates", "admin")
+    admin_dst = os.path.join(base_out, "admin")
+    if os.path.exists(admin_dst):
+        shutil.rmtree(admin_dst)
+    if os.path.exists(admin_templates_src):
+        shutil.copytree(admin_templates_src, admin_dst)
+        log(f"Copied admin templates → {admin_dst}")
+
     build_version = int(time.time())
 
     # Index page
