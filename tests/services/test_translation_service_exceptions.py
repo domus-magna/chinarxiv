@@ -29,7 +29,7 @@ class TestCircuitBreaker:
     def test_check_circuit_breaker_when_open(self):
         """Circuit breaker raises when already open."""
         service = TranslationService()
-        service._circuit_open = True
+        service._circuit_breaker._circuit_open = True
 
         with pytest.raises(CircuitBreakerOpen) as exc_info:
             service._check_circuit_breaker()
@@ -39,7 +39,7 @@ class TestCircuitBreaker:
     def test_check_circuit_breaker_when_closed(self):
         """Circuit breaker does not raise when closed."""
         service = TranslationService()
-        service._circuit_open = False
+        service._circuit_breaker._circuit_open = False
 
         # Should not raise
         service._check_circuit_breaker()
@@ -47,37 +47,37 @@ class TestCircuitBreaker:
     def test_persistent_error_trips_after_threshold(self):
         """Persistent errors trip circuit after 2 consecutive failures."""
         service = TranslationService()
-        service.PERSISTENT_ERROR_THRESHOLD = 2
+        service._circuit_breaker.persistent_threshold = 2
 
         # First persistent error - should not trip
         service._record_failure("payment_required")
-        assert service._consecutive_persistent == 1
-        assert not service._circuit_open
+        assert service._circuit_breaker.consecutive_persistent == 1
+        assert not service._circuit_breaker.is_open
 
         # Second persistent error - should trip
         with pytest.raises(CircuitBreakerOpen) as exc_info:
             service._record_failure("payment_required")
 
         assert "persistent errors" in str(exc_info.value)
-        assert service._circuit_open
+        assert service._circuit_breaker.is_open
 
     def test_transient_error_trips_after_threshold(self):
         """Transient errors trip circuit after 5 consecutive failures."""
         service = TranslationService()
-        service.TRANSIENT_ERROR_THRESHOLD = 5
+        service._circuit_breaker.transient_threshold = 5
 
         # First 4 transient errors - should not trip
         for i in range(4):
             service._record_failure("rate_limit")
-            assert service._consecutive_transient == i + 1
-            assert not service._circuit_open
+            assert service._circuit_breaker.consecutive_transient == i + 1
+            assert not service._circuit_breaker.is_open
 
         # 5th transient error - should trip
         with pytest.raises(CircuitBreakerOpen) as exc_info:
             service._record_failure("rate_limit")
 
         assert "transient errors" in str(exc_info.value)
-        assert service._circuit_open
+        assert service._circuit_breaker.is_open
 
     def test_persistent_error_resets_transient_counter(self):
         """Persistent error resets transient counter."""
@@ -86,12 +86,12 @@ class TestCircuitBreaker:
         # Build up transient errors
         service._record_failure("network_error")
         service._record_failure("network_error")
-        assert service._consecutive_transient == 2
+        assert service._circuit_breaker.consecutive_transient == 2
 
         # Persistent error should reset transient counter
         service._record_failure("payment_required")
-        assert service._consecutive_transient == 0
-        assert service._consecutive_persistent == 1
+        assert service._circuit_breaker.consecutive_transient == 0
+        assert service._circuit_breaker.consecutive_persistent == 1
 
     def test_transient_error_resets_persistent_counter(self):
         """Transient error resets persistent counter."""
@@ -99,25 +99,25 @@ class TestCircuitBreaker:
 
         # Build up persistent error
         service._record_failure("payment_required")
-        assert service._consecutive_persistent == 1
+        assert service._circuit_breaker.consecutive_persistent == 1
 
         # Transient error should reset persistent counter
         service._record_failure("network_error")
-        assert service._consecutive_persistent == 0
-        assert service._consecutive_transient == 1
+        assert service._circuit_breaker.consecutive_persistent == 0
+        assert service._circuit_breaker.consecutive_transient == 1
 
     def test_reset_failure_counter_clears_all(self):
         """Reset clears all counters and closes circuit."""
         service = TranslationService()
-        service._consecutive_persistent = 1
-        service._consecutive_transient = 3
-        service._circuit_open = True
+        service._circuit_breaker._consecutive_persistent = 1
+        service._circuit_breaker._consecutive_transient = 3
+        service._circuit_breaker._circuit_open = True
 
         service._reset_failure_counter()
 
-        assert service._consecutive_persistent == 0
-        assert service._consecutive_transient == 0
-        assert not service._circuit_open
+        assert service._circuit_breaker.consecutive_persistent == 0
+        assert service._circuit_breaker.consecutive_transient == 0
+        assert not service._circuit_breaker.is_open
 
     def test_persistent_error_codes_recognized(self):
         """All persistent error codes are recognized."""
@@ -132,11 +132,10 @@ class TestCircuitBreaker:
         ]
 
         for code in persistent_codes:
-            service._consecutive_persistent = 0
-            service._consecutive_transient = 0
+            service._circuit_breaker.reset()
             service._record_failure(code)
-            assert service._consecutive_persistent == 1, f"Code {code} should be persistent"
-            assert service._consecutive_transient == 0
+            assert service._circuit_breaker.consecutive_persistent == 1, f"Code {code} should be persistent"
+            assert service._circuit_breaker.consecutive_transient == 0
 
 
 class TestOpenRouterRequest:
