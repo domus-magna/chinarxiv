@@ -23,9 +23,9 @@ class GateSummary:
 
 
 def run_translation_gate(output_path: str = "reports/translation_report.json") -> GateSummary:
-    from src.qa_filter import TranslationQAFilter
+    from src.qa_filter import SynthesisQAFilter
 
-    qa = TranslationQAFilter()
+    qa = SynthesisQAFilter()
     results: Dict[str, Any] = {}
     passed = 0
     flagged = 0
@@ -39,7 +39,7 @@ def run_translation_gate(output_path: str = "reports/translation_report.json") -
         try:
             with open(fp, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            res = qa.check_translation(data)
+            res = qa.check_synthesis_translation(data)
 
             # Translation completeness checks (simple, thresholded)
             def _strlen(s: str) -> int:
@@ -47,8 +47,8 @@ def run_translation_gate(output_path: str = "reports/translation_report.json") -
 
             title_ok = _strlen(data.get("title_en", "")) >= 5
             abstract_ok = _strlen(data.get("abstract_en", "")) >= 50
-            # Only require body when present (indicates full text attempted)
-            body_val = data.get("body_en")
+            # Check body_md (synthesis mode) or body_en (legacy)
+            body_val = data.get("body_md") or data.get("body_en")
             if isinstance(body_val, list):
                 body_text = " ".join([p for p in body_val if isinstance(p, str)])
             elif isinstance(body_val, str):

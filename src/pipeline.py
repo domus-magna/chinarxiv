@@ -209,7 +209,7 @@ def run_cli() -> None:
 
     # Import QA if enabled
     if args.with_qa:
-        from .qa_filter import filter_translation_file
+        from .qa_filter import SynthesisQAFilter, QAStatus
 
     def _translate_one(paper_id: str) -> tuple[str, bool, str | None, bool | None]:
         # Create per-worker TranslationService instance for thread safety
@@ -228,10 +228,10 @@ def run_cli() -> None:
                 with open(result_path, "r", encoding="utf-8") as f:
                     translation = json.load(f)
 
-                # Filter and save to appropriate directory
-                qa_passed, qa_result = filter_translation_file(
-                    translation, save_passed=True, save_flagged=True
-                )
+                # Run QA check using SynthesisQAFilter
+                qa_filter = SynthesisQAFilter()
+                qa_result = qa_filter.check_synthesis_translation(translation)
+                qa_passed = qa_result.status == QAStatus.PASS
 
                 if qa_passed:
                     log(f"  QA: PASS (score: {qa_result.score:.2f})")
