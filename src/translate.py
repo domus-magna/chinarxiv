@@ -57,9 +57,12 @@ def translate_paper_synthesis(
 
     service = TranslationService()
 
-    # Load selected records
+    # Load selected records (if file exists)
     selected_path = os.path.join("data", "selected.json")
-    selected = read_json(selected_path)
+    if os.path.exists(selected_path):
+        selected = read_json(selected_path)
+    else:
+        selected = []
 
     # Find the record
     rec = next((r for r in selected if r["id"] == paper_id), None)
