@@ -8,24 +8,25 @@ proxy:
   https: "http://127.0.0.1:1087"
 
 models:
-  default_slug: "openai/gpt-5.1"
-  alternates: []
+  default_slug: "moonshotai/kimi-k2-thinking"  # Best quality at reasonable cost
+  alternates: ["z-ai/glm-4.6"]  # Fallback: 98% quality at lower cost
 translation:
-  whole_paper_mode: true  # Translate entire paper body at once for maximum coherency
-  max_whole_paper_tokens: 32000  # Safety limit for whole paper mode (DeepSeek V3: 64K context)
-  batch_paragraphs: false  # Group paragraphs into ~1500 token chunks (ignored if whole_paper_mode=true)
-  retry_chinese_chars: true  # Enable retry for Chinese characters
-  macro_chunk_threshold: 160  # switch to macro-chunks once we exceed this paragraph count
-  macro_chunk_target_size: 20  # target paragraphs per macro-chunk (balanced across chunks)
-  macro_chunk_max_chunks: 8  # cap total macro-chunks to avoid too many calls
-  macro_chunk_retry_attempts: 1  # retries per macro chunk (in addition to first attempt)
+  # Synthesis mode settings - produces readable academic prose output
+  synthesis:
+    enabled: true
+    filter_watermarks: true  # Pre-filter PDF watermarks in Python
+    merge_fragments: true    # Merge fragmented PDF lines into paragraphs
+    min_paragraph_length: 50 # Minimum chars to consider a line a complete paragraph
+    max_chunk_tokens: 28000  # Max tokens per synthesis chunk
+    temperature: 0.3         # Slightly higher for more natural prose
+
+  # Timeout and retry settings
   request_timeout_seconds:
     connect: 10
     read: 900  # Allow up to 15 minutes per call; reliability over latency
   paper_wallclock_limit_seconds: 2400  # hard cap per paper (~40m) to avoid runaway hangs
   fallback_models: []
-  max_retries_per_model: 1  # per-model attempts (macro chunks handle their own retries)
-  max_short_ratio: 0.1  # fail translation if translated short fragments exceed this ratio (when source is cleaner)
+  max_retries_per_model: 1
 
 formatting:
   # model: deepseek/deepseek-v3.2-exp  # optional override
@@ -67,8 +68,9 @@ validation_thresholds:
 
 cost:
   pricing_per_mtoken:
-    deepseek/deepseek-v3.2-exp: { input: 0.27, output: 0.40 }
+    moonshotai/kimi-k2-thinking: { input: 0.45, output: 2.35 }  # Primary model
+    z-ai/glm-4.6: { input: 0.40, output: 1.75 }  # Fallback model
+    deepseek/deepseek-v3.2-exp: { input: 0.22, output: 0.33 }
     z-ai/glm-4.5-air: { input: 0.14, output: 0.85 }
-    z-ai/glm-4.6: { input: 0.40, output: 1.75 }
     openai/gpt-5.1: { input: 1.25, output: 10.0, cache_read: 0.125 }
     x-ai/grok-4.1-fast: { input: 0.0, output: 0.0 }

@@ -82,6 +82,18 @@ def test_pipeline_smoke_passes_all_gates(tmp_path: Path, monkeypatch: pytest.Mon
 
     translated_dir = data_dir / "translated"
     translated_dir.mkdir(parents=True)
+    # Synthesis mode uses body_md (markdown string) instead of body_en (list)
+    body_md = """## Introduction
+
+The pipeline smoke test ensures the translation gate accepts clean text. This section describes the methodology used in our research. We employed standard techniques from the field.
+
+## Methods
+
+Our approach follows established best practices. The implementation uses Python and associated libraries. Testing was conducted on standard hardware configurations.
+
+## Results
+
+The experimental results demonstrate successful validation. All quality metrics met the required thresholds. Performance was consistent across multiple runs."""
     translation_payload = {
         "id": record_id,
         "title_en": "Sample Research Article on Fast OCR Validation",
@@ -89,7 +101,8 @@ def test_pipeline_smoke_passes_all_gates(tmp_path: Path, monkeypatch: pytest.Mon
             "This English abstract is intentionally verbose to meet the QA length requirements while "
             "remaining free of Chinese characters or punctuation."
         ),
-        "body_en": " ".join(["The pipeline smoke test ensures the translation gate accepts clean text."] * 10),
+        "body_md": body_md,
+        "_synthesis_mode": True,
     }
     (translated_dir / f"{record_id}.json").write_text(json.dumps(translation_payload), encoding="utf-8")
 

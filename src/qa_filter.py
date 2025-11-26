@@ -3,6 +3,7 @@ Quality Assurance filter for detecting Chinese characters in translations.
 Automatically flags translations containing Chinese characters for manual review.
 """
 
+import re
 from typing import Dict, List, Any, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -164,297 +165,168 @@ class ChineseCharacterDetector:
         return False
 
 
-class TranslationQAFilter:
-    """Quality assurance filter for translations."""
+class SynthesisQAFilter:
+    """
+    Quality filter for synthesis mode translations.
+
+    This filter checks for:
+    - Content completeness (reasonable length)
+    - Section presence (academic structure)
+    - Readability (no excessive fragmentation)
+    - No Chinese leakage
+    - No watermark artifacts
+    """
 
     def __init__(self):
         self.detector = ChineseCharacterDetector()
 
-        # QA thresholds - Very strict to avoid false positives
-        self.MAX_CHINESE_IDEOGRAPH_RATIO = (
-            0.001  # 0.1% max Chinese ideographs (any Chinese characters)
-        )
-        self.MAX_CHINESE_PUNCTUATION_RATIO = 0.01  # 1% max Chinese punctuation
-        self.MIN_ABSTRACT_LENGTH = 50
-        self.MAX_METADATA_RATIO = 0.3  # 30% max metadata content
-        # New content sanity checks
-        self.MIN_ENGLISH_LETTERS_START = 3  # require some English letters near the start
-        self.TRAILING_WINDOW = 300  # characters to inspect at the end
+        # Synthesis-specific thresholds
+        self.MIN_BODY_LENGTH = 500  # Minimum characters for body
+        self.MIN_SECTIONS = 0  # Allow papers with no detected sections (preamble only)
+        self.MAX_CHINESE_RATIO = 0.005  # 0.5% tolerance (some papers have Chinese refs)
+        self.MIN_AVG_SENTENCE_LENGTH = 10  # Detect fragmentation
+        self.MAX_WATERMARK_PATTERN_COUNT = 0  # No watermarks allowed
 
-    def check_translation(self, translation: Dict[str, Any]) -> QAResult:
+    # Known watermark patterns to check in output
+    WATERMARK_OUTPUT_PATTERNS = [
+        re.compile(r"[A-Za-z]\s+[A-Za-z]\s+[A-Za-z]\s+[A-Za-z]"),  # Spaced letters
+        re.compile(r"X\s*a\s*n\s*i\s*h\s*C", re.IGNORECASE),
+        re.compile(r"\d\s+v\s+\d"),
+    ]
+
+    def check_synthesis_translation(
+        self,
+        translation: Dict[str, Any],
+        source_stats: Dict[str, Any] = None,
+    ) -> QAResult:
         """
-        Perform comprehensive QA check on a translation.
+        Check synthesis translation for quality.
 
         Args:
-            translation: Translation dictionary with fields like 'abstract_en', 'body_en', etc.
+            translation: Translation dict with 'body_md', 'title_en', 'abstract_en'
+            source_stats: Optional extraction statistics for comparison
 
         Returns:
-            QAResult with status, score, and issues
+            QAResult with status and issues
         """
-        issues = []
-        flagged_fields = []
-        chinese_chars = []
-        total_chinese_ratio = 0.0
+        issues: List[str] = []
+        flagged_fields: List[str] = []
 
-        # Check each text field
-        text_fields = ["abstract_en", "title_en", "body_en"]
+        body_md = translation.get("body_md", "") or ""
+        title_en = translation.get("title_en", "") or ""
+        abstract_en = translation.get("abstract_en", "") or ""
 
-        for field in text_fields:
-            if field not in translation:
-                continue
+        # Combine all text for overall checks
+        all_text = f"{title_en}\n{abstract_en}\n{body_md}"
 
-            field_value = translation[field]
-
-            # Handle different field types
-            if isinstance(field_value, str):
-                field_text = field_value
-            elif isinstance(field_value, list):
-                field_text = " ".join(str(item) for item in field_value)
-            else:
-                field_text = str(field_value) if field_value else ""
-
-            if not field_text:
-                continue
-
-            # Check for Chinese characters
-            field_chinese_chars = self.detector.find_chinese_chars(field_text)
-            field_chinese_ratio = self.detector.calculate_chinese_ratio(field_text)
-            field_ideograph_ratio = self.detector.calculate_chinese_ideograph_ratio(
-                field_text
+        # 1. Content length check
+        if len(body_md) < self.MIN_BODY_LENGTH:
+            issues.append(
+                f"Body too short: {len(body_md)} chars (min: {self.MIN_BODY_LENGTH})"
             )
+            flagged_fields.append("body_md")
 
-            if field_chinese_chars:
-                chinese_chars.extend(field_chinese_chars)
+        # 2. Section presence check (informational only)
+        section_count = len(re.findall(r"^##\s+", body_md, re.MULTILINE))
+        if section_count < self.MIN_SECTIONS:
+            issues.append(f"Few sections detected: {section_count}")
 
-                # Flag if ANY Chinese ideographs found (very strict)
-                if field_ideograph_ratio > self.MAX_CHINESE_IDEOGRAPH_RATIO:
-                    flagged_fields.append(field)
-                    issues.append(
-                        f"{field} contains Chinese characters: {field_chinese_chars[:5]}"
-                    )
+        # 3. Chinese character check
+        chinese_chars = self.detector.find_chinese_chars(all_text)
+        chinese_ratio = self.detector.calculate_chinese_ratio(all_text)
+        if chinese_ratio > self.MAX_CHINESE_RATIO:
+            issues.append(f"Chinese content detected: {chinese_ratio:.3%}")
+            if self.detector.find_chinese_chars(body_md):
+                flagged_fields.append("body_md")
+            if self.detector.find_chinese_chars(title_en):
+                flagged_fields.append("title_en")
+            if self.detector.find_chinese_chars(abstract_en):
+                flagged_fields.append("abstract_en")
 
-                # Flag if excessive Chinese punctuation
-                elif field_chinese_ratio > self.MAX_CHINESE_PUNCTUATION_RATIO:
-                    flagged_fields.append(field)
-                    issues.append(
-                        f"{field} contains excessive Chinese punctuation: {field_chinese_chars[:5]}"
-                    )
+        # 4. Fragmentation check (average sentence length)
+        sentences = re.split(r"[.!?。！？]\s+", body_md)
+        sentences = [s for s in sentences if s.strip() and len(s.strip()) > 3]
+        if sentences:
+            avg_sentence_len = sum(len(s) for s in sentences) / len(sentences)
+            if avg_sentence_len < self.MIN_AVG_SENTENCE_LENGTH:
+                issues.append(
+                    f"High fragmentation: avg sentence {avg_sentence_len:.1f} chars"
+                )
 
-            # Check for Chinese metadata markers
-            if self.detector.has_chinese_metadata(field_text):
-                issues.append(f"{field} contains Chinese metadata markers")
-                flagged_fields.append(field)
+        # 5. Watermark artifact check
+        watermark_count = 0
+        for pattern in self.WATERMARK_OUTPUT_PATTERNS:
+            matches = pattern.findall(body_md)
+            watermark_count += len(matches)
+        if watermark_count > self.MAX_WATERMARK_PATTERN_COUNT:
+            issues.append(f"Watermark artifacts detected: {watermark_count} patterns")
+            flagged_fields.append("body_md")
 
-            # Check abstract length
-            if field == "abstract_en" and len(field_text) < self.MIN_ABSTRACT_LENGTH:
-                issues.append(f"{field} is too short ({len(field_text)} chars)")
-                flagged_fields.append(field)
+        # 6. Unreplaced math placeholder check
+        if "⟪MATH_" in body_md:
+            issues.append("Unreplaced math placeholders found")
+            flagged_fields.append("body_md")
 
-        # Additional content sanity checks:
-        # 1) Start with real English content: ensure early part contains letters
-        def _has_english_letters(text: str, count: int = 3) -> bool:
-            import re
-            if count < 1:
-                return True
-            # Build pattern: [A-Za-z] followed by (count-1) instances of .*[A-Za-z]
-            pattern = r"[A-Za-z]" + (r".*[A-Za-z]" * (count - 1))
-            return bool(re.search(pattern, (text or "")[:200]))
-
-        title_en = translation.get("title_en") or ""
-        abstract_en = translation.get("abstract_en") or ""
-        first_body_para = None
-        body_en = translation.get("body_en")
-        if isinstance(body_en, list) and body_en:
-            first_body_para = next((p for p in body_en if isinstance(p, str) and p.strip()), "")
-        
-        # Check starts
-        if title_en and not _has_english_letters(title_en, self.MIN_ENGLISH_LETTERS_START):
-            issues.append("title_en does not start with real English content")
+        # 7. Title/abstract validation
+        if len(title_en) < 5:
+            issues.append("Title too short or missing")
             flagged_fields.append("title_en")
-        if abstract_en and not _has_english_letters(abstract_en, self.MIN_ENGLISH_LETTERS_START):
-            issues.append("abstract_en does not start with real English content")
+
+        if len(abstract_en) < 20:
+            issues.append("Abstract too short or missing")
             flagged_fields.append("abstract_en")
-        if first_body_para and not _has_english_letters(first_body_para, self.MIN_ENGLISH_LETTERS_START):
-            issues.append("first body_en paragraph lacks real English content")
-            flagged_fields.append("body_en")
-
-        # 2) No Chinese at the end: inspect trailing window across all English text
-        all_text = " ".join(
-            str(translation.get(field, ""))
-            for field in text_fields
-            if translation.get(field)
-        )
-        trailing = all_text[-self.TRAILING_WINDOW :]
-        trailing_chinese = self.detector.find_chinese_chars(trailing)
-        if trailing and trailing_chinese:
-            issues.append("trailing Chinese characters detected in translation end")
-            flagged_fields.append("body_en")
-
-        # Calculate overall Chinese ratios
-        all_text = " ".join(
-            str(translation.get(field, ""))
-            for field in text_fields
-            if translation.get(field)
-        )
-        total_chinese_ratio = self.detector.calculate_chinese_ratio(all_text)
-        total_ideograph_ratio = self.detector.calculate_chinese_ideograph_ratio(
-            all_text
-        )
 
         # Determine status
-        if (
-            total_ideograph_ratio > self.MAX_CHINESE_IDEOGRAPH_RATIO
-            or total_chinese_ratio > self.MAX_CHINESE_PUNCTUATION_RATIO
-            or self.detector.has_chinese_metadata(all_text)
-        ):
+        if chinese_ratio > self.MAX_CHINESE_RATIO:
             status = QAStatus.FLAG_CHINESE
-        elif len(issues) > 0:
-            # Prefer formatting for punctuation-only or trailing-window findings
-            # to keep FLAG_CONTENT reserved for more severe content issues we may add later.
-            if any("real English content" in msg for msg in issues):
-                status = QAStatus.FLAG_CONTENT
-            else:
-                status = QAStatus.FLAG_FORMATTING
+        elif watermark_count > 0:
+            status = QAStatus.FLAG_CONTENT
+        elif len(issues) >= 3:
+            status = QAStatus.FLAG_CONTENT
+        elif issues:
+            status = QAStatus.FLAG_FORMATTING
         else:
             status = QAStatus.PASS
 
-        # Calculate score (0.0 to 1.0, higher is better)
-        score = max(0.0, 1.0 - total_chinese_ratio - (len(issues) * 0.1))
+        # Calculate score
+        score = max(0.0, 1.0 - chinese_ratio - (len(issues) * 0.1))
 
         return QAResult(
             status=status,
             score=score,
             issues=issues,
-            chinese_chars=list(set(chinese_chars)),
-            chinese_ratio=total_chinese_ratio,
+            chinese_chars=chinese_chars[:20],  # Limit to first 20
+            chinese_ratio=chinese_ratio,
             flagged_fields=list(set(flagged_fields)),
         )
 
-    def should_display(self, qa_result: QAResult) -> bool:
-        """Determine if translation should be displayed on the site."""
-        return qa_result.status == QAStatus.PASS
+    def should_display(self, result: QAResult) -> bool:
+        """
+        Determine if a synthesis translation should be displayed.
 
-    def should_flag_for_review(self, qa_result: QAResult) -> bool:
-        """Determine if translation should be flagged for manual review."""
-        return qa_result.status in [QAStatus.FLAG_CHINESE, QAStatus.FLAG_FORMATTING]
-
-
-def filter_translations(
-    translations: List[Dict[str, Any]], flag_for_review: bool = True
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """
-    Filter translations based on QA criteria.
-
-    Args:
-        translations: List of translation dictionaries
-        flag_for_review: If True, save flagged translations for review
-
-    Returns:
-        Tuple of (passed_translations, flagged_translations)
-    """
-    qa_filter = TranslationQAFilter()
-    passed = []
-    flagged = []
-
-    for translation in translations:
-        qa_result = qa_filter.check_translation(translation)
-
-        if qa_filter.should_display(qa_result):
-            passed.append(translation)
-        else:
-            flagged.append(translation)
-
-            # Add QA metadata to flagged translation
-            translation["_qa_status"] = qa_result.status.value
-            translation["_qa_score"] = qa_result.score
-            translation["_qa_issues"] = qa_result.issues
-            translation["_qa_chinese_chars"] = qa_result.chinese_chars
-            translation["_qa_chinese_ratio"] = qa_result.chinese_ratio
-            translation["_qa_flagged_fields"] = qa_result.flagged_fields
-
-    return passed, flagged
-
-
-def analyze_translation_quality(translation_path: str) -> QAResult:
-    """
-    Analyze a single translation file for quality issues.
-
-    Args:
-        translation_path: Path to translation JSON file
-
-    Returns:
-        QAResult with analysis
-    """
-    import json
-
-    with open(translation_path, "r", encoding="utf-8") as f:
-        translation = json.load(f)
-
-    qa_filter = TranslationQAFilter()
-    return qa_filter.check_translation(translation)
-
-
-def filter_translation_file(
-    translation: Dict[str, Any],
-    save_passed: bool = True,
-    save_flagged: bool = True,
-) -> Tuple[bool, QAResult]:
-    """
-    Filter a single translation and optionally save to appropriate directory.
-
-    Args:
-        translation: Translation dictionary
-        save_passed: If True, save passed translations to data/translated/
-        save_flagged: If True, save flagged translations to data/flagged/
-
-    Returns:
-        Tuple of (should_publish: bool, qa_result: QAResult)
-    """
-    import json
-    from pathlib import Path
-
-    qa_filter = TranslationQAFilter()
-    qa_result = qa_filter.check_translation(translation)
-
-    paper_id = translation.get("id", "unknown")
-    should_publish = qa_filter.should_display(qa_result)
-
-    if should_publish and save_passed:
-        # Save to data/translated/
-        output_dir = Path("data/translated")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"{paper_id}.json"
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(translation, f, indent=2, ensure_ascii=False)
-
-    elif not should_publish and save_flagged:
-        # Save to data/flagged/ with QA metadata
-        output_dir = Path("data/flagged")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"{paper_id}_flagged.json"
-
-        # Add QA metadata
-        translation["_qa_status"] = qa_result.status.value
-        translation["_qa_score"] = qa_result.score
-        translation["_qa_issues"] = qa_result.issues
-        translation["_qa_chinese_chars"] = qa_result.chinese_chars
-        translation["_qa_chinese_ratio"] = qa_result.chinese_ratio
-        translation["_qa_flagged_fields"] = qa_result.flagged_fields
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(translation, f, indent=2, ensure_ascii=False)
-
-    return should_publish, qa_result
+        More lenient threshold - we want readable content to show.
+        """
+        # Only block if Chinese ratio is very high
+        if result.chinese_ratio > 0.01:  # 1%
+            return False
+        # Block if watermarks detected
+        if QAStatus.FLAG_CONTENT == result.status and "Watermark" in str(result.issues):
+            return False
+        return True
 
 
 if __name__ == "__main__":
     # Example usage
     import sys
+    import json
 
     if len(sys.argv) > 1:
         translation_path = sys.argv[1]
-        result = analyze_translation_quality(translation_path)
+        with open(translation_path, "r", encoding="utf-8") as f:
+            translation = json.load(f)
+
+        qa_filter = SynthesisQAFilter()
+        result = qa_filter.check_synthesis_translation(translation)
 
         print(f"QA Status: {result.status.value}")
         print(f"Score: {result.score:.2f}")
@@ -462,6 +334,6 @@ if __name__ == "__main__":
         print(f"Chinese Characters: {result.chinese_chars}")
         print(f"Issues: {result.issues}")
         print(f"Flagged Fields: {result.flagged_fields}")
-        print(f"Should Display: {TranslationQAFilter().should_display(result)}")
+        print(f"Should Display: {qa_filter.should_display(result)}")
     else:
         print("Usage: python qa_filter.py <translation_file.json>")

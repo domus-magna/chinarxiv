@@ -13,7 +13,7 @@ from typing import Dict, List, Any
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from qa_filter import TranslationQAFilter, filter_translations, analyze_translation_quality
+from qa_filter import SynthesisQAFilter, QAStatus
 
 
 def load_translations(translated_dir: str) -> List[Dict[str, Any]]:
@@ -91,21 +91,22 @@ def main():
     
     if args.analyze_only:
         # Just analyze without filtering
-        qa_filter = TranslationQAFilter()
-        
+        qa_filter = SynthesisQAFilter()
+
         stats = {
             'total': len(translations),
             'pass': 0,
             'flag_chinese': 0,
             'flag_formatting': 0,
             'flag_length': 0,
-            'flag_math': 0
+            'flag_math': 0,
+            'flag_content': 0
         }
-        
+
         for translation in translations:
-            result = qa_filter.check_translation(translation)
+            result = qa_filter.check_synthesis_translation(translation)
             stats[result.status.value] += 1
-            
+
             if result.status.value != 'pass':
                 paper_id = translation.get('id', 'unknown')
                 print(f"\n{paper_id}: {result.status.value}")
@@ -114,16 +115,29 @@ def main():
                 print(f"  Chinese Chars: {result.chinese_chars}")
                 print(f"  Issues: {result.issues}")
                 print(f"  Flagged Fields: {result.flagged_fields}")
-        
+
         print(f"\nAnalysis Summary:")
         for status, count in stats.items():
             print(f"  {status}: {count}")
-        
+
         return
-    
-    # Filter translations
+
+    # Filter translations using synthesis QA
     print("Filtering translations...")
-    passed, flagged = filter_translations(translations)
+    qa_filter = SynthesisQAFilter()
+    passed = []
+    flagged = []
+
+    for translation in translations:
+        result = qa_filter.check_synthesis_translation(translation)
+        translation['_qa_status'] = result.status.value
+        translation['_qa_score'] = result.score
+        translation['_qa_issues'] = result.issues
+
+        if result.status == QAStatus.PASS:
+            passed.append(translation)
+        else:
+            flagged.append(translation)
     
     print(f"\nFiltering Results:")
     print(f"  Passed: {len(passed)}")
