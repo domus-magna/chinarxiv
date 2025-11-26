@@ -6,7 +6,7 @@ of consecutive errors, blocking further requests until manually reset
 or after successful operations.
 """
 
-from typing import Optional, Set
+from typing import FrozenSet, Optional, Set
 
 from ..logging_utils import log
 from ..monitoring import alert_critical
@@ -28,17 +28,25 @@ class CircuitBreaker:
 
     Thread Safety:
         This class is NOT thread-safe. Each instance should only be used
-        from a single thread.
+        from a single thread. For multi-threaded contexts, create separate
+        instances per thread or use external synchronization.
+
+    Example:
+        >>> cb = CircuitBreaker(persistent_threshold=2, transient_threshold=5)
+        >>> cb.record_failure("network_error")  # Transient
+        >>> cb.record_failure("payment_required")  # Persistent - resets transient
+        >>> cb.record_success()  # Resets all counters
     """
 
     # Default error codes considered "persistent" (payment/auth issues)
-    DEFAULT_PERSISTENT_CODES: Set[str] = {
+    # Using frozenset to prevent accidental mutation of shared default
+    DEFAULT_PERSISTENT_CODES: FrozenSet[str] = frozenset({
         "payment_required",
         "insufficient_quota",
         "invalid_api_key",
         "invalid_credentials",
         "unauthorized",
-    }
+    })
 
     def __init__(
         self,

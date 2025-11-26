@@ -162,10 +162,17 @@
                     data.forEach(log => {
                         const logEntry = document.createElement('div');
                         logEntry.className = 'log-entry';
-                        logEntry.innerHTML = `
-                            <div class="log-timestamp">${log.timestamp}</div>
-                            <div>${log.message}</div>
-                        `;
+
+                        // Use textContent instead of innerHTML to prevent XSS
+                        const timestampDiv = document.createElement('div');
+                        timestampDiv.className = 'log-timestamp';
+                        timestampDiv.textContent = log.timestamp;
+
+                        const messageDiv = document.createElement('div');
+                        messageDiv.textContent = log.message;
+
+                        logEntry.appendChild(timestampDiv);
+                        logEntry.appendChild(messageDiv);
                         logsContainer.appendChild(logEntry);
                     });
                 })

@@ -855,7 +855,8 @@ Remember: Produce flowing, readable academic English. Merge fragments into compl
                                     glossary_override=glossary_override,
                                 )
                             )
-                        except Exception:
+                        except Exception as e:
+                            log(f"Warning: Failed to translate creator '{creator}': {e}")
                             translation.creators_en.append(creator)
 
             # Translate subjects
@@ -871,7 +872,8 @@ Remember: Produce flowing, readable academic English. Merge fragments into compl
                                     glossary_override=glossary_override,
                                 )
                             )
-                        except Exception:
+                        except Exception as e:
+                            log(f"Warning: Failed to translate subject '{subject}': {e}")
                             translation.subjects_en.append(subject)
 
             # Get PDF path for synthesis extraction

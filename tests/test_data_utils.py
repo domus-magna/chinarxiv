@@ -1,6 +1,6 @@
 """Tests for data_utils module."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -86,6 +86,68 @@ class TestFilterByTimestamp:
 
         assert len(result) == 1
         assert result[0]["data"] == "valid"
+
+    def test_naive_cutoff_with_aware_timestamp(self):
+        """Naive cutoff with timezone-aware timestamp works correctly.
+
+        When cutoff is naive and item timestamp is aware, the timezone
+        should be stripped from the item timestamp for comparison.
+        """
+        naive_cutoff = datetime(2024, 1, 1, 12, 0, 0)
+        # Item timestamp is UTC-aware and newer than cutoff
+        items = [
+            {"timestamp": "2024-01-01T14:00:00+00:00", "data": "aware_newer"},
+            {"timestamp": "2024-01-01T10:00:00+00:00", "data": "aware_older"},
+        ]
+
+        result = filter_by_timestamp(items, naive_cutoff)
+
+        assert len(result) == 1
+        assert result[0]["data"] == "aware_newer"
+
+    def test_aware_cutoff_with_naive_timestamp(self):
+        """Timezone-aware cutoff with naive timestamp works correctly.
+
+        When cutoff is aware and item timestamp is naive, the item
+        timestamp should be assumed to be in the same timezone.
+        """
+        aware_cutoff = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        # Item timestamps are naive (no timezone info)
+        items = [
+            {"timestamp": "2024-01-01T14:00:00", "data": "naive_newer"},
+            {"timestamp": "2024-01-01T10:00:00", "data": "naive_older"},
+        ]
+
+        result = filter_by_timestamp(items, aware_cutoff)
+
+        assert len(result) == 1
+        assert result[0]["data"] == "naive_newer"
+
+    def test_both_aware_same_timezone(self):
+        """Both cutoff and timestamps aware with same timezone works."""
+        aware_cutoff = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        items = [
+            {"timestamp": "2024-01-01T14:00:00+00:00", "data": "newer"},
+            {"timestamp": "2024-01-01T10:00:00+00:00", "data": "older"},
+        ]
+
+        result = filter_by_timestamp(items, aware_cutoff)
+
+        assert len(result) == 1
+        assert result[0]["data"] == "newer"
+
+    def test_item_exactly_equal_to_cutoff_excluded(self):
+        """Items exactly equal to cutoff are excluded (uses > not >=)."""
+        cutoff = datetime(2024, 1, 1, 12, 0, 0)
+        items = [
+            {"timestamp": "2024-01-01T12:00:00", "data": "exact"},
+            {"timestamp": "2024-01-01T12:00:01", "data": "just_after"},
+        ]
+
+        result = filter_by_timestamp(items, cutoff)
+
+        assert len(result) == 1
+        assert result[0]["data"] == "just_after"
 
 
 class TestUtcDateRangeStr:
