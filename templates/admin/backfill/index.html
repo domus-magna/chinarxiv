@@ -323,10 +323,10 @@
           <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
         </div>
         <div class="progress-text">
-          <span id="translated-count">--</span> / <span id="total-count">--</span> papers translated
+          <span id="translated-count">--</span> / <span id="total-count">--</span> months completed
         </div>
         <div class="cost-badge">
-          Total cost: $<span id="total-cost">--</span>
+          Current: <span id="current-month">--</span>
         </div>
       </div>
 
@@ -334,27 +334,27 @@
       <div class="card">
         <div class="stats-grid">
           <div class="stat-card">
-            <div class="stat-label">Pending</div>
+            <div class="stat-label">Remaining</div>
             <div class="stat-value pending" id="stat-pending">--</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Translated</div>
+            <div class="stat-label">Completed</div>
             <div class="stat-value done" id="stat-done">--</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Flagged</div>
-            <div class="stat-value flagged" id="stat-flagged">--</div>
+            <div class="stat-label">Status</div>
+            <div class="stat-value flagged" id="stat-status">--</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Failed</div>
-            <div class="stat-value failed" id="stat-failed">--</div>
+            <div class="stat-label">Errors</div>
+            <div class="stat-value failed" id="stat-errors">--</div>
           </div>
         </div>
       </div>
 
       <!-- Progress History Chart -->
       <div class="card chart-section">
-        <h2>Progress History (30 days)</h2>
+        <h2>Month Progress</h2>
         <div class="chart-container">
           <svg class="chart-svg" id="chart"></svg>
         </div>
@@ -501,6 +501,15 @@
       }
     }
 
+    // Format month "202402" as "Feb 2024"
+    function formatMonth(monthStr) {
+      if (!monthStr || monthStr.length !== 6) return monthStr || '--';
+      const year = monthStr.slice(0, 4);
+      const month = parseInt(monthStr.slice(4, 6), 10);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${monthNames[month - 1]} ${year}`;
+    }
+
     function updateStatus(status) {
       // Extract from orchestrator response
       const summary = status.summary || {};
@@ -516,12 +525,12 @@
       document.getElementById('progress-bar').style.width = `${percent}%`;
       document.getElementById('translated-count').textContent = completedCount;
       document.getElementById('total-count').textContent = totalMonths;
-      document.getElementById('total-cost').textContent = currentMonth;
+      document.getElementById('current-month').textContent = formatMonth(currentMonth);
 
       document.getElementById('stat-pending').textContent = totalMonths - completedCount;
       document.getElementById('stat-done').textContent = completedCount;
-      document.getElementById('stat-flagged').textContent = workflowStatus;
-      document.getElementById('stat-failed').textContent = errors.length;
+      document.getElementById('stat-status').textContent = workflowStatus;
+      document.getElementById('stat-errors').textContent = errors.length;
 
       const lastUpdated = status.lastActivity ? formatRelativeTime(status.lastActivity) : '--';
       document.getElementById('last-updated').textContent = lastUpdated;
