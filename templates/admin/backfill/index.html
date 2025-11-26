@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backfill Progress | ChinaXiv English</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --card-bg: #ffffff;
+      --text: #1a1a1a;
+      --text-muted: #6b7280;
+      --border: #e5e7eb;
+      --primary: #2563eb;
+      --success: #059669;
+      --warning: #d97706;
+      --error: #dc2626;
+      --progress-bg: #e5e7eb;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      margin-bottom: 2rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .progress-section {
+      text-align: center;
+      padding: 2rem 1.5rem;
+    }
+
+    .progress-bar-container {
+      background: var(--progress-bg);
+      border-radius: 9999px;
+      height: 24px;
+      margin: 1.5rem 0;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      background: var(--success);
+      height: 100%;
+      border-radius: 9999px;
+      transition: width 0.5s ease;
+      min-width: 0;
+    }
+
+    .progress-percent {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--success);
+    }
+
+    .progress-text {
+      font-size: 1.125rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+    }
+
+    @media (max-width: 600px) {
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .stat-card {
+      text-align: center;
+      padding: 1rem;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+
+    .stat-value.pending { color: var(--text-muted); }
+    .stat-value.done { color: var(--success); }
+    .stat-value.flagged { color: var(--warning); }
+    .stat-value.failed { color: var(--error); }
+
+    .chart-section h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+
+    .chart-container {
+      height: 200px;
+      position: relative;
+    }
+
+    .chart-svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .chart-line {
+      fill: none;
+      stroke: var(--primary);
+      stroke-width: 2;
+    }
+
+    .chart-area {
+      fill: var(--primary);
+      opacity: 0.1;
+    }
+
+    .chart-axis {
+      stroke: var(--border);
+      stroke-width: 1;
+    }
+
+    .chart-label {
+      font-size: 0.625rem;
+      fill: var(--text-muted);
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    .auto-refresh {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background: var(--border);
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle.active {
+      background: var(--success);
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .toggle.active::after {
+      transform: translateX(16px);
+    }
+
+    .loading {
+      opacity: 0.5;
+    }
+
+    .error-message {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: var(--error);
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+
+    .login-form {
+      max-width: 320px;
+      margin: 4rem auto;
+    }
+
+    .login-form h2 {
+      margin-bottom: 1.5rem;
+      text-align: center;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 1rem;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .btn {
+      width: 100%;
+      padding: 0.625rem 1rem;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn:hover {
+      background: #1d4ed8;
+    }
+
+    .cost-badge {
+      display: inline-block;
+      background: #f3f4f6;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Login Form (shown when not authenticated) -->
+    <div id="login-section" class="card login-form" style="display: none;">
+      <h2>Dashboard Login</h2>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn">Sign In</button>
+      </form>
+      <p id="login-error" style="color: var(--error); text-align: center; margin-top: 1rem; display: none;"></p>
+    </div>
+
+    <!-- Dashboard (shown when authenticated) -->
+    <div id="dashboard-section" style="display: none;">
+      <header>
+        <h1>Backfill Progress</h1>
+        <p class="subtitle">ChinaXiv Paper Translation Pipeline</p>
+      </header>
+
+      <div id="error-container"></div>
+
+      <!-- Progress Overview -->
+      <div class="card progress-section">
+        <div class="progress-percent" id="progress-percent">--%</div>
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+        </div>
+        <div class="progress-text">
+          <span id="translated-count">--</span> / <span id="total-count">--</span> papers translated
+        </div>
+        <div class="cost-badge">
+          Total cost: $<span id="total-cost">--</span>
+        </div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="card">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Pending</div>
+            <div class="stat-value pending" id="stat-pending">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Translated</div>
+            <div class="stat-value done" id="stat-done">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Flagged</div>
+            <div class="stat-value flagged" id="stat-flagged">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Failed</div>
+            <div class="stat-value failed" id="stat-failed">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress History Chart -->
+      <div class="card chart-section">
+        <h2>Progress History (30 days)</h2>
+        <div class="chart-container">
+          <svg class="chart-svg" id="chart"></svg>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <div>
+          Last updated: <span id="last-updated">--</span>
+        </div>
+        <div class="auto-refresh">
+          <span>Auto-refresh</span>
+          <div class="toggle active" id="auto-refresh-toggle"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration
+    const API_BASE = '/api/backfill';
+    const REFRESH_INTERVAL = 30000; // 30 seconds
+
+    // State
+    let credentials = null;
+    let autoRefresh = true;
+    let refreshTimer = null;
+
+    // DOM elements
+    const loginSection = document.getElementById('login-section');
+    const dashboardSection = document.getElementById('dashboard-section');
+    const loginForm = document.getElementById('login-form');
+    const loginError = document.getElementById('login-error');
+    const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
+
+    // Check for stored credentials
+    function init() {
+      const stored = sessionStorage.getItem('backfill-auth');
+      if (stored) {
+        credentials = stored;
+        showDashboard();
+      } else {
+        showLogin();
+      }
+    }
+
+    function showLogin() {
+      loginSection.style.display = 'block';
+      dashboardSection.style.display = 'none';
+      stopAutoRefresh();
+    }
+
+    function showDashboard() {
+      loginSection.style.display = 'none';
+      dashboardSection.style.display = 'block';
+      fetchData();
+      startAutoRefresh();
+    }
+
+    // Login handler
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      credentials = btoa(`${username}:${password}`);
+
+      try {
+        const response = await fetch(`${API_BASE}/status`, {
+          headers: { 'Authorization': `Basic ${credentials}` }
+        });
+
+        if (response.ok) {
+          sessionStorage.setItem('backfill-auth', credentials);
+          loginError.style.display = 'none';
+          showDashboard();
+        } else if (response.status === 401) {
+          loginError.textContent = 'Invalid username or password';
+          loginError.style.display = 'block';
+          credentials = null;
+        } else {
+          throw new Error(`HTTP ${response.status}`);
+        }
+      } catch (err) {
+        loginError.textContent = `Connection error: ${err.message}`;
+        loginError.style.display = 'block';
+        credentials = null;
+      }
+    });
+
+    // Auto-refresh toggle
+    autoRefreshToggle.addEventListener('click', () => {
+      autoRefresh = !autoRefresh;
+      autoRefreshToggle.classList.toggle('active', autoRefresh);
+      if (autoRefresh) {
+        startAutoRefresh();
+      } else {
+        stopAutoRefresh();
+      }
+    });
+
+    function startAutoRefresh() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      if (autoRefresh) {
+        refreshTimer = setInterval(fetchData, REFRESH_INTERVAL);
+      }
+    }
+
+    function stopAutoRefresh() {
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+    }
+
+    // Fetch and display data
+    async function fetchData() {
+      if (!credentials) return;
+
+      try {
+        const [statusRes, historyRes] = await Promise.all([
+          fetch(`${API_BASE}/status`, {
+            headers: { 'Authorization': `Basic ${credentials}` }
+          }),
+          fetch(`${API_BASE}/history?days=30`, {
+            headers: { 'Authorization': `Basic ${credentials}` }
+          })
+        ]);
+
+        if (statusRes.status === 401 || historyRes.status === 401) {
+          sessionStorage.removeItem('backfill-auth');
+          credentials = null;
+          showLogin();
+          return;
+        }
+
+        if (!statusRes.ok || !historyRes.ok) {
+          throw new Error('Failed to fetch data');
+        }
+
+        const status = await statusRes.json();
+        const history = await historyRes.json();
+
+        updateStatus(status);
+        updateChart(history);
+        clearError();
+
+      } catch (err) {
+        showError(`Failed to load data: ${err.message}`);
+      }
+    }
+
+    function updateStatus(status) {
+      const percent = status.progress_percent || 0;
+
+      document.getElementById('progress-percent').textContent = `${percent}%`;
+      document.getElementById('progress-bar').style.width = `${percent}%`;
+      document.getElementById('translated-count').textContent = formatNumber(status.translated);
+      document.getElementById('total-count').textContent = formatNumber(status.total_papers);
+      document.getElementById('total-cost').textContent = (status.total_cost_usd || 0).toFixed(2);
+
+      document.getElementById('stat-pending').textContent = formatNumber(status.pending);
+      document.getElementById('stat-done').textContent = formatNumber(status.translated);
+      document.getElementById('stat-flagged').textContent = formatNumber(status.flagged);
+      document.getElementById('stat-failed').textContent = formatNumber(status.failed);
+
+      const lastUpdated = status.last_updated ? formatRelativeTime(status.last_updated) : '--';
+      document.getElementById('last-updated').textContent = lastUpdated;
+    }
+
+    function updateChart(history) {
+      if (!history || history.length === 0) {
+        document.getElementById('chart').innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#6b7280">No data yet</text>';
+        return;
+      }
+
+      const svg = document.getElementById('chart');
+      const rect = svg.getBoundingClientRect();
+      const width = rect.width || 800;
+      const height = rect.height || 200;
+      const padding = { top: 20, right: 20, bottom: 30, left: 50 };
+
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+
+      const values = history.map(d => d.cumulative_total);
+      const maxValue = Math.max(...values, 1);
+      const minValue = 0;
+
+      // Scale functions
+      const xScale = (i) => padding.left + (i / (history.length - 1 || 1)) * chartWidth;
+      const yScale = (v) => padding.top + chartHeight - ((v - minValue) / (maxValue - minValue || 1)) * chartHeight;
+
+      // Build path
+      const points = history.map((d, i) => `${xScale(i)},${yScale(d.cumulative_total)}`);
+      const linePath = `M${points.join(' L')}`;
+      const areaPath = `M${padding.left},${yScale(0)} L${points.join(' L')} L${xScale(history.length - 1)},${yScale(0)} Z`;
+
+      // X-axis labels (show ~5 labels)
+      const labelIndices = [];
+      const step = Math.max(1, Math.floor(history.length / 5));
+      for (let i = 0; i < history.length; i += step) {
+        labelIndices.push(i);
+      }
+      if (!labelIndices.includes(history.length - 1)) {
+        labelIndices.push(history.length - 1);
+      }
+
+      const xLabels = labelIndices.map(i => {
+        const d = history[i];
+        const date = new Date(d.date);
+        const label = `${date.getMonth() + 1}/${date.getDate()}`;
+        return `<text class="chart-label" x="${xScale(i)}" y="${height - 8}" text-anchor="middle">${label}</text>`;
+      }).join('');
+
+      // Y-axis labels
+      const yLabels = [0, maxValue / 2, maxValue].map(v => {
+        return `<text class="chart-label" x="${padding.left - 8}" y="${yScale(v) + 3}" text-anchor="end">${formatNumber(Math.round(v))}</text>`;
+      }).join('');
+
+      svg.innerHTML = `
+        <line class="chart-axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}"/>
+        <line class="chart-axis" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"/>
+        <path class="chart-area" d="${areaPath}"/>
+        <path class="chart-line" d="${linePath}"/>
+        ${xLabels}
+        ${yLabels}
+      `;
+    }
+
+    function formatNumber(num) {
+      if (num === undefined || num === null) return '--';
+      return num.toLocaleString();
+    }
+
+    function formatRelativeTime(isoString) {
+      const date = new Date(isoString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return `${diffMins} minute${diffMins === 1 ? '' : 's'} ago`;
+
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+
+      const diffDays = Math.floor(diffHours / 24);
+      return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    }
+
+    function showError(message) {
+      const container = document.getElementById('error-container');
+      container.innerHTML = `<div class="error-message">${message}</div>`;
+    }
+
+    function clearError() {
+      document.getElementById('error-container').innerHTML = '';
+    }
+
+    // Initialize
+    init();
+  </script>
+</body>
+</html>

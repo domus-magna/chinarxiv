@@ -1,0 +1,33 @@
+name = "chinaxiv-backfill-orchestrator"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Durable Object bindings
+[[durable_objects.bindings]]
+name = "BACKFILL_ORCHESTRATOR"
+class_name = "BackfillOrchestrator"
+
+# Migrations for Durable Objects
+[[migrations]]
+tag = "v1"
+new_classes = ["BackfillOrchestrator"]
+
+# Environment variables (secrets set via wrangler secret put)
+# ADMIN_USERNAME - Basic auth username
+# ADMIN_PASSWORD - Basic auth password
+# B2_KEY_ID - Backblaze B2 key ID
+# B2_APP_KEY - Backblaze B2 application key
+# B2_ENDPOINT - S3 endpoint
+# OPENROUTER_API_KEY - OpenRouter API key for translations
+
+[vars]
+B2_BUCKET = "chinaxiv-pipeline"
+B2_PREFIX = "prod/"
+TRANSLATION_MODEL = "deepseek/deepseek-chat"
+BATCH_SIZE = "10"
+ALARM_INTERVAL_MS = "60000"
+
+# Production environment
+[env.production]
+name = "chinaxiv-backfill-orchestrator"
