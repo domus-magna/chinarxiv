@@ -171,7 +171,7 @@ def run_cli() -> None:
 
     # Translate
     log("Translate step…")
-    from .services.translation_service import TranslationService
+    from .translate import translate_paper
     from .file_service import read_json
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -212,12 +212,9 @@ def run_cli() -> None:
         from .qa_filter import SynthesisQAFilter, QAStatus
 
     def _translate_one(paper_id: str) -> tuple[str, bool, str | None, bool | None]:
-        # Create per-worker TranslationService instance for thread safety
-        # (TranslationService has thread-unsafe state: _active_paper_id, circuit breaker counters, cache metrics)
-        local_service = TranslationService()
         try:
             log(f"Translating {paper_id}…")
-            result_path = local_service.translate_paper(paper_id, dry_run=args.dry_run)
+            result_path = translate_paper(paper_id, dry_run=args.dry_run)
 
             # QA filtering if enabled
             qa_passed = None
