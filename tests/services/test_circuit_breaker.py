@@ -103,7 +103,7 @@ class TestCircuitBreaker:
         assert self.service._circuit_breaker.consecutive_transient == 1
 
         # Reset counters
-        self.service._reset_failure_counter()
+        self.service._on_api_success()
 
         assert self.service._circuit_breaker.consecutive_persistent == 0
         assert self.service._circuit_breaker.consecutive_transient == 0
@@ -377,3 +377,31 @@ class TestCircuitBreakerClass:
             cb.record_failure(code)
             assert cb.consecutive_persistent == 1, f"Code {code} should be persistent"
             assert cb.consecutive_transient == 0
+
+    def test_zero_persistent_threshold_rejected(self):
+        """Zero persistent threshold raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            CircuitBreaker(persistent_threshold=0)
+
+        assert "persistent_threshold must be >= 1" in str(exc_info.value)
+
+    def test_negative_persistent_threshold_rejected(self):
+        """Negative persistent threshold raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            CircuitBreaker(persistent_threshold=-1)
+
+        assert "persistent_threshold must be >= 1" in str(exc_info.value)
+
+    def test_zero_transient_threshold_rejected(self):
+        """Zero transient threshold raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            CircuitBreaker(transient_threshold=0)
+
+        assert "transient_threshold must be >= 1" in str(exc_info.value)
+
+    def test_negative_transient_threshold_rejected(self):
+        """Negative transient threshold raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            CircuitBreaker(transient_threshold=-5)
+
+        assert "transient_threshold must be >= 1" in str(exc_info.value)

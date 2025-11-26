@@ -149,6 +149,64 @@ class TestFilterByTimestamp:
         assert len(result) == 1
         assert result[0]["data"] == "just_after"
 
+    def test_none_item_in_list_dropped_by_default(self):
+        """None items in the list are dropped by default."""
+        now = datetime.now()
+        items = [
+            None,
+            {"timestamp": now.isoformat(), "data": "valid"},
+            None,
+        ]
+        cutoff = now - timedelta(days=7)
+
+        result = filter_by_timestamp(items, cutoff)
+
+        assert len(result) == 1
+        assert result[0]["data"] == "valid"
+
+    def test_none_item_in_list_kept_when_flag_set(self):
+        """None items in the list are kept when keep_invalid=True."""
+        now = datetime.now()
+        items = [
+            None,
+            {"timestamp": now.isoformat(), "data": "valid"},
+        ]
+        cutoff = now - timedelta(days=7)
+
+        result = filter_by_timestamp(items, cutoff, keep_invalid=True)
+
+        assert len(result) == 2
+        assert result[0] is None
+        assert result[1]["data"] == "valid"
+
+    def test_empty_timestamp_string_handled(self):
+        """Empty timestamp string is handled gracefully."""
+        now = datetime.now()
+        items = [
+            {"timestamp": "", "data": "empty"},
+            {"timestamp": now.isoformat(), "data": "valid"},
+        ]
+        cutoff = now - timedelta(days=7)
+
+        result = filter_by_timestamp(items, cutoff)
+
+        assert len(result) == 1
+        assert result[0]["data"] == "valid"
+
+    def test_none_timestamp_value_handled(self):
+        """None timestamp value is handled gracefully."""
+        now = datetime.now()
+        items = [
+            {"timestamp": None, "data": "none_ts"},
+            {"timestamp": now.isoformat(), "data": "valid"},
+        ]
+        cutoff = now - timedelta(days=7)
+
+        result = filter_by_timestamp(items, cutoff)
+
+        assert len(result) == 1
+        assert result[0]["data"] == "valid"
+
 
 class TestUtcDateRangeStr:
     """Tests for utc_date_range_str function."""
