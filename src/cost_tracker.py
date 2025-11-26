@@ -4,6 +4,7 @@ Cost tracking for ChinaXiv English translation.
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -76,7 +77,7 @@ def append_cost_log(
     if os.path.exists(path):
         try:
             items = read_json(path)
-        except Exception:
+        except (json.JSONDecodeError, OSError):
             items = []
 
     items.append(payload)

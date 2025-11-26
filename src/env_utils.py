@@ -202,6 +202,6 @@ def validate_api_key(
         resp = requests.get(test_url, headers=headers, timeout=10)
         return resp.status_code == 200
 
-    except Exception as e:
+    except (requests.RequestException, RuntimeError) as e:
         log(f"API key validation failed: {e}")
         return False
