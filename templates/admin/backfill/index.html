@@ -476,31 +476,24 @@
       if (!credentials) return;
 
       try {
-        const [statusRes, historyRes] = await Promise.all([
-          fetch(`${API_BASE}/status`, {
-            headers: { 'Authorization': `Basic ${credentials}` }
-          }),
-          fetch(`${API_BASE}/history?days=30`, {
-            headers: { 'Authorization': `Basic ${credentials}` }
-          })
-        ]);
+        const statusRes = await fetch(`${API_BASE}/status`, {
+          headers: { 'Authorization': `Basic ${credentials}` }
+        });
 
-        if (statusRes.status === 401 || historyRes.status === 401) {
+        if (statusRes.status === 401) {
           sessionStorage.removeItem('backfill-auth');
           credentials = null;
           showLogin();
           return;
         }
 
-        if (!statusRes.ok || !historyRes.ok) {
+        if (!statusRes.ok) {
           throw new Error('Failed to fetch data');
         }
 
         const status = await statusRes.json();
-        const history = await historyRes.json();
-
         updateStatus(status);
-        updateChart(history);
+        updateChart(status);
         clearError();
 
       } catch (err) {
@@ -509,25 +502,36 @@
     }
 
     function updateStatus(status) {
-      const percent = status.progress_percent || 0;
+      // Extract from orchestrator response
+      const summary = status.summary || {};
+      const totalMonths = summary.totalMonths || status.months?.length || 0;
+      const completedCount = summary.completedMonths || status.completedMonths?.length || 0;
+      const percent = totalMonths > 0 ? Math.round((completedCount / totalMonths) * 100) : 0;
+
+      const currentMonth = summary.currentMonth || status.currentWorkflow?.month || '--';
+      const workflowStatus = status.currentWorkflow?.status || status.status || 'idle';
+      const errors = status.errors || [];
 
       document.getElementById('progress-percent').textContent = `${percent}%`;
       document.getElementById('progress-bar').style.width = `${percent}%`;
-      document.getElementById('translated-count').textContent = formatNumber(status.translated);
-      document.getElementById('total-count').textContent = formatNumber(status.total_papers);
-      document.getElementById('total-cost').textContent = (status.total_cost_usd || 0).toFixed(2);
+      document.getElementById('translated-count').textContent = completedCount;
+      document.getElementById('total-count').textContent = totalMonths;
+      document.getElementById('total-cost').textContent = currentMonth;
 
-      document.getElementById('stat-pending').textContent = formatNumber(status.pending);
-      document.getElementById('stat-done').textContent = formatNumber(status.translated);
-      document.getElementById('stat-flagged').textContent = formatNumber(status.flagged);
-      document.getElementById('stat-failed').textContent = formatNumber(status.failed);
+      document.getElementById('stat-pending').textContent = totalMonths - completedCount;
+      document.getElementById('stat-done').textContent = completedCount;
+      document.getElementById('stat-flagged').textContent = workflowStatus;
+      document.getElementById('stat-failed').textContent = errors.length;
 
-      const lastUpdated = status.last_updated ? formatRelativeTime(status.last_updated) : '--';
+      const lastUpdated = status.lastActivity ? formatRelativeTime(status.lastActivity) : '--';
       document.getElementById('last-updated').textContent = lastUpdated;
     }
 
-    function updateChart(history) {
-      if (!history || history.length === 0) {
+    function updateChart(status) {
+      const completedMonths = status.completedMonths || [];
+      const months = status.months || [];
+
+      if (months.length === 0) {
         document.getElementById('chart').innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#6b7280">No data yet</text>';
         return;
       }
@@ -541,33 +545,41 @@
       const chartWidth = width - padding.left - padding.right;
       const chartHeight = height - padding.top - padding.bottom;
 
-      const values = history.map(d => d.cumulative_total);
-      const maxValue = Math.max(...values, 1);
+      // Build cumulative progress data from completedMonths
+      const completedSet = new Set(completedMonths.map(m => m.month));
+      let cumulative = 0;
+      const data = months.map((month, i) => {
+        if (completedSet.has(month)) cumulative++;
+        return { month, cumulative };
+      });
+
+      const maxValue = months.length;
       const minValue = 0;
 
       // Scale functions
-      const xScale = (i) => padding.left + (i / (history.length - 1 || 1)) * chartWidth;
+      const xScale = (i) => padding.left + (i / (data.length - 1 || 1)) * chartWidth;
       const yScale = (v) => padding.top + chartHeight - ((v - minValue) / (maxValue - minValue || 1)) * chartHeight;
 
       // Build path
-      const points = history.map((d, i) => `${xScale(i)},${yScale(d.cumulative_total)}`);
+      const points = data.map((d, i) => `${xScale(i)},${yScale(d.cumulative)}`);
       const linePath = `M${points.join(' L')}`;
-      const areaPath = `M${padding.left},${yScale(0)} L${points.join(' L')} L${xScale(history.length - 1)},${yScale(0)} Z`;
+      const areaPath = `M${padding.left},${yScale(0)} L${points.join(' L')} L${xScale(data.length - 1)},${yScale(0)} Z`;
 
-      // X-axis labels (show ~5 labels)
+      // X-axis labels (show ~5 labels - months like "2024-01")
       const labelIndices = [];
-      const step = Math.max(1, Math.floor(history.length / 5));
-      for (let i = 0; i < history.length; i += step) {
+      const step = Math.max(1, Math.floor(data.length / 5));
+      for (let i = 0; i < data.length; i += step) {
         labelIndices.push(i);
       }
-      if (!labelIndices.includes(history.length - 1)) {
-        labelIndices.push(history.length - 1);
+      if (!labelIndices.includes(data.length - 1)) {
+        labelIndices.push(data.length - 1);
       }
 
       const xLabels = labelIndices.map(i => {
-        const d = history[i];
-        const date = new Date(d.date);
-        const label = `${date.getMonth() + 1}/${date.getDate()}`;
+        const d = data[i];
+        // Format month "202401" as "24-01"
+        const month = d.month;
+        const label = month ? `${month.slice(2,4)}-${month.slice(4,6)}` : '';
         return `<text class="chart-label" x="${xScale(i)}" y="${height - 8}" text-anchor="middle">${label}</text>`;
       }).join('');
 
