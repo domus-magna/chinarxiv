@@ -15,6 +15,7 @@ from flask import Flask, render_template, request, jsonify, Response
 from werkzeug.security import check_password_hash
 
 from .monitoring import monitoring_service
+from .logging_utils import log
 
 # Configuration
 MONITORING_USERNAME = os.getenv("MONITORING_USERNAME")
@@ -332,11 +333,8 @@ class MonitoringDashboard:
                     estimated_completion=estimated_completion,
                 )
 
-        except Exception as e:
-            print(f"Error getting job stats: {e}")
-            import traceback
-
-            traceback.print_exc()
+        except (sqlite3.Error, OSError) as e:
+            log(f"Error getting job stats: {e}")
             return JobStats(0, 0, 0, 0, 0.0)
 
     def get_system_stats(self) -> SystemStats:
@@ -371,8 +369,8 @@ class MonitoringDashboard:
                 cloudflare_status=cloudflare_status,
             )
 
-        except Exception as e:
-            print(f"Error getting system stats: {e}")
+        except (requests.RequestException, OSError) as e:
+            log(f"Error getting system stats: {e}")
             return SystemStats("Unknown", "Unknown", "Unknown", "Unknown", "Unknown")
 
     def get_recent_logs(self) -> List[Dict[str, Any]]:

@@ -64,6 +64,16 @@ class CircuitBreaker:
             persistent_codes: Error codes to treat as persistent (default: payment/auth)
             source_name: Name for alert source attribution
         """
+        # Validate thresholds
+        if persistent_threshold < 1:
+            raise ValueError(
+                f"persistent_threshold must be >= 1, got {persistent_threshold}"
+            )
+        if transient_threshold < 1:
+            raise ValueError(
+                f"transient_threshold must be >= 1, got {transient_threshold}"
+            )
+
         self._consecutive_persistent = 0
         self._consecutive_transient = 0
         self._circuit_open = False

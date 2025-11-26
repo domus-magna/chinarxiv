@@ -94,7 +94,10 @@ def filter_by_timestamp(
                     item_time = item_time.replace(tzinfo=cutoff.tzinfo)
             if item_time > cutoff:
                 result.append(item)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
+            # ValueError: invalid ISO format
+            # TypeError: comparison with None
+            # AttributeError: item is None (no .get() method)
             if keep_invalid:
                 result.append(item)
     return result
