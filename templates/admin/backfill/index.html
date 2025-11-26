@@ -375,7 +375,8 @@
 
   <script>
     // Configuration
-    const API_BASE = '/api/backfill';
+    // Use direct Worker URL (works locally and on Cloudflare Pages)
+    const API_BASE = 'https://chinaxiv-backfill-orchestrator.chinaxiv-backfill.workers.dev';
     const REFRESH_INTERVAL = 30000; // 30 seconds
 
     // State
