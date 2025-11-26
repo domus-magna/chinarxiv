@@ -1,12 +1,25 @@
 /**
  * Backfill Orchestrator Durable Object
  *
- * Manages long-running paper translation backfill process.
- * Uses alarms for self-waking and persistent state.
+ * Controller that orchestrates the full backfill pipeline by:
+ * 1. Triggering GitHub Actions workflows for each month
+ * 2. Polling workflow status until completion
+ * 3. Advancing to next month automatically
+ *
+ * The actual work (harvest, PDF download, translation) happens in GitHub Actions
+ * using the existing Python pipeline.
  */
 
 import { DurableObject } from 'cloudflare:workers';
-import { AwsClient } from 'aws4fetch';
+
+// Configuration constants
+const WORKFLOW_FIND_DELAY_MS = 3000; // Initial delay before looking for workflow run
+const WORKFLOW_FIND_MAX_ATTEMPTS = 10; // Max polling attempts to find workflow run
+const WORKFLOW_FIND_POLL_INTERVAL_MS = 3000; // Delay between polling attempts
+const RUN_ID_RECOVERY_MAX_ATTEMPTS = 5; // Max attempts to recover a lost runId
+const MAX_ERRORS_TO_KEEP = 50; // Maximum number of errors to keep in state
+const DEFAULT_POLL_INTERVAL_MS = 300000; // 5 minutes default poll interval
+const WORKFLOW_MAX_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours max before timeout
 
 interface Env {
   // DO binding
@@ -16,86 +29,121 @@ interface Env {
   ADMIN_USERNAME: string;
   ADMIN_PASSWORD: string;
 
-  // B2 credentials
-  B2_KEY_ID: string;
-  B2_APP_KEY: string;
-  B2_ENDPOINT: string;
-  B2_BUCKET: string;
-  B2_PREFIX: string;
-
-  // Translation
-  OPENROUTER_API_KEY: string;
-  TRANSLATION_MODEL: string;
+  // GitHub API
+  GITHUB_TOKEN: string;
+  GITHUB_REPO: string; // e.g., "owner/repo"
 
   // Config
-  BATCH_SIZE: string;
-  ALARM_INTERVAL_MS: string;
+  POLL_INTERVAL_MS: string; // How often to check workflow status (default: 5 min)
+  WORKFLOW_FILE: string; // e.g., "backfill.yml"
+  WORKFLOW_WORKERS: string; // Parallel translation workers (default: 80)
+
+  // Optional alerting
+  ALERT_WEBHOOK_URL?: string; // Slack/Discord webhook URL for failure notifications
+}
+
+interface WorkflowRun {
+  id: number;
+  status: 'queued' | 'in_progress' | 'completed' | 'waiting';
+  conclusion: 'success' | 'failure' | 'cancelled' | 'skipped' | 'timed_out' | null;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface BackfillState {
-  status: 'idle' | 'running' | 'paused' | 'completed';
+  // Overall status
+  status: 'idle' | 'running' | 'paused' | 'completed' | 'failed';
+
+  // Month tracking
   months: string[]; // Months to process, e.g., ["202401", "202402", ...]
   currentMonthIndex: number;
-  currentPaperIndex: number;
-  papersProcessed: number;
-  papersTotal: number;
-  papersTranslated: number;
-  papersFlagged: number;
-  papersFailed: number;
-  errors: Array<{ paper_id: string; error: string; timestamp: string }>;
+
+  // Current workflow run
+  currentWorkflow: {
+    runId: number | null;
+    month: string;
+    status: string;
+    conclusion: string | null;
+    url: string | null;
+    startedAt: string | null;
+    triggeredAt: string | null; // When we dispatched the workflow (for filtering runs)
+    runIdRecoveryAttempts: number; // Track attempts to find lost runId
+  };
+
+  // History
+  completedMonths: Array<{
+    month: string;
+    runId: number;
+    conclusion: string;
+    completedAt: string;
+  }>;
+
+  // Timing
   startedAt: string | null;
   lastActivity: string | null;
-  totalCostUsd: number;
-}
 
-interface Paper {
-  id: string;
-  oai_identifier: string;
-  title: string;
-  abstract: string;
-  creators: string[];
-  subjects: string[];
-  date: string;
-  source_url: string;
-  pdf_url: string;
+  // Errors
+  errors: Array<{ message: string; timestamp: string }>;
 }
 
 const DEFAULT_STATE: BackfillState = {
   status: 'idle',
   months: [],
   currentMonthIndex: 0,
-  currentPaperIndex: 0,
-  papersProcessed: 0,
-  papersTotal: 0,
-  papersTranslated: 0,
-  papersFlagged: 0,
-  papersFailed: 0,
-  errors: [],
+  currentWorkflow: {
+    runId: null,
+    month: '',
+    status: '',
+    conclusion: null,
+    url: null,
+    startedAt: null,
+    triggeredAt: null,
+    runIdRecoveryAttempts: 0,
+  },
+  completedMonths: [],
   startedAt: null,
   lastActivity: null,
-  totalCostUsd: 0,
+  errors: [],
 };
 
 /**
  * BackfillOrchestrator Durable Object
+ *
+ * Acts as a controller that triggers GitHub Actions workflows
+ * and monitors their progress.
  */
-export class BackfillOrchestrator extends DurableObject {
-  private env: Env;
+export class BackfillOrchestrator extends DurableObject<Env> {
   private state: BackfillState = { ...DEFAULT_STATE };
-  private b2Client: AwsClient | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.env = env;
   }
 
   /**
-   * Initialize state from storage
+   * Initialize state from storage, migrating old format if needed
    */
   private async loadState(): Promise<void> {
     const stored = await this.ctx.storage.get<BackfillState>('state');
     if (stored) {
-      this.state = stored;
+      // Check if this is old state format (had different fields)
+      if ('harvestPhase' in stored || 'translatePhase' in stored || !('currentWorkflow' in stored)) {
+        // Old format - complete reset
+        console.log('Detected old state format, resetting to default');
+        this.state = { ...DEFAULT_STATE };
+        await this.saveState();
+      } else {
+        // Merge with defaults to handle new fields gracefully
+        // This ensures that if we add new fields to the state, they get default values
+        this.state = {
+          ...DEFAULT_STATE,
+          ...stored,
+          currentWorkflow: {
+            ...DEFAULT_STATE.currentWorkflow,
+            ...stored.currentWorkflow,
+          },
+        };
+      }
     }
   }
 
@@ -108,305 +156,408 @@ export class BackfillOrchestrator extends DurableObject {
   }
 
   /**
-   * Get B2 client (lazy init)
+   * Add error to state (keeping last MAX_ERRORS_TO_KEEP)
    */
-  private getB2Client(): AwsClient {
-    if (!this.b2Client) {
-      this.b2Client = new AwsClient({
-        accessKeyId: this.env.B2_KEY_ID,
-        secretAccessKey: this.env.B2_APP_KEY,
-        service: 's3',
-        region: 'us-west-004',
-      });
-    }
-    return this.b2Client;
-  }
-
-  /**
-   * Fetch object from B2
-   */
-  private async fetchB2(key: string): Promise<string | null> {
-    const client = this.getB2Client();
-    const url = `${this.env.B2_ENDPOINT}/${this.env.B2_BUCKET}/${this.env.B2_PREFIX}${key}`;
-
-    try {
-      const response = await client.fetch(url);
-      if (!response.ok) {
-        if (response.status === 404) return null;
-        throw new Error(`B2 fetch failed: ${response.status}`);
-      }
-      return await response.text();
-    } catch (error) {
-      console.error(`Error fetching ${key}:`, error);
-      return null;
+  private addError(message: string): void {
+    this.state.errors.push({
+      message,
+      timestamp: new Date().toISOString(),
+    });
+    if (this.state.errors.length > MAX_ERRORS_TO_KEEP) {
+      this.state.errors = this.state.errors.slice(-MAX_ERRORS_TO_KEEP);
     }
   }
 
   /**
-   * Upload object to B2
+   * Send alert to webhook (Slack-compatible format)
+   * No-op if ALERT_WEBHOOK_URL is not configured
    */
-  private async uploadB2(key: string, content: string, contentType = 'application/json'): Promise<boolean> {
-    const client = this.getB2Client();
-    const url = `${this.env.B2_ENDPOINT}/${this.env.B2_BUCKET}/${this.env.B2_PREFIX}${key}`;
+  private async sendAlert(emoji: string, title: string, message: string): Promise<void> {
+    const webhookUrl = this.env.ALERT_WEBHOOK_URL;
+    if (!webhookUrl) return;
 
-    try {
-      const response = await client.fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': contentType },
-        body: content,
-      });
-      return response.ok;
-    } catch (error) {
-      console.error(`Error uploading ${key}:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Fetch papers for a given month from harvest records
-   */
-  private async fetchPapersForMonth(month: string): Promise<Paper[]> {
-    const key = `records/chinaxiv_${month}.json`;
-    const content = await this.fetchB2(key);
-
-    if (!content) {
-      console.error(`No records found for month ${month}`);
-      return [];
-    }
-
-    try {
-      return JSON.parse(content) as Paper[];
-    } catch {
-      console.error(`Failed to parse records for month ${month}`);
-      return [];
-    }
-  }
-
-  /**
-   * Check if paper is already translated
-   */
-  private async isPaperTranslated(paperId: string): Promise<boolean> {
-    const key = `validated/translations/${paperId}.json`;
-    const content = await this.fetchB2(key);
-    return content !== null;
-  }
-
-  /**
-   * Translate a paper using OpenRouter API
-   */
-  private async translatePaper(paper: Paper): Promise<{
-    success: boolean;
-    translation?: Record<string, unknown>;
-    flagged?: boolean;
-    error?: string;
-    costUsd?: number;
-  }> {
-    const prompt = `Translate the following Chinese academic paper metadata to English.
-Preserve all technical terms, equations, and formatting.
-Return a JSON object with these fields:
-- title_en: English translation of the title
-- abstract_en: English translation of the abstract
-
-Paper:
-Title: ${paper.title}
-Abstract: ${paper.abstract}`;
-
-    try {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.env.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://chinaxiv-english.pages.dev',
-          'X-Title': 'ChinaXiv Backfill',
+    const payload = {
+      text: `${emoji} ${title}`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*${emoji} ${title}*\n${message}`,
+          },
         },
+      ],
+    };
+
+    try {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      console.log(`Alert sent: ${title}`);
+    } catch (error) {
+      console.error('Failed to send alert webhook:', error);
+    }
+  }
+
+  private async sendFailureAlert(reason: string): Promise<void> {
+    await this.sendAlert(
+      '🚨',
+      'Backfill Failed',
+      `*Reason:* ${reason}\n*Month:* ${this.state.currentWorkflow.month || 'N/A'}\n*Progress:* ${this.state.currentMonthIndex}/${this.state.months.length}`
+    );
+  }
+
+  private async sendSuccessAlert(): Promise<void> {
+    await this.sendAlert(
+      '✅',
+      'Backfill Completed',
+      `*Months processed:* ${this.state.months.length}\n*Duration:* ${this.state.startedAt ? this.formatDuration(new Date(this.state.startedAt), new Date()) : 'N/A'}`
+    );
+  }
+
+  private formatDuration(start: Date, end: Date): string {
+    const ms = end.getTime() - start.getTime();
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  }
+
+  /**
+   * Get common GitHub API headers
+   */
+  private getGitHubHeaders(): HeadersInit {
+    return {
+      'Authorization': `Bearer ${this.env.GITHUB_TOKEN}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'ChinaXiv-Backfill-Orchestrator',
+    };
+  }
+
+  // ============================================
+  // GITHUB ACTIONS INTEGRATION
+  // ============================================
+
+  /**
+   * Trigger a GitHub Actions workflow
+   * Returns the trigger timestamp on success, null on failure
+   */
+  private async triggerWorkflow(month: string): Promise<Date | null> {
+    const workflowFile = this.env.WORKFLOW_FILE || 'backfill.yml';
+    const url = `https://api.github.com/repos/${this.env.GITHUB_REPO}/actions/workflows/${workflowFile}/dispatches`;
+
+    console.log(`Triggering workflow ${workflowFile} for month ${month}`);
+
+    // Record the trigger time BEFORE the request
+    const triggeredAt = new Date();
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: this.getGitHubHeaders(),
         body: JSON.stringify({
-          model: this.env.TRANSLATION_MODEL,
-          messages: [
-            { role: 'system', content: 'You are a professional academic translator specializing in Chinese to English translation. Always respond with valid JSON.' },
-            { role: 'user', content: prompt },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.3,
+          ref: 'main',
+          inputs: {
+            month: month,
+            workers: this.env.WORKFLOW_WORKERS || '80',
+            deploy: 'true',
+          },
         }),
       });
 
       if (!response.ok) {
         const error = await response.text();
-        return { success: false, error: `OpenRouter API error: ${response.status} - ${error}` };
+        console.error(`Failed to trigger workflow: ${response.status} ${error}`);
+        this.addError(`Failed to trigger workflow for ${month}: ${response.status}`);
+        return null;
       }
 
-      const result = await response.json() as {
-        choices: Array<{ message: { content: string } }>;
-        usage?: { total_tokens: number; prompt_tokens: number; completion_tokens: number };
-      };
-
-      const content = result.choices?.[0]?.message?.content;
-      if (!content) {
-        return { success: false, error: 'No response content from API' };
-      }
-
-      // Calculate cost (approximate for deepseek-chat)
-      const usage = result.usage || { prompt_tokens: 0, completion_tokens: 0 };
-      const costUsd = (usage.prompt_tokens * 0.0001 + usage.completion_tokens * 0.0002) / 1000;
-
-      let parsed: Record<string, unknown>;
-      try {
-        parsed = JSON.parse(content);
-      } catch {
-        return { success: false, error: 'Failed to parse translation response as JSON' };
-      }
-
-      // Simple QA check - look for Chinese characters in output
-      const titleEn = String(parsed.title_en || '');
-      const abstractEn = String(parsed.abstract_en || '');
-      const chineseRegex = /[\u4e00-\u9fff]/;
-      const flagged = chineseRegex.test(titleEn) || chineseRegex.test(abstractEn);
-
-      const translation = {
-        id: paper.id,
-        oai_identifier: paper.oai_identifier,
-        title_en: titleEn,
-        abstract_en: abstractEn,
-        body_en: [], // Would need PDF processing for full body
-        creators: paper.creators,
-        subjects: paper.subjects,
-        date: paper.date,
-        source_url: paper.source_url,
-        pdf_url: paper.pdf_url,
-        _translated_at: new Date().toISOString(),
-        _model: this.env.TRANSLATION_MODEL,
-        _qa_status: flagged ? 'flagged' : 'pass',
-      };
-
-      return { success: true, translation, flagged, costUsd };
+      console.log(`Workflow triggered successfully for month ${month} at ${triggeredAt.toISOString()}`);
+      return triggeredAt;
     } catch (error) {
-      return { success: false, error: `Translation error: ${error instanceof Error ? error.message : 'Unknown'}` };
+      console.error('Error triggering workflow:', error);
+      this.addError(`Error triggering workflow: ${error instanceof Error ? error.message : 'Unknown'}`);
+      return null;
     }
   }
 
   /**
-   * Process a single paper
+   * Get workflow runs filtering by created_at > triggeredAfter
+   * This ensures we find the correct run that we triggered, not some other run
    */
-  private async processPaper(paper: Paper): Promise<void> {
-    // Skip if already translated
-    if (await this.isPaperTranslated(paper.id)) {
-      console.log(`Paper ${paper.id} already translated, skipping`);
-      this.state.papersProcessed++;
-      return;
-    }
+  private async getWorkflowRunAfterTime(triggeredAfter: Date): Promise<WorkflowRun | null> {
+    const workflowFile = this.env.WORKFLOW_FILE || 'backfill.yml';
+    const url = `https://api.github.com/repos/${this.env.GITHUB_REPO}/actions/workflows/${workflowFile}/runs?per_page=10`;
 
-    const result = await this.translatePaper(paper);
+    try {
+      const response = await fetch(url, {
+        headers: this.getGitHubHeaders(),
+      });
 
-    if (result.success && result.translation) {
-      const folder = result.flagged ? 'flagged' : 'validated';
-      const key = `${folder}/translations/${paper.id}.json`;
-
-      const uploaded = await this.uploadB2(key, JSON.stringify(result.translation, null, 2));
-
-      if (uploaded) {
-        this.state.papersProcessed++;
-        if (result.flagged) {
-          this.state.papersFlagged++;
-        } else {
-          this.state.papersTranslated++;
-        }
-        this.state.totalCostUsd += result.costUsd || 0;
-        console.log(`Translated ${paper.id} (${result.flagged ? 'flagged' : 'validated'})`);
-      } else {
-        this.state.papersFailed++;
-        this.addError(paper.id, 'Failed to upload translation to B2');
+      if (!response.ok) {
+        console.error(`Failed to get workflow runs: ${response.status}`);
+        return null;
       }
-    } else {
-      this.state.papersFailed++;
-      this.addError(paper.id, result.error || 'Unknown error');
+
+      const data = await response.json() as { workflow_runs: WorkflowRun[] };
+
+      if (!data.workflow_runs || data.workflow_runs.length === 0) {
+        return null;
+      }
+
+      // Find the first run that was created AFTER we triggered
+      // This prevents us from picking up old runs or runs from other triggers
+      for (const run of data.workflow_runs) {
+        const runCreatedAt = new Date(run.created_at);
+        if (runCreatedAt > triggeredAfter) {
+          console.log(`Found matching workflow run ${run.id} created at ${run.created_at}`);
+          return run;
+        }
+      }
+
+      console.log(`No workflow run found after ${triggeredAfter.toISOString()}`);
+      return null;
+    } catch (error) {
+      console.error('Error getting workflow runs:', error);
+      return null;
     }
   }
 
   /**
-   * Add error to state (keeping last 100)
+   * Poll for workflow run with exponential backoff after triggering
+   * Replaces the hardcoded 5s wait with proper polling
    */
-  private addError(paperId: string, error: string): void {
-    this.state.errors.push({
-      paper_id: paperId,
-      error,
-      timestamp: new Date().toISOString(),
-    });
-    if (this.state.errors.length > 100) {
-      this.state.errors = this.state.errors.slice(-100);
+  private async findWorkflowRunAfterTrigger(triggeredAfter: Date): Promise<WorkflowRun | null> {
+    console.log(`Polling for workflow run created after ${triggeredAfter.toISOString()}`);
+
+    // Initial delay before first poll
+    await new Promise(resolve => setTimeout(resolve, WORKFLOW_FIND_DELAY_MS));
+
+    for (let attempt = 1; attempt <= WORKFLOW_FIND_MAX_ATTEMPTS; attempt++) {
+      console.log(`Attempt ${attempt}/${WORKFLOW_FIND_MAX_ATTEMPTS} to find workflow run`);
+
+      const run = await this.getWorkflowRunAfterTime(triggeredAfter);
+      if (run) {
+        console.log(`Found workflow run ${run.id} on attempt ${attempt}`);
+        return run;
+      }
+
+      // Wait before next attempt (don't wait after last attempt)
+      if (attempt < WORKFLOW_FIND_MAX_ATTEMPTS) {
+        await new Promise(resolve => setTimeout(resolve, WORKFLOW_FIND_POLL_INTERVAL_MS));
+      }
     }
+
+    console.error(`Failed to find workflow run after ${WORKFLOW_FIND_MAX_ATTEMPTS} attempts`);
+    this.addError(`Could not find workflow run after ${WORKFLOW_FIND_MAX_ATTEMPTS} attempts`);
+    return null;
   }
 
   /**
-   * Process next batch of papers
+   * Get status of a specific workflow run
    */
-  private async processNextBatch(): Promise<boolean> {
-    if (this.state.status !== 'running') {
-      return false;
+  private async getWorkflowRunStatus(runId: number): Promise<WorkflowRun | null> {
+    const url = `https://api.github.com/repos/${this.env.GITHUB_REPO}/actions/runs/${runId}`;
+
+    try {
+      const response = await fetch(url, {
+        headers: this.getGitHubHeaders(),
+      });
+
+      if (!response.ok) {
+        console.error(`Failed to get workflow run status: ${response.status}`);
+        return null;
+      }
+
+      return await response.json() as WorkflowRun;
+    } catch (error) {
+      console.error('Error getting workflow run status:', error);
+      return null;
     }
+  }
 
-    const batchSize = parseInt(this.env.BATCH_SIZE, 10) || 10;
+  // ============================================
+  // ORCHESTRATION LOGIC
+  // ============================================
 
-    // Get current month
+  /**
+   * Start processing a month - trigger the workflow
+   */
+  private async startMonth(): Promise<void> {
     if (this.state.currentMonthIndex >= this.state.months.length) {
       this.state.status = 'completed';
-      console.log('Backfill completed!');
-      return false;
+      console.log('All months completed!');
+      await this.saveState();
+      await this.sendSuccessAlert();
+      return;
     }
 
     const month = this.state.months[this.state.currentMonthIndex];
-    const papers = await this.fetchPapersForMonth(month);
+    console.log(`Starting month ${month} (${this.state.currentMonthIndex + 1}/${this.state.months.length})`);
 
-    if (papers.length === 0) {
-      // Move to next month
-      this.state.currentMonthIndex++;
-      this.state.currentPaperIndex = 0;
-      return true; // Continue with next batch
-    }
+    // Trigger the workflow and get the trigger timestamp
+    const triggeredAt = await this.triggerWorkflow(month);
 
-    // Process batch
-    const startIndex = this.state.currentPaperIndex;
-    const endIndex = Math.min(startIndex + batchSize, papers.length);
-
-    for (let i = startIndex; i < endIndex; i++) {
-      if (this.state.status !== 'running') break;
-      await this.processPaper(papers[i]);
-    }
-
-    // Update position
-    this.state.currentPaperIndex = endIndex;
-
-    if (this.state.currentPaperIndex >= papers.length) {
-      // Month complete, move to next
-      this.state.currentMonthIndex++;
-      this.state.currentPaperIndex = 0;
-    }
-
-    await this.saveState();
-    return this.state.status === 'running';
-  }
-
-  /**
-   * Alarm handler - processes next batch and reschedules
-   */
-  async alarm(): Promise<void> {
-    await this.loadState();
-
-    if (this.state.status !== 'running') {
-      console.log('Backfill not running, alarm cancelled');
+    if (!triggeredAt) {
+      this.state.status = 'failed';
+      await this.saveState();
+      await this.sendFailureAlert('Failed to trigger GitHub workflow');
       return;
     }
 
-    console.log(`Alarm fired, processing batch (month ${this.state.currentMonthIndex}, paper ${this.state.currentPaperIndex})`);
+    // Poll for the workflow run with the correct created_at filter
+    const run = await this.findWorkflowRunAfterTrigger(triggeredAt);
 
-    const shouldContinue = await this.processNextBatch();
+    this.state.currentWorkflow = {
+      runId: run?.id || null,
+      month,
+      status: run?.status || 'queued',
+      conclusion: run?.conclusion || null,
+      url: run?.html_url || null,
+      startedAt: new Date().toISOString(),
+      triggeredAt: triggeredAt.toISOString(),
+      runIdRecoveryAttempts: 0,
+    };
 
-    if (shouldContinue) {
-      // Schedule next alarm
-      const interval = parseInt(this.env.ALARM_INTERVAL_MS, 10) || 60000;
-      await this.ctx.storage.setAlarm(Date.now() + interval);
+    // If we couldn't find the run after polling, we'll keep trying in checkAndAdvance
+    if (!run) {
+      console.warn(`Could not find workflow run for ${month}, will retry in next poll`);
+    }
+
+    await this.saveState();
+
+    // Schedule status check
+    const pollInterval = parseInt(this.env.POLL_INTERVAL_MS, 10) || DEFAULT_POLL_INTERVAL_MS;
+    await this.ctx.storage.setAlarm(Date.now() + pollInterval);
+  }
+
+  /**
+   * Check current workflow status and advance if complete
+   */
+  private async checkAndAdvance(): Promise<void> {
+    if (this.state.status !== 'running') {
+      console.log('Not running, skipping check');
+      return;
+    }
+
+    // Check for workflow timeout
+    if (this.state.currentWorkflow.triggeredAt) {
+      const triggeredAt = new Date(this.state.currentWorkflow.triggeredAt).getTime();
+      const elapsed = Date.now() - triggeredAt;
+
+      if (elapsed > WORKFLOW_MAX_DURATION_MS) {
+        const hours = Math.round(elapsed / (60 * 60 * 1000) * 10) / 10;
+        console.error(`Workflow for ${this.state.currentWorkflow.month} timed out after ${hours} hours`);
+        this.state.status = 'failed';
+        this.addError(`Workflow for ${this.state.currentWorkflow.month} timed out after ${hours} hours`);
+        await this.saveState();
+        await this.sendFailureAlert(`Workflow timed out after ${hours} hours (max: ${WORKFLOW_MAX_DURATION_MS / (60 * 60 * 1000)}h)`);
+        return;
+      }
+    }
+
+    const runId = this.state.currentWorkflow.runId;
+
+    if (!runId) {
+      // Try to find the run again using the triggeredAt filter
+      this.state.currentWorkflow.runIdRecoveryAttempts++;
+
+      if (this.state.currentWorkflow.runIdRecoveryAttempts > RUN_ID_RECOVERY_MAX_ATTEMPTS) {
+        console.error(`Failed to find workflow run after ${RUN_ID_RECOVERY_MAX_ATTEMPTS} recovery attempts`);
+        this.addError(`Could not recover runId for ${this.state.currentWorkflow.month} after ${RUN_ID_RECOVERY_MAX_ATTEMPTS} attempts`);
+        this.state.status = 'failed';
+        await this.saveState();
+        await this.sendFailureAlert(`Could not find workflow run after ${RUN_ID_RECOVERY_MAX_ATTEMPTS} recovery attempts`);
+        return;
+      }
+
+      console.log(`Attempting to recover runId (attempt ${this.state.currentWorkflow.runIdRecoveryAttempts}/${RUN_ID_RECOVERY_MAX_ATTEMPTS})`);
+
+      // triggeredAt is required for recovery - fail if missing (corrupted state)
+      if (!this.state.currentWorkflow.triggeredAt) {
+        console.error('Cannot recover runId: triggeredAt is missing');
+        this.addError('Cannot recover runId: triggeredAt timestamp missing from state');
+        this.state.status = 'failed';
+        await this.saveState();
+        await this.sendFailureAlert('Cannot recover workflow run - triggeredAt missing');
+        return;
+      }
+
+      const triggeredAt = new Date(this.state.currentWorkflow.triggeredAt);
+      const run = await this.getWorkflowRunAfterTime(triggeredAt);
+      if (run) {
+        this.state.currentWorkflow.runId = run.id;
+        this.state.currentWorkflow.status = run.status;
+        this.state.currentWorkflow.conclusion = run.conclusion;
+        this.state.currentWorkflow.url = run.html_url;
+        console.log(`Recovered runId: ${run.id}`);
+        // Save immediately after recovery
+        await this.saveState();
+      }
+    } else {
+      // Get current status
+      const run = await this.getWorkflowRunStatus(runId);
+
+      if (run) {
+        this.state.currentWorkflow.status = run.status;
+        this.state.currentWorkflow.conclusion = run.conclusion;
+
+        console.log(`Workflow ${runId}: status=${run.status}, conclusion=${run.conclusion}`);
+
+        if (run.status === 'completed') {
+          // Record completion
+          this.state.completedMonths.push({
+            month: this.state.currentWorkflow.month,
+            runId: runId,
+            conclusion: run.conclusion || 'unknown',
+            completedAt: new Date().toISOString(),
+          });
+
+          if (run.conclusion === 'success') {
+            // Move to next month
+            this.state.currentMonthIndex++;
+            console.log(`Month ${this.state.currentWorkflow.month} completed successfully`);
+
+            // Start next month
+            await this.saveState();
+            await this.startMonth();
+            return;
+          } else {
+            // Workflow failed - stop and report
+            this.state.status = 'failed';
+            this.addError(`Workflow for ${this.state.currentWorkflow.month} failed: ${run.conclusion}`);
+            await this.saveState();
+            await this.sendFailureAlert(`Workflow failed with conclusion: ${run.conclusion}`);
+            return;
+          }
+        }
+      }
+    }
+
+    await this.saveState();
+
+    // Schedule next check
+    const pollInterval = parseInt(this.env.POLL_INTERVAL_MS, 10) || DEFAULT_POLL_INTERVAL_MS;
+    await this.ctx.storage.setAlarm(Date.now() + pollInterval);
+  }
+
+  /**
+   * Alarm handler - check workflow status
+   */
+  async alarm(): Promise<void> {
+    await this.loadState();
+    console.log(`Alarm fired, status: ${this.state.status}`);
+
+    if (this.state.status === 'running') {
+      await this.checkAndAdvance();
     }
   }
+
+  // ============================================
+  // HTTP HANDLERS
+  // ============================================
 
   /**
    * HTTP handler
@@ -432,6 +583,8 @@ Abstract: ${paper.abstract}`;
         return await this.handleResume();
       } else if (path === '/reset' && request.method === 'POST') {
         return await this.handleReset();
+      } else if (path === '/retry' && request.method === 'POST') {
+        return await this.handleRetry();
       } else {
         return new Response(JSON.stringify({ error: 'Not found' }), {
           status: 404,
@@ -468,8 +621,21 @@ Abstract: ${paper.abstract}`;
       return new Response('Invalid auth header', { status: 400 });
     }
 
-    const decoded = atob(encoded);
-    const [username, password] = decoded.split(':');
+    // Decode base64 with error handling
+    let decoded: string;
+    try {
+      decoded = atob(encoded);
+    } catch {
+      return new Response('Invalid base64 encoding', { status: 400 });
+    }
+
+    // Handle passwords containing colons by only splitting on first colon
+    const colonIndex = decoded.indexOf(':');
+    if (colonIndex === -1) {
+      return new Response('Invalid credentials format', { status: 400 });
+    }
+    const username = decoded.substring(0, colonIndex);
+    const password = decoded.substring(colonIndex + 1);
 
     if (username !== this.env.ADMIN_USERNAME || password !== this.env.ADMIN_PASSWORD) {
       return new Response('Invalid credentials', {
@@ -485,9 +651,33 @@ Abstract: ${paper.abstract}`;
    * GET /status - Return current state
    */
   private handleStatus(): Response {
-    return new Response(JSON.stringify(this.state, null, 2), {
+    const response = {
+      ...this.state,
+      summary: {
+        totalMonths: this.state.months.length,
+        completedMonths: this.state.completedMonths.length,
+        currentMonth: this.state.months[this.state.currentMonthIndex] || null,
+        progress: this.state.months.length > 0
+          ? `${this.state.currentMonthIndex}/${this.state.months.length}`
+          : '0/0',
+      },
+    };
+
+    return new Response(JSON.stringify(response, null, 2), {
       headers: { 'Content-Type': 'application/json' },
     });
+  }
+
+  /**
+   * Validate month string format (YYYYMM)
+   */
+  private isValidMonth(month: string): boolean {
+    if (typeof month !== 'string' || !/^\d{6}$/.test(month)) {
+      return false;
+    }
+    const year = parseInt(month.substring(0, 4), 10);
+    const monthNum = parseInt(month.substring(4, 6), 10);
+    return year >= 2000 && year <= 2100 && monthNum >= 1 && monthNum <= 12;
   }
 
   /**
@@ -501,8 +691,48 @@ Abstract: ${paper.abstract}`;
       });
     }
 
-    const body = await request.json() as { months?: string[] };
-    const months = body.months || this.generateMonths();
+    // Parse JSON body with error handling
+    let body: { months?: unknown; startYear?: unknown };
+    try {
+      body = await request.json();
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate and extract months
+    let months: string[];
+    if (body.months !== undefined) {
+      // Validate months array
+      if (!Array.isArray(body.months)) {
+        return new Response(JSON.stringify({ error: 'months must be an array' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const invalidMonths = body.months.filter(m => !this.isValidMonth(m));
+      if (invalidMonths.length > 0) {
+        return new Response(JSON.stringify({
+          error: `Invalid month format. Expected YYYYMM, got: ${invalidMonths.slice(0, 3).join(', ')}`,
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      months = body.months as string[];
+    } else {
+      // Validate startYear
+      const startYear = body.startYear !== undefined ? body.startYear : 2024;
+      if (typeof startYear !== 'number' || !Number.isInteger(startYear) || startYear < 2000 || startYear > 2100) {
+        return new Response(JSON.stringify({ error: 'startYear must be an integer between 2000 and 2100' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      months = this.generateMonths(startYear);
+    }
 
     if (months.length === 0) {
       return new Response(JSON.stringify({ error: 'No months specified' }), {
@@ -511,26 +741,23 @@ Abstract: ${paper.abstract}`;
       });
     }
 
-    // Calculate total papers (would need to fetch each month's records to be accurate)
-    // For now, estimate based on month count
-    const estimatedPapersPerMonth = 500;
-
+    // Reset state for new run
     this.state = {
       ...DEFAULT_STATE,
       status: 'running',
       months,
-      papersTotal: months.length * estimatedPapersPerMonth,
       startedAt: new Date().toISOString(),
     };
 
     await this.saveState();
 
-    // Schedule first alarm immediately
-    await this.ctx.storage.setAlarm(Date.now() + 1000);
+    // Start first month
+    await this.startMonth();
 
     return new Response(JSON.stringify({
       success: true,
       message: `Backfill started for ${months.length} months`,
+      months,
       state: this.state,
     }), {
       headers: { 'Content-Type': 'application/json' },
@@ -538,7 +765,7 @@ Abstract: ${paper.abstract}`;
   }
 
   /**
-   * POST /pause - Pause backfill
+   * POST /pause - Pause backfill (won't stop running workflow)
    */
   private async handlePause(): Promise<Response> {
     if (this.state.status !== 'running') {
@@ -554,7 +781,7 @@ Abstract: ${paper.abstract}`;
 
     return new Response(JSON.stringify({
       success: true,
-      message: 'Backfill paused',
+      message: 'Backfill paused (current workflow will continue, but next month won\'t start)',
       state: this.state,
     }), {
       headers: { 'Content-Type': 'application/json' },
@@ -565,8 +792,8 @@ Abstract: ${paper.abstract}`;
    * POST /resume - Resume backfill
    */
   private async handleResume(): Promise<Response> {
-    if (this.state.status !== 'paused') {
-      return new Response(JSON.stringify({ error: 'Backfill not paused' }), {
+    if (this.state.status !== 'paused' && this.state.status !== 'failed') {
+      return new Response(JSON.stringify({ error: 'Backfill not paused or failed' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -575,12 +802,38 @@ Abstract: ${paper.abstract}`;
     this.state.status = 'running';
     await this.saveState();
 
-    // Schedule alarm to resume
-    await this.ctx.storage.setAlarm(Date.now() + 1000);
+    // Check current workflow or start new one
+    await this.checkAndAdvance();
 
     return new Response(JSON.stringify({
       success: true,
       message: 'Backfill resumed',
+      state: this.state,
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  /**
+   * POST /retry - Retry the current failed month
+   */
+  private async handleRetry(): Promise<Response> {
+    if (this.state.status !== 'failed') {
+      return new Response(JSON.stringify({ error: 'Backfill not in failed state' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    this.state.status = 'running';
+    await this.saveState();
+
+    // Re-trigger the current month
+    await this.startMonth();
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: `Retrying month ${this.state.currentWorkflow.month}`,
       state: this.state,
     }), {
       headers: { 'Content-Type': 'application/json' },
@@ -605,16 +858,15 @@ Abstract: ${paper.abstract}`;
   }
 
   /**
-   * Generate list of months from 2024-01 to current
+   * Generate list of months from startYear to current
    */
-  private generateMonths(): string[] {
+  private generateMonths(startYear: number): string[] {
     const months: string[] = [];
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
 
-    // Start from January 2024
-    for (let year = 2024; year <= currentYear; year++) {
+    for (let year = startYear; year <= currentYear; year++) {
       const startMonth = 1;
       const endMonth = year === currentYear ? currentMonth : 12;
 
@@ -650,8 +902,9 @@ export default {
     const id = env.BACKFILL_ORCHESTRATOR.idFromName('singleton');
     const stub = env.BACKFILL_ORCHESTRATOR.get(id);
 
-    // Forward request to DO
-    const doRequest = new Request(url.pathname + url.search, {
+    // Forward request to DO (must use full URL for Request constructor)
+    const doUrl = new URL(url.pathname + url.search, url.origin);
+    const doRequest = new Request(doUrl.toString(), {
       method: request.method,
       headers: request.headers,
       body: request.body,
