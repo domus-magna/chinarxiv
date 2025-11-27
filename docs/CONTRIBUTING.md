@@ -1,7 +1,7 @@
 # Contributing Guide
 
 ## Overview
-Thank you for your interest in contributing to ChinaXiv Translations! This guide will help you get started with contributing to the project.
+Thank you for your interest in contributing to ChinaRxiv! This guide will help you get started with contributing to the project.
 
 ## Getting Started
 
@@ -15,8 +15,8 @@ Thank you for your interest in contributing to ChinaXiv Translations! This guide
 1. Fork the repository on GitHub
 2. Clone your fork locally:
    ```bash
-   git clone https://github.com/your-username/chinaxiv-english.git
-   cd chinaxiv-english
+   git clone https://github.com/domus-magna/chinarxiv.git
+   cd chinarxiv
    ```
 
 ### Development Setup

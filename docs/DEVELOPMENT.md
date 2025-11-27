@@ -10,8 +10,8 @@
 ### Setup
 ```bash
 # Clone repository
-git clone https://github.com/your-username/chinaxiv-english.git
-cd chinaxiv-english
+git clone https://github.com/your-username/chinarxiv.git
+cd chinarxiv
 
 # Install Python dependencies
 pip install -r requirements.txt
@@ -62,7 +62,7 @@ python -m src.render
 python -m src.search_index
 
 # Deploy to Cloudflare Pages
-wrangler pages deploy site --project-name chinaxiv-english
+wrangler pages deploy site --project-name chinarxiv
 
 # Start local server
 python -m http.server -d site 8001
@@ -97,25 +97,25 @@ wrangler pages project list
 wrangler pages project create project-name --production-branch main
 
 # Deploy directory to Pages
-wrangler pages deploy site --project-name chinaxiv-english
+wrangler pages deploy site --project-name chinarxiv
 
 # List deployments
-wrangler pages deployment list --project-name chinaxiv-english
+wrangler pages deployment list --project-name chinarxiv
 
 # View deployment details
-wrangler pages deployment tail --project-name chinaxiv-english
+wrangler pages deployment tail --project-name chinarxiv
 ```
 
 ### Custom Domains
 ```bash
 # Add custom domain
-wrangler pages domain add chinaxiv-english yourdomain.com
+wrangler pages domain add chinarxiv yourdomain.com
 
 # List domains
-wrangler pages domain list chinaxiv-english
+wrangler pages domain list chinarxiv
 
 # Remove domain
-wrangler pages domain remove chinaxiv-english yourdomain.com
+wrangler pages domain remove chinarxiv yourdomain.com
 ```
 
 ## GitHub Actions
@@ -166,7 +166,7 @@ wrangler pages domain remove chinaxiv-english yourdomain.com
 
 ### wrangler.toml
 ```toml
-name = "chinaxiv-english"
+name = "chinarxiv"
 compatibility_date = "2024-01-01"
 
 # Pages configuration
@@ -216,10 +216,10 @@ npm install -g wrangler
 wrangler pages project list
 
 # Check deployment status
-wrangler pages deployment list --project-name chinaxiv-english
+wrangler pages deployment list --project-name chinarxiv
 
 # View deployment logs
-wrangler pages deployment tail --project-name chinaxiv-english
+wrangler pages deployment tail --project-name chinarxiv
 ```
 
 #### 4. Translation Failures
@@ -249,7 +249,7 @@ python --version
 ls -la site/
 
 # Check deployment status
-wrangler pages deployment list --project-name chinaxiv-english
+wrangler pages deployment list --project-name chinarxiv
 ```
 
 ## Performance Optimization
@@ -298,7 +298,7 @@ wrangler pages deployment list --project-name chinaxiv-english
 
 ### Community
 - **Cloudflare Discord**: https://discord.gg/cloudflaredevs
-- **GitHub Issues**: https://github.com/your-username/chinaxiv-english/issues
+- **GitHub Issues**: https://github.com/your-username/chinarxiv/issues
 
 ### Tools
 - **Development Script**: `./scripts/dev.sh`

@@ -20,7 +20,7 @@ new_sqlite_classes = ["BackfillOrchestrator"]
 # GITHUB_REPO - Repository in format "owner/repo"
 
 [vars]
-GITHUB_REPO = "alexanderhuth/chinaxiv-translation-quality"
+GITHUB_REPO = "domus-magna/chinarxiv"
 WORKFLOW_FILE = "backfill.yml"
 POLL_INTERVAL_MS = "300000"  # 5 minutes
 

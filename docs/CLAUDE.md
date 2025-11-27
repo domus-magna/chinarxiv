@@ -15,6 +15,13 @@
 #
 # Claude Development Guide
 
+## Branch & Worktree Workflow
+**For any major feature or significant change**: Always work on a branch, ideally in a separate worktree. Never commit major features directly to main.
+- Create a feature branch: `git checkout -b feature/my-feature`
+- Or use a worktree: `git worktree add ../chinarxiv-feature feature/my-feature`
+- Follow atomic commits (one logical change per commit)
+- Open a PR for review before merging to main
+
 ## Admin CI Dashboard (Local)
 - Start with `make admin` (loads `.env` first). Required: `ADMIN_PASSWORD`, `GH_TOKEN`, `GH_REPO`.
 - Endpoints:

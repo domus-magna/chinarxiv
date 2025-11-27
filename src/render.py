@@ -11,8 +11,6 @@ import time
 
 from .utils import ensure_dir, log, read_json, write_text, write_json
 from .data_utils import has_full_body_content
-# TODO: Re-enable when figure metadata extraction is implemented
-# from .body_extract import add_figure_metadata
 
 
 def load_translated() -> List[Dict[str, Any]]:
@@ -118,10 +116,6 @@ def generate_figure_manifest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     total_tables = 0
 
     for item in items:
-        # TODO: Re-enable when figure metadata extraction is implemented
-        # if '_figures' not in item:
-        #     add_figure_metadata(item)
-
         figures = item.get('_figures', [])
         figure_count = item.get('_figure_count', 0)
         table_count = item.get('_table_count', 0)

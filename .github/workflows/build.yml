@@ -337,7 +337,7 @@ PY
           }
           
           echo "🌐 Deploying site..."
-          wrangler pages deploy site --project-name chinaxiv-english || {
+          wrangler pages deploy site --project-name chinarxiv || {
             echo "❌ Deployment failed"
             exit 1
           }
