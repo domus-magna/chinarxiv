@@ -1,0 +1,20 @@
+name = "chinarxiv-report-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Environment variables (secrets set via wrangler secret put)
+# TURNSTILE_SECRET - Cloudflare Turnstile secret key
+# GITHUB_TOKEN - GitHub token with issues:write scope for domus-magna/chinarxiv-reports
+
+[vars]
+GITHUB_REPO = "domus-magna/chinarxiv-reports"
+
+# Production environment
+[env.production]
+name = "chinarxiv-report-api"
+routes = [
+  { pattern = "chinarxiv.org/api/report", zone_name = "chinarxiv.org" }
+]
+
+[env.production.vars]
+GITHUB_REPO = "domus-magna/chinarxiv-reports"
