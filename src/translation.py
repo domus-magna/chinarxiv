@@ -86,8 +86,8 @@ class TranslationService:
         return {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://chinaxiv-english.pages.dev",
-            "X-Title": "ChinaXiv Translations",
+            "HTTP-Referer": "https://chinarxiv.org",
+            "X-Title": "ChinaRxiv",
         }
 
     def translate_paper(self, paper_id: str) -> str:

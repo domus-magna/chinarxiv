@@ -1,4 +1,4 @@
-name = "chinaxiv-english"
+name = "chinarxiv"
 compatibility_date = "2024-01-01"
 
 # Pages configuration
@@ -11,7 +11,7 @@ DISCORD_WEBHOOK_URL = ""
 
 # Production environment
 [env.production]
-name = "chinaxiv-english"
+name = "chinarxiv"
 compatibility_date = "2024-01-01"
 
 [env.production.vars]

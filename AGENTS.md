@@ -316,7 +316,7 @@ This process catches overengineering before it becomes technical debt.
 - `DISCORD_WEBHOOK_URL`: Discord webhook for notifications (optional)
 
 ### Cloudflare Pages Configuration
-- **Project Name**: `chinaxiv-english`
+- **Project Name**: `chinarxiv`
 - **Build Output Directory**: `site`
 - **Production Branch**: `main`
 - **Build Command**: (empty - GitHub Actions handles building)
@@ -418,7 +418,7 @@ gh pr view --comments
 gh pr view --json reviews
 
 # Check inline review comments (CRITICAL - often missed!)
-gh api repos/seconds-0/chinaxiv-english/pulls/{number}/comments
+gh api repos/alexanderhuth/chinarxiv/pulls/{number}/comments
 
 # Get all review data
 gh pr view --json comments,reviews

@@ -47,7 +47,7 @@ class DiscordAlerts:
         title: str,
         description: str = "",
         fields: List[Dict[str, Any]] = None,
-        footer: str = "ChinaXiv Translation Pipeline",
+        footer: str = "ChinaRxiv Translation Pipeline",
     ) -> bool:
         """Send a Discord alert with rich embed."""
 
@@ -242,7 +242,7 @@ class DiscordAlerts:
         return self.send_alert(
             alert_type="info",
             title="Daily Summary",
-            description="ChinaXiv translation pipeline daily report",
+            description="ChinaRxiv translation pipeline daily report",
             fields=fields,
         )
 

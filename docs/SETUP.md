@@ -1,4 +1,4 @@
-# ChinaXiv Translations Setup Guide
+# ChinaRxiv Setup Guide
 
 ## Quick Start
 1. Clone repository
@@ -18,8 +18,8 @@
 ### Installation
 ```bash
 # Clone repository
-git clone https://github.com/your-org/chinaxiv-english
-cd chinaxiv-english
+git clone https://github.com/alexanderhuth/chinarxiv
+cd chinarxiv
 
 # Create virtual environment
 python -m venv .venv

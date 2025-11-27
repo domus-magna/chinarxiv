@@ -3,20 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{ title or 'ChinaXiv Translations' }}</title>
+    <title>{{ title or 'ChinaRxiv' }}</title>
     <meta name="description" content="Machine-translated preprints from ChinaXiv (Chinese arXiv)" />
-    <meta name="keywords" content="ChinaXiv, Chinese research, academic papers, machine translation, arXiv, science, research" />
-    <meta name="author" content="ChinaXiv Translations" />
+    <meta name="keywords" content="ChinaRxiv, ChinaXiv, Chinese research, academic papers, machine translation, arXiv, science, research" />
+    <meta name="author" content="ChinaRxiv" />
     <!-- OpenGraph / Social Meta -->
-    <meta property="og:title" content="{{ og_title or (title or 'ChinaXiv Translations') }}" />
+    <meta property="og:title" content="{{ og_title or (title or 'ChinaRxiv') }}" />
     <meta property="og:description" content="{{ og_description or 'Machine-translated preprints from ChinaXiv (Chinese arXiv)' }}" />
     <meta property="og:type" content="{{ og_type or 'website' }}" />
-    <meta property="og:url" content="{{ og_url or 'https://chinaxiv-english.pages.dev' }}" />
-    <meta property="og:site_name" content="ChinaXiv Translations" />
+    <meta property="og:url" content="{{ og_url or 'https://chinarxiv.org' }}" />
+    <meta property="og:site_name" content="ChinaRxiv" />
     <meta name="twitter:card" content="{{ twitter_card or 'summary' }}" />
-    <meta name="twitter:title" content="{{ twitter_title or (title or 'ChinaXiv Translations') }}" />
+    <meta name="twitter:title" content="{{ twitter_title or (title or 'ChinaRxiv') }}" />
     <meta name="twitter:description" content="{{ twitter_description or 'Machine-translated preprints from ChinaXiv (Chinese arXiv)' }}" />
-    <link rel="canonical" href="{{ canonical_url or (og_url or 'https://chinaxiv-english.pages.dev') }}" />
+    <link rel="canonical" href="{{ canonical_url or (og_url or 'https://chinarxiv.org') }}" />
     <link rel="stylesheet" href="{{ root }}/assets/style.css?v={{ build_version }}" />
     <script>
       window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
@@ -29,7 +29,7 @@
     <header class="site-header">
       <div class="container">
         <div class="header-main">
-          <a href="{{ root }}/" class="brand">ChinaXiv Translations</a>
+          <a href="{{ root }}/" class="brand">ChinaRxiv</a>
           <div class="header-search">
             <input type="text" id="header-search-input" placeholder="Search papers..." aria-label="Search papers" />
             <button id="header-search-btn" aria-label="Run search">Search</button>

@@ -1,4 +1,4 @@
-# ChinaXiv Translations - Gemini Context
+# ChinaRxiv - Gemini Context
 
 This project translates Chinese academic papers from ChinaXiv to English using an automated pipeline powered by OpenRouter (DeepSeek V3.2-Exp). It includes a harvesting system, translation engine, and a static site generator deployed to Cloudflare Pages.
 

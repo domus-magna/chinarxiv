@@ -11,7 +11,8 @@ import time
 
 from .utils import ensure_dir, log, read_json, write_text, write_json
 from .data_utils import has_full_body_content
-from .body_extract import add_figure_metadata
+# TODO: Re-enable when figure metadata extraction is implemented
+# from .body_extract import add_figure_metadata
 
 
 def load_translated() -> List[Dict[str, Any]]:
@@ -117,9 +118,9 @@ def generate_figure_manifest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     total_tables = 0
 
     for item in items:
-        # Add figure metadata if not already present
-        if '_figures' not in item:
-            add_figure_metadata(item)
+        # TODO: Re-enable when figure metadata extraction is implemented
+        # if '_figures' not in item:
+        #     add_figure_metadata(item)
 
         figures = item.get('_figures', [])
         figure_count = item.get('_figure_count', 0)
@@ -232,7 +233,7 @@ def render_site(items: List[Dict[str, Any]]) -> None:
 
     # Item pages
     tmpl_item = env.get_template("item.html")
-    site_base = "https://chinaxiv-english.pages.dev"
+    site_base = "https://chinarxiv.org"
     for it in items:
         out_dir = os.path.join(base_out, "items", it["id"])
         ensure_dir(out_dir)

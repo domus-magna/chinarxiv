@@ -20,7 +20,7 @@ from .config import get_proxies
 
 
 DEFAULT_TIMEOUT = (10, 60)  # connect, read
-USER_AGENT = "chinaxiv-english/1.0 (+https://github.com/)"
+USER_AGENT = "chinarxiv/1.0 (+https://github.com/alexanderhuth/chinarxiv)"
 
 
 class HttpError(Exception):
@@ -138,7 +138,7 @@ def openrouter_headers() -> dict:
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://github.com/",
-        "X-Title": "chinaxiv-english",
+        "X-Title": "chinarxiv",
     }
 
 

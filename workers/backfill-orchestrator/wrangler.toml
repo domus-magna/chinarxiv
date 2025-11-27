@@ -1,4 +1,4 @@
-name = "chinaxiv-backfill-orchestrator"
+name = "chinarxiv-backfill-orchestrator"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
@@ -26,4 +26,4 @@ POLL_INTERVAL_MS = "300000"  # 5 minutes
 
 # Production environment
 [env.production]
-name = "chinaxiv-backfill-orchestrator"
+name = "chinarxiv-backfill-orchestrator"

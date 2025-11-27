@@ -1,9 +1,9 @@
-# ChinaXiv Translations
+# ChinaRxiv
 
-[![Daily Build](https://github.com/domus-magna/chinaxiv-english/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinaxiv-english/actions/workflows/build.yml)
-[![Preflight Checks](https://github.com/domus-magna/chinaxiv-english/actions/workflows/preflight.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinaxiv-english/actions/workflows/preflight.yml)
-[![Render Gate](https://github.com/domus-magna/chinaxiv-english/actions/workflows/render-gate.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinaxiv-english/actions/workflows/render-gate.yml)
-[![Translation Gate](https://github.com/domus-magna/chinaxiv-english/actions/workflows/translation-gate.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinaxiv-english/actions/workflows/translation-gate.yml)
+[![Daily Build](https://github.com/alexanderhuth/chinarxiv/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/alexanderhuth/chinarxiv/actions/workflows/build.yml)
+[![Preflight Checks](https://github.com/alexanderhuth/chinarxiv/actions/workflows/preflight.yml/badge.svg?branch=main)](https://github.com/alexanderhuth/chinarxiv/actions/workflows/preflight.yml)
+[![Render Gate](https://github.com/alexanderhuth/chinarxiv/actions/workflows/render-gate.yml/badge.svg?branch=main)](https://github.com/alexanderhuth/chinarxiv/actions/workflows/render-gate.yml)
+[![Translation Gate](https://github.com/alexanderhuth/chinarxiv/actions/workflows/translation-gate.yml/badge.svg?branch=main)](https://github.com/alexanderhuth/chinarxiv/actions/workflows/translation-gate.yml)
 
 English translations of Chinese academic papers from ChinaXiv.
 
@@ -41,7 +41,7 @@ Use the "backfill-month" GitHub Actions workflow to backfill a single month (YYY
 - **Deployment**: Cloudflare Pages with GitHub Actions
 - **Monitoring**: Consolidated monitoring service with alerts, analytics, and performance metrics
 
-## Support ChinaXiv Translations
+## Support ChinaRxiv
 
 Help us continue translating Chinese academic papers to English! Your donations support:
 
@@ -61,7 +61,7 @@ We accept donations in multiple cryptocurrencies:
 - **Tether (USDT)**: `0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6`
 - **Stacks (STX)**: `SP2J6ZY48GV1EZ5V2V5RB9MP66SW86PYKKNRV9EJ7`
 
-Visit our [donation page](https://chinaxiv-english.pages.dev/donation.html) for QR codes and detailed instructions.
+Visit our [donation page](https://chinarxiv.org/donation.html) for QR codes and detailed instructions.
 
 ## Configuration
 
