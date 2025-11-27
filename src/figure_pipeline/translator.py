@@ -241,8 +241,7 @@ Generate an updated image with ALL remaining Chinese text translated to English.
 
             if not result:
                 # API failed, return best result so far or None
-                from ..utils import log
-                log(f"Translation API failed on pass {pass_num} for figure {figure_number}")
+                print(f"[translator] Translation API failed on pass {pass_num} for figure {figure_number}")
                 return final_output
 
             final_output = result
@@ -256,20 +255,17 @@ Generate an updated image with ALL remaining Chinese text translated to English.
 
             if not has_chinese:
                 # Success! No Chinese remaining
-                from ..utils import log
-                log(f"Figure {figure_number} translated successfully in {pass_num} pass(es)")
+                print(f"[translator] Figure {figure_number} translated successfully in {pass_num} pass(es)")
                 return final_output
 
             # Chinese still present, iterate if we have passes left
             if pass_num < max_passes:
-                from ..utils import log
-                log(f"Figure {figure_number}: Chinese text remaining after pass {pass_num}, retrying...")
+                print(f"[translator] Figure {figure_number}: Chinese text remaining after pass {pass_num}, retrying...")
                 current_input = result
                 time.sleep(1)  # Rate limiting between passes
 
         # Exhausted all passes
-        from ..utils import log
-        log(f"Figure {figure_number}: Could not fully translate after {max_passes} passes")
+        print(f"[translator] Figure {figure_number}: Could not fully translate after {max_passes} passes")
         return final_output
 
     def batch_translate(
@@ -308,8 +304,7 @@ Generate an updated image with ALL remaining Chinese text translated to English.
                 )
                 return (path, output)
             except Exception as e:
-                from ..utils import log
-                log(f"Failed to translate {path}: {e}")
+                print(f"[translator] Failed to translate {path}: {e}")
                 return (path, None)
 
         with ThreadPoolExecutor(max_workers=max_concurrent) as executor:

@@ -119,7 +119,8 @@ def main():
     # Create QA check function using validator
     def check_chinese(image_path: str) -> bool:
         """Returns True if Chinese text is detected."""
-        img = Image.open(image_path)
+        from PIL import Image as PILImage
+        img = PILImage.open(image_path)
         result = validator.model.query(
             img,
             "Does this image contain any Chinese characters? Answer yes or no."
