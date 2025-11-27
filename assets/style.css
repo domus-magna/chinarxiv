@@ -969,6 +969,27 @@ main {
   box-shadow: 0 0 0 3px rgba(179, 27, 27, 0.1);
 }
 
+.char-counter {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.report-error {
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  color: #c62828;
+  padding: 0.5rem 0.75rem;
+  background: #ffebee;
+  border-radius: 4px;
+  display: none;
+}
+
+.report-error:not(:empty) {
+  display: block;
+}
+
 .report-context {
   color: var(--text-muted);
   font-size: 0.85rem;

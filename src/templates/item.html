@@ -159,8 +159,10 @@
           </div>
           <div class="form-group">
             <label for="report-description">Description:</label>
-            <textarea id="report-description" class="report-textarea" rows="5" placeholder="Please describe the issue in detail. Include specific text or sections if reporting a translation error."></textarea>
+            <textarea id="report-description" class="report-textarea" rows="5" maxlength="5000" placeholder="Please describe the issue in detail. Include specific text or sections if reporting a translation error." aria-describedby="report-char-count"></textarea>
+            <div class="char-counter" id="report-char-count"><span id="report-char-current">0</span> / 5000</div>
           </div>
+          <div id="report-error" class="report-error" role="alert" aria-live="polite"></div>
           <div class="form-group report-context">
             <small>We'll automatically include page information to help diagnose the issue.</small>
           </div>
@@ -295,21 +297,62 @@
     });
 
     // Report Problem Modal functions
+    let reportModalTrigger = null;  // Track what opened the modal for focus return
+
     function openReportModal() {
       const modal = document.getElementById('report-modal');
+      reportModalTrigger = document.activeElement;
       modal.classList.add('open');
       document.body.style.overflow = 'hidden';
       // Reset form
       document.getElementById('report-type').value = 'translation';
       document.getElementById('report-description').value = '';
+      document.getElementById('report-char-current').textContent = '0';
+      document.getElementById('report-error').textContent = '';
       document.getElementById('report-submit-btn').disabled = false;
       document.getElementById('report-submit-btn').textContent = 'Submit Report';
+      // Focus the first interactive element
+      setTimeout(() => document.getElementById('report-type').focus(), 50);
     }
 
     function closeReportModal() {
       const modal = document.getElementById('report-modal');
       modal.classList.remove('open');
       document.body.style.overflow = '';
+      // Return focus to trigger element
+      if (reportModalTrigger) {
+        reportModalTrigger.focus();
+        reportModalTrigger = null;
+      }
+    }
+
+    // Character counter for description
+    document.getElementById('report-description').addEventListener('input', function() {
+      document.getElementById('report-char-current').textContent = this.value.length;
+    });
+
+    // Focus trap for report modal
+    document.getElementById('report-modal').addEventListener('keydown', function(e) {
+      if (e.key !== 'Tab') return;
+      const focusable = this.querySelectorAll('button, select, textarea, [tabindex]:not([tabindex="-1"])');
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+
+    function showReportError(message) {
+      const errorEl = document.getElementById('report-error');
+      errorEl.textContent = message;
+    }
+
+    function clearReportError() {
+      document.getElementById('report-error').textContent = '';
     }
 
     async function submitReport() {
@@ -317,8 +360,15 @@
       const description = document.getElementById('report-description').value.trim();
       const submitBtn = document.getElementById('report-submit-btn');
 
+      clearReportError();
+
       if (!description || description.length < 10) {
-        showToast('Please provide more details about the issue');
+        showReportError('Please provide more details about the issue (at least 10 characters).');
+        return;
+      }
+
+      if (description.length > 5000) {
+        showReportError('Description too long. Please keep it under 5000 characters.');
         return;
       }
 
@@ -341,12 +391,32 @@
         }
       };
 
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       try {
         const res = await fetch('/api/report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
+
+        // Check response status before parsing
+        if (!res.ok) {
+          let errorMsg = 'Failed to submit report';
+          try {
+            const data = await res.json();
+            errorMsg = data.error || errorMsg;
+          } catch { /* ignore parse errors */ }
+          showReportError(errorMsg);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Submit Report';
+          return;
+        }
 
         const data = await res.json();
 
@@ -354,13 +424,15 @@
           showToast('Report submitted. Thank you!');
           closeReportModal();
         } else {
-          showToast(data.error || 'Failed to submit report');
+          showReportError(data.error || 'Failed to submit report');
           submitBtn.disabled = false;
           submitBtn.textContent = 'Submit Report';
         }
       } catch (e) {
+        clearTimeout(timeoutId);
         console.error('Report submission error:', e);
-        showToast('Failed to submit report. Please try again.');
+        const isTimeout = e.name === 'AbortError';
+        showReportError(isTimeout ? 'Request timed out. Please try again.' : 'Network error. Please check your connection and try again.');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Report';
       }
