@@ -364,6 +364,35 @@ export default {
         }), {
           headers: { 'Content-Type': 'application/json' },
         });
+      } else if (path === '/debug') {
+        // Debug endpoint to check B2 connectivity
+        const client = createB2Client(env);
+        const listUrl = `${env.B2_ENDPOINT}/${env.B2_BUCKET}?list-type=2&prefix=indexes/runs/&max-keys=10`;
+        let debugInfo: any = {
+          bucket: env.B2_BUCKET,
+          prefix: env.B2_PREFIX,
+          endpoint: env.B2_ENDPOINT ? env.B2_ENDPOINT.substring(0, 30) + '...' : 'NOT SET',
+          keyIdSet: !!env.B2_KEY_ID,
+          appKeySet: !!env.B2_APP_KEY,
+          listUrl: listUrl.substring(0, 80) + '...',
+        };
+        try {
+          const listResp = await client.fetch(listUrl);
+          debugInfo.listStatus = listResp.status;
+          debugInfo.listOk = listResp.ok;
+          if (listResp.ok) {
+            const xml = await listResp.text();
+            debugInfo.xmlLength = xml.length;
+            debugInfo.xmlPreview = xml.substring(0, 500);
+          } else {
+            debugInfo.errorBody = await listResp.text();
+          }
+        } catch (e: any) {
+          debugInfo.error = e.message;
+        }
+        response = new Response(JSON.stringify(debugInfo, null, 2), {
+          headers: { 'Content-Type': 'application/json' },
+        });
       } else {
         response = new Response(JSON.stringify({ error: 'Not found' }), {
           status: 404,
