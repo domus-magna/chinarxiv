@@ -2,13 +2,15 @@
 Figure translation using Gemini via OpenRouter API.
 
 Translates Chinese text within figures while preserving layout and design.
+Uses strong prompting with iterative refinement for robust results.
 """
 from __future__ import annotations
 
 import base64
 import os
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 import requests
 
@@ -24,6 +26,8 @@ class FigureTranslator:
     - Translates Chinese text to English within images
     - Preserves original design, colors, and layout
     - Works with charts, graphs, tables, diagrams
+
+    Uses strong prompting (ablation-tested) with optional iteration.
     """
 
     # OpenRouter API endpoint
@@ -32,18 +36,41 @@ class FigureTranslator:
     # Model for figure translation
     MODEL = "google/gemini-3-pro-image-preview"
 
-    # Translation prompt optimized for scientific figures
-    TRANSLATION_PROMPT = """Edit this scientific figure: translate all Chinese text to English.
+    # Strong translation prompt (ablation-tested: passes QA in 1 pass)
+    TRANSLATION_PROMPT = """CRITICAL TASK: Translate EVERY Chinese character in this scientific figure to English.
 
-Requirements:
-- Keep ALL visual elements exactly the same (colors, shapes, data, layout)
-- Only change the text language from Chinese to English
-- Preserve font sizes proportionally
-- Keep numbers, mathematical symbols, and units unchanged
-- If there are axis labels, translate them accurately
-- Technical terms should be translated precisely for academic use
+You MUST:
+1. Find ALL Chinese text - including small labels, axis titles, legends, annotations, watermarks, and captions
+2. Translate EACH piece of Chinese text to accurate English
+3. Leave ZERO Chinese characters in the output image
+4. Preserve the exact visual layout, colors, data values, and design
 
-Generate a new version of this image with the Chinese text replaced by English translations."""
+IMPORTANT: Scan the ENTIRE image systematically:
+- Top to bottom, left to right
+- Check all corners and edges
+- Check inside data points, bars, or other elements
+- Check legends and keys
+- Check titles and subtitles
+- Check axis labels and tick marks
+- Check any footnotes or annotations
+
+If you see ANY Chinese character, translate it. The goal is 100% English output.
+
+Generate a new image with ALL Chinese text replaced by English."""
+
+    # Followup prompt for iteration (when Chinese text remains)
+    FOLLOWUP_PROMPT = """This image still contains Chinese text that was not translated in the previous attempt.
+
+FIND AND TRANSLATE the remaining Chinese characters. Look carefully at:
+- Small labels that may have been missed
+- Text inside or near data elements
+- Legends, keys, and annotations
+- Axis labels and tick marks
+- Any text in corners or edges
+
+The output should have ZERO Chinese characters remaining.
+
+Generate an updated image with ALL remaining Chinese text translated to English."""
 
     def __init__(self, config: Optional[PipelineConfig] = None):
         """Initialize translator."""
@@ -97,21 +124,94 @@ Generate a new version of this image with the Chinese text replaced by English t
 
         return data_url, mime_type
 
+    def _call_api(self, image_path: str, prompt: str, output_path: str) -> Optional[str]:
+        """
+        Single API call to translate an image.
+
+        Args:
+            image_path: Path to input image
+            prompt: Translation prompt
+            output_path: Where to save output
+
+        Returns:
+            Path to output image, or None if failed
+        """
+        data_url, _ = self._image_to_base64(image_path)
+
+        payload = {
+            "model": self.MODEL,
+            "modalities": ["image", "text"],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": data_url}}
+                    ]
+                }
+            ],
+            "temperature": 0.2,
+            "max_tokens": 4096,
+        }
+
+        try:
+            response = requests.post(
+                self.API_URL,
+                headers=self._get_headers(),
+                json=payload,
+                timeout=(10, 120),
+            )
+
+            if not response.ok:
+                return None
+
+            data = response.json()
+            choices = data.get("choices", [])
+            if not choices:
+                return None
+
+            images = choices[0].get("message", {}).get("images", [])
+            if not images:
+                return None
+
+            img_data = images[0]
+            if img_data.get("type") == "image_url":
+                img_url = img_data.get("image_url", {}).get("url", "")
+                if img_url.startswith("data:"):
+                    parts = img_url.split(",", 1)
+                    if len(parts) == 2:
+                        image_bytes = base64.b64decode(parts[1])
+                        with open(output_path, "wb") as f:
+                            f.write(image_bytes)
+                        return output_path
+
+            return None
+
+        except Exception:
+            return None
+
     def translate(
         self,
         image_path: str,
         figure_number: str,
         paper_id: str,
         output_dir: Optional[str] = None,
+        max_passes: int = 3,
+        qa_check: Optional[Callable[[str], bool]] = None,
     ) -> Optional[str]:
         """
         Translate Chinese text in an image to English.
+
+        Uses strong prompting with optional iterative refinement.
+        If qa_check is provided, will iterate until QA passes or max_passes reached.
 
         Args:
             image_path: Path to original image
             figure_number: Figure number for naming
             paper_id: Paper ID for organizing output
             output_dir: Directory for output (default: temp_dir)
+            max_passes: Maximum translation attempts (default: 3)
+            qa_check: Optional function(image_path) -> bool that returns True if Chinese detected
 
         Returns:
             Path to translated image, or None if translation failed
@@ -122,107 +222,63 @@ Generate a new version of this image with the Chinese text replaced by English t
         output_dir = output_dir or os.path.join(self.config.temp_dir, paper_id, "translated")
         os.makedirs(output_dir, exist_ok=True)
 
-        # Convert image to base64
-        data_url, mime_type = self._image_to_base64(image_path)
+        current_input = image_path
+        final_output = None
 
-        # Build request payload
-        payload = {
-            "model": self.MODEL,
-            "modalities": ["image", "text"],
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": self.TRANSLATION_PROMPT},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": data_url}
-                        }
-                    ]
-                }
-            ],
-            "temperature": 0.2,
-            "max_tokens": 4096,
-        }
+        for pass_num in range(1, max_passes + 1):
+            # Use main prompt for first pass, followup for subsequent
+            prompt = self.TRANSLATION_PROMPT if pass_num == 1 else self.FOLLOWUP_PROMPT
 
-        # Call OpenRouter API
-        try:
-            response = requests.post(
-                self.API_URL,
-                headers=self._get_headers(),
-                json=payload,
-                timeout=(10, 120),  # connect, read
-            )
+            # Determine output path
+            ext = Path(image_path).suffix or ".png"
+            if pass_num == 1:
+                output_path = os.path.join(output_dir, f"fig_{figure_number}_en{ext}")
+            else:
+                output_path = os.path.join(output_dir, f"fig_{figure_number}_en_p{pass_num}{ext}")
 
-            if not response.ok:
+            # Call API
+            result = self._call_api(current_input, prompt, output_path)
+
+            if not result:
+                # API failed, return best result so far or None
                 from ..utils import log
-                log(f"OpenRouter API error {response.status_code}: {response.text[:500]}")
-                return None
+                log(f"Translation API failed on pass {pass_num} for figure {figure_number}")
+                return final_output
 
-            data = response.json()
+            final_output = result
 
-            # Extract generated image from response
-            choices = data.get("choices", [])
-            if not choices:
+            # If no QA check provided, return after first pass
+            if qa_check is None:
+                return final_output
+
+            # Check if Chinese text remains
+            has_chinese = qa_check(result)
+
+            if not has_chinese:
+                # Success! No Chinese remaining
                 from ..utils import log
-                log(f"No choices in response for figure {figure_number}")
-                return None
+                log(f"Figure {figure_number} translated successfully in {pass_num} pass(es)")
+                return final_output
 
-            message = choices[0].get("message", {})
-            images = message.get("images", [])
-
-            if not images:
-                # Model might have returned text instead of image
-                text_content = message.get("content", "")
+            # Chinese still present, iterate if we have passes left
+            if pass_num < max_passes:
                 from ..utils import log
-                log(f"No image in response for figure {figure_number}. Got text: {text_content[:200]}")
-                return None
+                log(f"Figure {figure_number}: Chinese text remaining after pass {pass_num}, retrying...")
+                current_input = result
+                time.sleep(1)  # Rate limiting between passes
 
-            # Get the first generated image
-            image_data = images[0]
-            if image_data.get("type") == "image_url":
-                img_url = image_data.get("image_url", {}).get("url", "")
-
-                # Parse data URL: data:image/png;base64,{data}
-                if img_url.startswith("data:"):
-                    parts = img_url.split(",", 1)
-                    if len(parts) == 2:
-                        header, b64_data = parts
-                        # Extract format from header
-                        if "png" in header:
-                            ext = "png"
-                        elif "jpeg" in header or "jpg" in header:
-                            ext = "jpg"
-                        else:
-                            ext = "png"
-
-                        # Decode and save
-                        output_path = os.path.join(output_dir, f"fig_{figure_number}_en.{ext}")
-                        image_bytes = base64.b64decode(b64_data)
-
-                        with open(output_path, "wb") as f:
-                            f.write(image_bytes)
-
-                        return output_path
-
-            from ..utils import log
-            log(f"Could not extract image from response for figure {figure_number}")
-            return None
-
-        except requests.exceptions.Timeout:
-            from ..utils import log
-            log(f"Timeout translating figure {figure_number}")
-            return None
-        except Exception as e:
-            from ..utils import log
-            log(f"Translation failed for figure {figure_number}: {e}")
-            raise
+        # Exhausted all passes
+        from ..utils import log
+        log(f"Figure {figure_number}: Could not fully translate after {max_passes} passes")
+        return final_output
 
     def batch_translate(
         self,
         image_paths: list,
         paper_id: str,
         max_concurrent: int = 3,
+        max_passes: int = 3,
+        qa_check: Optional[Callable[[str], bool]] = None,
     ) -> dict:
         """
         Translate multiple images with rate limiting.
@@ -231,18 +287,25 @@ Generate a new version of this image with the Chinese text replaced by English t
             image_paths: List of image paths
             paper_id: Paper ID
             max_concurrent: Maximum concurrent requests
+            max_passes: Maximum passes per image
+            qa_check: Optional QA function to enable iteration
 
         Returns:
             Dict mapping input path to output path (or None if failed)
         """
-        import time
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         results = {}
 
         def translate_one(path: str, idx: int) -> tuple:
             try:
-                output = self.translate(path, str(idx + 1), paper_id)
+                output = self.translate(
+                    path,
+                    str(idx + 1),
+                    paper_id,
+                    max_passes=max_passes,
+                    qa_check=qa_check,
+                )
                 return (path, output)
             except Exception as e:
                 from ..utils import log
@@ -258,7 +321,7 @@ Generate a new version of this image with the Chinese text replaced by English t
             for future in as_completed(futures):
                 path, output = future.result()
                 results[path] = output
-                # Rate limiting - be gentle with the API
-                time.sleep(1.0)
+                # Rate limiting
+                time.sleep(0.5)
 
         return results
