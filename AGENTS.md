@@ -434,3 +434,169 @@ gh pr view --json comments,reviews
 - Structural QA: fail if counts mismatch or if short-fragment ratio spikes relative to source; QA filter failure (Chinese/formatting) triggers retry/fallback. Residual Chinese characters are stripped before QA; persistent QA failures are saved to `reports/raw_translations/<paper_id>.qa_failed.json` for manual triage.
 - Formatting: aggressive Markdown reflow (no content edits); writes `.md` alongside JSON. Micro-fragments (<=3 chars, no letters) are dropped before formatting.
 - Run summaries live at `reports/run_summaries/<paper_id>.json` with attempt history and final status; translation JSON records `_model` and `_markdown_path`.
+
+## Complete Paper Translation Pipeline (Cloud-First)
+
+This project translates Chinese academic papers to English, including all figures and tables.
+**All processing runs in GitHub Actions or cloud APIs - nothing runs locally.**
+
+### The 10-Step Pipeline
+
+```
+1. DOWNLOAD PAPER ──────────────────────────────────── (✅ EXISTING)
+   Chinese PDF via BrightData → Backblaze B2
+
+2. IDENTIFY FIGURES/TABLES ─────────────────────────── (🆕 NEW)
+   Docling parsing + regex detection
+   Output: List of figures with page numbers, bounding boxes
+
+3. EXTRACT FIGURES/TABLES ──────────────────────────── (🆕 NEW)
+   PyMuPDF extraction from PDF
+   Output: Original figure images stored in B2
+
+3.5. INJECT FIGURE MARKERS ─────────────────────────── (🆕 NEW)
+   Inject [FIGURE:N] markers into source text BEFORE translation
+   Markers survive translation and enable exact positioning
+
+4. TRANSLATE FIGURES ───────────────────────────────── (🆕 NEW)
+   Nano Banana Pro (Gemini 3 Pro Image) API
+   Output: Translated figure images stored in B2
+
+4.5. QA FIGURE TRANSLATION ─────────────────────────── (🆕 NEW)
+   Moondream API: "Are these two figures same except translation?"
+   Output: QA pass/fail per figure
+
+5. TRANSLATE DOCUMENT TEXT ─────────────────────────── (✅ EXISTING)
+   KimiK2 via OpenRouter
+   Output: Translated text (body_en, body_md)
+
+5.5. QA TEXT TRANSLATION ───────────────────────────── (✅ EXISTING)
+   Check formatting, no leaked Chinese
+   Output: QA pass/fail
+
+6. REASSEMBLE PAPER ────────────────────────────────── (🆕 NEW)
+   Reinject translated figures at correct locations
+   Generate: HTML (web view) + PDF (download)
+
+7. FINAL QA ────────────────────────────────────────── (🆕 NEW)
+   Verify figures in correct positions
+   Output: Complete translated paper ready for publish
+
+8. STORE COMPLETE PAPER ────────────────────────────── (✅ EXISTING)
+   Translated JSON + figures + PDF → Backblaze B2
+
+9. PUBLISH TO SITE ─────────────────────────────────── (✅ EXISTING)
+   Render HTML pages with inline figures
+   Serve translated PDF for download
+
+10. AUTO-DETECT NEW PAPERS ─────────────────────────── (✅ EXISTING)
+    Harvest → Full pipeline
+```
+
+### First-Class Outputs
+
+| Output | Description | User Experience |
+|--------|-------------|-----------------|
+| **Web View** | HTML page with translated text + inline translated figures | Primary reading experience |
+| **PDF Download** | Complete translated PDF with figures embedded | Encouraged for offline/sharing |
+
+### Pipeline Modules
+
+```
+src/figure_pipeline/
+├── __init__.py          # Pipeline orchestration
+├── extractor.py         # Step 3: PyMuPDF extraction with bounding boxes
+├── translator.py        # Step 4: Gemini API translation
+├── validator.py         # Step 4.5+7: Moondream QA (translation + final)
+├── assembler.py         # Step 6: Replace [FIGURE:N] markers with images
+├── storage.py           # B2 upload/download
+└── models.py            # Pydantic data models
+
+# Step 3.5 is handled by inject_figure_markers() in body_extract.py
+```
+
+### Data Models
+
+```python
+from pydantic import BaseModel
+from enum import Enum
+from typing import Optional, Tuple
+
+class FigureLocation(BaseModel):
+    page_number: int
+    bounding_box: Tuple[float, float, float, float]  # x1, y1, x2, y2
+    marker: str  # e.g., "[FIGURE:1]" - injected into source text
+    section_title: Optional[str]
+
+class Figure(BaseModel):
+    paper_id: str
+    figure_number: str
+    figure_type: str  # "figure" or "table"
+    location: FigureLocation
+    caption_zh: Optional[str]
+    caption_en: Optional[str]
+    confidence: float
+    original_url: Optional[str]    # B2 URL
+    translated_url: Optional[str]  # B2 URL
+    translation_qa_passed: Optional[bool]
+    final_qa_passed: Optional[bool]
+```
+
+### B2 Storage Layout
+
+```
+chinaxiv/
+├── pdfs/{paper_id}.pdf              # Original Chinese PDF
+├── figures/{paper_id}/
+│   ├── original/                    # Extracted Chinese figures
+│   │   ├── fig_1.png
+│   │   └── table_1.png
+│   └── translated/                  # English figures
+│       ├── fig_1_en.png
+│       └── table_1_en.png
+├── translations/{paper_id}.json     # Text + figure metadata
+└── output/{paper_id}/
+    ├── paper_en.pdf                 # Complete translated PDF
+    └── figures_manifest.json        # Figure positions
+```
+
+### API Keys Required (GitHub Secrets)
+
+- `MOONDREAM_API_KEY` - Moondream Cloud API (QA validation)
+- `GEMINI_API_KEY` - Google Gemini API (figure translation)
+- `OPENROUTER_API_KEY` - OpenRouter (text translation) ✅ existing
+
+### Cost Estimates per Paper (with 5 figures)
+
+| Step | Cost |
+|------|------|
+| Figure detection | FREE (Docling) |
+| Figure extraction | FREE (PyMuPDF) |
+| Figure translation | ~$0.25 (5 × $0.05) |
+| Figure QA | ~$0.015 (5 × $0.003) |
+| Text translation | ~$0.001 (existing) |
+| **Total per paper** | **~$0.27** |
+
+### CLI Commands
+
+```bash
+# Full pipeline for one paper
+python -m src.figure_pipeline run chinaxiv-202510.00001
+
+# Just extract figures (no translation)
+python -m src.figure_pipeline extract chinaxiv-202510.00001
+
+# Batch process papers
+python -m src.figure_pipeline batch --month 202510 --limit 50
+
+# Check status
+python -m src.figure_pipeline status chinaxiv-202510.00001
+```
+
+### Current Status
+
+- ✅ **Step 1**: PDF download working
+- ✅ **Step 5**: Text translation working
+- ✅ **Step 8-10**: Storage and publishing working
+- ⏳ **Steps 2-4.5**: Figure pipeline to implement
+- ⏳ **Steps 6-7**: Reassembly to implement
