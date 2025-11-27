@@ -7,7 +7,6 @@ import io
 import tarfile
 from pathlib import Path
 
-import pytest
 
 from src.body_extract import (
     extract_body_paragraphs,

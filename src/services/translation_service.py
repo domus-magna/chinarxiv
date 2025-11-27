@@ -6,9 +6,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-import time
 from pathlib import Path
-import os
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -27,7 +25,6 @@ from ..tex_guard import mask_math, unmask_math, verify_token_parity
 from ..token_utils import estimate_tokens
 from ..cost_tracker import compute_cost, append_cost_log
 from ..logging_utils import log
-from ..qa_filter import ChineseCharacterDetector
 from ..models import Paper, Translation
 import re
 

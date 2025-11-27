@@ -5,7 +5,6 @@ Compares multiple models on the same paper to evaluate quality vs cost tradeoffs
 """
 
 import os
-import json
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
@@ -99,7 +98,7 @@ def run_comparison(
     print(f"Extracting content from {pdf_path}...")
     extraction = extract_from_pdf_synthesis(pdf_path)
     if not extraction:
-        raise ValueError(f"Failed to extract content from PDF")
+        raise ValueError("Failed to extract content from PDF")
 
     print(f"Extracted {extraction['stats']['merged_paragraphs']} paragraphs in {extraction['stats']['detected_sections']} sections")
 
@@ -218,7 +217,7 @@ def _translate_with_model(
 ) -> Dict[str, Any]:
     """Translate paper using specific model."""
     from .services.translation_service import SYNTHESIS_SYSTEM_PROMPT
-    from .http_client import openrouter_headers, get_proxies
+    from .http_client import openrouter_headers
     from .tex_guard import mask_math, unmask_math
     import requests
 

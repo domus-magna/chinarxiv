@@ -1,3 +1,21 @@
+// Console log capture for report submissions
+// Captures console.error and console.warn for debugging
+const capturedLogs = [];
+const _originalConsoleError = console.error;
+const _originalConsoleWarn = console.warn;
+
+console.error = function(...args) {
+  capturedLogs.push({ level: 'error', msg: args, ts: Date.now() });
+  if (capturedLogs.length > 50) capturedLogs.shift();  // Keep last 50
+  _originalConsoleError.apply(console, args);
+};
+
+console.warn = function(...args) {
+  capturedLogs.push({ level: 'warn', msg: args, ts: Date.now() });
+  if (capturedLogs.length > 50) capturedLogs.shift();  // Keep last 50
+  _originalConsoleWarn.apply(console, args);
+};
+
 // Global search function for tag clicks
 function searchSubject(subject) {
   const input = document.getElementById('search-input');

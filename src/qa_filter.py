@@ -4,7 +4,7 @@ Automatically flags translations containing Chinese characters for manual review
 """
 
 import re
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any
 from dataclasses import dataclass
 from enum import Enum
 
