@@ -3,6 +3,11 @@ Figure translation using Gemini via OpenRouter API.
 
 Translates Chinese text within figures while preserving layout and design.
 Uses strong prompting with iterative refinement for robust results.
+
+Includes production-grade error handling with:
+- Retry logic with exponential backoff for transient errors (429, 5xx, timeout)
+- Proper error classification (retryable vs fatal)
+- Comprehensive logging of all API calls and errors
 """
 from __future__ import annotations
 
@@ -10,11 +15,31 @@ import base64
 import os
 import time
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, Tuple
 
 import requests
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from .models import PipelineConfig
+
+
+class TranslationRetryableError(Exception):
+    """Retryable API error (rate limit, server error, timeout)."""
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class TranslationFatalError(Exception):
+    """Non-retryable API error (auth failure, bad request)."""
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class FigureTranslator:
@@ -33,8 +58,14 @@ class FigureTranslator:
     # OpenRouter API endpoint
     API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-    # Model for figure translation
-    MODEL = "google/gemini-3-pro-image-preview"
+    # Models for figure translation (in priority order)
+    # Pro (Gemini 3) produces much higher quality but is less reliable
+    # Flash (Gemini 2.5) is reliable fallback
+    MODEL_PRO = "google/gemini-3-pro-image-preview"
+    MODEL_FLASH = "google/gemini-2.5-flash-image-preview"
+
+    # Default to Pro, fallback to Flash after 3 failed attempts
+    MODEL = MODEL_PRO
 
     # Strong translation prompt (ablation-tested: passes QA in 1 pass)
     TRANSLATION_PROMPT = """CRITICAL TASK: Translate EVERY Chinese character in this scientific figure to English.
@@ -124,9 +155,53 @@ Generate an updated image with ALL remaining Chinese text translated to English.
 
         return data_url, mime_type
 
-    def _call_api(self, image_path: str, prompt: str, output_path: str) -> Optional[str]:
+    def _classify_error(self, status_code: int, response_text: str) -> Tuple[bool, str]:
         """
-        Single API call to translate an image.
+        Classify API error as retryable or fatal.
+
+        Args:
+            status_code: HTTP status code
+            response_text: Response body text
+
+        Returns:
+            Tuple of (is_retryable, error_message)
+        """
+        # Rate limiting - retryable
+        if status_code == 429:
+            return True, f"Rate limited (429): {response_text[:200]}"
+
+        # Server errors - retryable
+        if 500 <= status_code < 600:
+            return True, f"Server error ({status_code}): {response_text[:200]}"
+
+        # Auth errors - fatal
+        if status_code in (401, 403):
+            return False, f"Auth error ({status_code}): {response_text[:200]}"
+
+        # Bad request - fatal (usually means malformed payload)
+        if status_code == 400:
+            return False, f"Bad request (400): {response_text[:200]}"
+
+        # Payment required - fatal
+        if status_code == 402:
+            return False, f"Payment required (402): {response_text[:200]}"
+
+        # Other 4xx - non-retryable
+        if 400 <= status_code < 500:
+            return False, f"Client error ({status_code}): {response_text[:200]}"
+
+        # Unknown - assume retryable
+        return True, f"Unknown error ({status_code}): {response_text[:200]}"
+
+    @retry(
+        retry=retry_if_exception_type(TranslationRetryableError),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=2, max=30),
+        reraise=True,
+    )
+    def _call_api_with_retry(self, image_path: str, prompt: str, output_path: str) -> str:
+        """
+        Single API call with retry logic for transient errors.
 
         Args:
             image_path: Path to input image
@@ -134,12 +209,19 @@ Generate an updated image with ALL remaining Chinese text translated to English.
             output_path: Where to save output
 
         Returns:
-            Path to output image, or None if failed
+            Path to output image
+
+        Raises:
+            TranslationRetryableError: For transient errors (will be retried)
+            TranslationFatalError: For non-retryable errors
         """
         data_url, _ = self._image_to_base64(image_path)
 
+        # Use current model (set by _call_api for fallback logic)
+        model = getattr(self, '_current_model', self.MODEL_PRO)
+
         payload = {
-            "model": self.MODEL,
+            "model": model,
             "modalities": ["image", "text"],
             "messages": [
                 {
@@ -154,6 +236,7 @@ Generate an updated image with ALL remaining Chinese text translated to English.
             "max_tokens": 4096,
         }
 
+        # Network request with error handling
         try:
             response = requests.post(
                 self.API_URL,
@@ -161,33 +244,113 @@ Generate an updated image with ALL remaining Chinese text translated to English.
                 json=payload,
                 timeout=(10, 120),
             )
+        except requests.exceptions.Timeout as e:
+            print(f"[translator] Timeout error: {e}")
+            raise TranslationRetryableError(f"Request timeout: {e}")
+        except requests.exceptions.ConnectionError as e:
+            print(f"[translator] Connection error: {e}")
+            raise TranslationRetryableError(f"Connection error: {e}")
+        except requests.exceptions.RequestException as e:
+            print(f"[translator] Network error: {e}")
+            raise TranslationRetryableError(f"Network error: {e}")
 
-            if not response.ok:
-                return None
+        # Check response status
+        if not response.ok:
+            is_retryable, error_msg = self._classify_error(
+                response.status_code, response.text
+            )
+            print(f"[translator] API error: {error_msg}")
 
+            if is_retryable:
+                raise TranslationRetryableError(error_msg, response.status_code)
+            else:
+                raise TranslationFatalError(error_msg, response.status_code)
+
+        # Parse response JSON
+        try:
             data = response.json()
-            choices = data.get("choices", [])
-            if not choices:
-                return None
+        except ValueError as e:
+            print(f"[translator] Invalid JSON response: {e}")
+            raise TranslationRetryableError(f"Invalid JSON response: {e}")
 
-            images = choices[0].get("message", {}).get("images", [])
-            if not images:
-                return None
+        # Extract image from response
+        choices = data.get("choices", [])
+        if not choices:
+            print(f"[translator] No choices in response: {data.keys()}")
+            raise TranslationRetryableError("No choices in API response")
 
-            img_data = images[0]
-            if img_data.get("type") == "image_url":
-                img_url = img_data.get("image_url", {}).get("url", "")
-                if img_url.startswith("data:"):
-                    parts = img_url.split(",", 1)
-                    if len(parts) == 2:
+        images = choices[0].get("message", {}).get("images", [])
+        if not images:
+            # Check if there's text content instead (model may have responded with text)
+            content = choices[0].get("message", {}).get("content", "")
+            if content:
+                print(f"[translator] Model returned text instead of image: {content[:100]}")
+            raise TranslationRetryableError("No images in API response (model may be overloaded)")
+
+        img_data = images[0]
+        if img_data.get("type") == "image_url":
+            img_url = img_data.get("image_url", {}).get("url", "")
+            if img_url.startswith("data:"):
+                parts = img_url.split(",", 1)
+                if len(parts) == 2:
+                    try:
                         image_bytes = base64.b64decode(parts[1])
                         with open(output_path, "wb") as f:
                             f.write(image_bytes)
                         return output_path
+                    except Exception as e:
+                        print(f"[translator] Failed to decode/save image: {e}")
+                        raise TranslationRetryableError(f"Failed to decode image: {e}")
 
+        print(f"[translator] Unexpected image format: {img_data.get('type')}")
+        raise TranslationRetryableError("Unexpected image format in response")
+
+    def _call_api(self, image_path: str, prompt: str, output_path: str) -> Optional[str]:
+        """
+        Single API call to translate an image with model fallback.
+
+        Strategy: Try Pro model 3x, then fallback to Flash model 3x.
+        Pro produces higher quality but is less reliable.
+
+        Args:
+            image_path: Path to input image
+            prompt: Translation prompt
+            output_path: Where to save output
+
+        Returns:
+            Path to output image, or None if failed
+        """
+        # Try Pro model first (3 attempts via retry decorator)
+        try:
+            self._current_model = self.MODEL_PRO
+            result = self._call_api_with_retry(image_path, prompt, output_path)
+            print(f"[translator] Success with Pro model")
+            return result
+        except TranslationFatalError as e:
+            print(f"[translator] Pro fatal error: {e}")
+            # Don't fallback on auth/payment errors
+            if e.status_code in (401, 402, 403):
+                return None
+        except TranslationRetryableError as e:
+            print(f"[translator] Pro failed after 3 attempts: {e}")
+        except Exception as e:
+            print(f"[translator] Pro unexpected error: {e}")
+
+        # Fallback to Flash model (3 attempts via retry decorator)
+        print(f"[translator] Falling back to Flash model...")
+        try:
+            self._current_model = self.MODEL_FLASH
+            result = self._call_api_with_retry(image_path, prompt, output_path)
+            print(f"[translator] Success with Flash fallback")
+            return result
+        except TranslationFatalError as e:
+            print(f"[translator] Flash fatal error: {e}")
             return None
-
-        except Exception:
+        except TranslationRetryableError as e:
+            print(f"[translator] Flash failed after 3 attempts: {e}")
+            return None
+        except Exception as e:
+            print(f"[translator] Flash unexpected error: {e}")
             return None
 
     def translate(
@@ -272,19 +435,24 @@ Generate an updated image with ALL remaining Chinese text translated to English.
         self,
         image_paths: list,
         paper_id: str,
-        max_concurrent: int = 3,
+        max_concurrent: int = 1,  # Reduced from 3 to avoid rate limiting
         max_passes: int = 3,
         qa_check: Optional[Callable[[str], bool]] = None,
+        delay_between_requests: float = 3.0,  # Increased from 0.5s
     ) -> dict:
         """
         Translate multiple images with rate limiting.
 
+        Note: Default max_concurrent reduced to 1 and delay increased to 3s
+        to avoid OpenRouter rate limiting (429 errors).
+
         Args:
             image_paths: List of image paths
             paper_id: Paper ID
-            max_concurrent: Maximum concurrent requests
+            max_concurrent: Maximum concurrent requests (default: 1)
             max_passes: Maximum passes per image
             qa_check: Optional QA function to enable iteration
+            delay_between_requests: Seconds to wait between requests (default: 3.0)
 
         Returns:
             Dict mapping input path to output path (or None if failed)
@@ -292,6 +460,9 @@ Generate an updated image with ALL remaining Chinese text translated to English.
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         results = {}
+        total = len(image_paths)
+        successful = 0
+        failed = 0
 
         def translate_one(path: str, idx: int) -> tuple:
             try:
@@ -307,6 +478,8 @@ Generate an updated image with ALL remaining Chinese text translated to English.
                 print(f"[translator] Failed to translate {path}: {e}")
                 return (path, None)
 
+        print(f"[translator] Starting batch translation of {total} images (concurrency: {max_concurrent}, delay: {delay_between_requests}s)")
+
         with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
             futures = {
                 executor.submit(translate_one, path, idx): path
@@ -316,7 +489,22 @@ Generate an updated image with ALL remaining Chinese text translated to English.
             for future in as_completed(futures):
                 path, output = future.result()
                 results[path] = output
-                # Rate limiting
-                time.sleep(0.5)
+
+                # Track success/failure
+                if output:
+                    successful += 1
+                else:
+                    failed += 1
+
+                # Log progress
+                done = successful + failed
+                print(f"[translator] Progress: {done}/{total} ({successful} success, {failed} failed)")
+
+                # Rate limiting between requests
+                time.sleep(delay_between_requests)
+
+        # Summary log
+        success_rate = (successful / total * 100) if total > 0 else 0
+        print(f"[translator] Batch complete: {successful}/{total} ({success_rate:.1f}% success rate)")
 
         return results

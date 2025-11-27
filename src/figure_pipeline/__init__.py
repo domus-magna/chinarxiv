@@ -16,6 +16,12 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
+
+def log(message: str) -> None:
+    """Simple logging function."""
+    print(f"[figure_pipeline] {message}")
+
+
 from .models import (
     Figure,
     FigureProcessingResult,
@@ -97,8 +103,6 @@ class FigurePipeline:
         Returns:
             FigureProcessingResult with all figures and stats
         """
-        from ..utils import log
-
         result = FigureProcessingResult(paper_id=paper_id)
 
         # Find PDF path
@@ -204,7 +208,6 @@ class FigurePipeline:
             List of FigureProcessingResult objects
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        from ..utils import log
 
         results = []
         with ThreadPoolExecutor(max_workers=workers) as executor:
