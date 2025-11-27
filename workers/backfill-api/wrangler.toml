@@ -21,3 +21,7 @@ name = "chinaxiv-backfill-api"
 routes = [
   { pattern = "chinaxiv-english.pages.dev/api/backfill/*", zone_name = "pages.dev" }
 ]
+
+[env.production.vars]
+B2_BUCKET = "chinaxiv"
+B2_PREFIX = ""
