@@ -102,10 +102,10 @@ def main():
         return
 
     # =========================================================================
-    # Step 3: Translate figure with Gemini via OpenRouter
+    # Step 3: Translate figure with Gemini via OpenRouter (with QA iteration)
     # =========================================================================
     print("\n" + "-" * 60)
-    print("STEP 3: Figure Translation (Gemini via OpenRouter)")
+    print("STEP 3: Figure Translation (Gemini via OpenRouter + QA iteration)")
     print("-" * 60)
 
     from figure_pipeline.translator import FigureTranslator
@@ -113,14 +113,29 @@ def main():
     translator = FigureTranslator()
 
     print(f"Model: {translator.MODEL}")
+    print("Max passes: 3 (will iterate until no Chinese detected)")
     print("Sending to OpenRouter API...")
+
+    # Create QA check function using validator
+    def check_chinese(image_path: str) -> bool:
+        """Returns True if Chinese text is detected."""
+        img = Image.open(image_path)
+        result = validator.model.query(
+            img,
+            "Does this image contain any Chinese characters? Answer yes or no."
+        )
+        has_chinese = "yes" in result.get("answer", "").lower()
+        print(f"  QA check: Chinese detected = {has_chinese}")
+        return has_chinese
 
     try:
         translated_path = translator.translate(
             test_figure.original_path,
             test_figure.figure_number,
             test_pdf.stem,
-            str(output_dir / "translated")
+            str(output_dir / "translated"),
+            max_passes=3,
+            qa_check=check_chinese,
         )
 
         if translated_path:
