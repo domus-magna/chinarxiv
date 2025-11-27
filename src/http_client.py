@@ -20,7 +20,7 @@ from .config import get_proxies
 
 
 DEFAULT_TIMEOUT = (10, 60)  # connect, read
-USER_AGENT = "chinarxiv/1.0 (+https://github.com/alexanderhuth/chinarxiv)"
+USER_AGENT = "chinarxiv/1.0 (+https://github.com/domus-magna/chinarxiv)"
 
 
 class HttpError(Exception):

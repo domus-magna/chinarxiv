@@ -18,7 +18,7 @@
 ### Installation
 ```bash
 # Clone repository
-git clone https://github.com/alexanderhuth/chinarxiv
+git clone https://github.com/domus-magna/chinarxiv
 cd chinarxiv
 
 # Create virtual environment

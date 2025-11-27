@@ -315,6 +315,12 @@ This process catches overengineering before it becomes technical debt.
 - `BRIGHTDATA_UNLOCKER_PASSWORD`: Unlocker zone password
 - `DISCORD_WEBHOOK_URL`: Discord webhook for notifications (optional)
 
+### GitHub Account Policy
+**CRITICAL**: Always use the `seconds-0` GitHub account for all operations on this repository.
+- Repository: `domus-magna/chinarxiv`
+- Account: `seconds-0` (via GH_TOKEN or gh auth)
+- Never use `alexanderhuth` or other accounts for commits/PRs
+
 ### Cloudflare Pages Configuration
 - **Project Name**: `chinarxiv`
 - **Build Output Directory**: `site`
@@ -418,7 +424,7 @@ gh pr view --comments
 gh pr view --json reviews
 
 # Check inline review comments (CRITICAL - often missed!)
-gh api repos/alexanderhuth/chinarxiv/pulls/{number}/comments
+gh api repos/domus-magna/chinarxiv/pulls/{number}/comments
 
 # Get all review data
 gh pr view --json comments,reviews
