@@ -136,7 +136,7 @@ The script copies small sample JSON/PDF files into `data/` only when real artifa
   - `CLOUDFLARE_ACCOUNT_ID`: from Cloudflare dashboard.
   - `CF_API_TOKEN`: API token with Pages:Edit permission.
 - CI builds nightly at 03:00 UTC and deploys `site/` to Cloudflare Pages using `cloudflare/pages-action`.
-- First-time project creation happens on deploy (project name: `chinaxiv-english`).
+- First-time project creation happens on deploy (project name: `chinarxiv`).
 - Map a custom domain in Cloudflare Pages → Custom domains.
 
 Batch translation (future option)
@@ -151,8 +151,8 @@ Batch translation (future option)
 
 ## Status
 - **Papers Translated**: 3,096 / 3,461 (89.5%)
-- **Site**: https://chinaxiv-english.pages.dev
-- **Monitoring**: https://chinaxiv-english.pages.dev/monitor
+- **Site**: https://chinarxiv.org
+- **Monitoring**: https://chinarxiv.org/monitor
 
 ## Contributing
 See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for contribution guidelines.

@@ -30,7 +30,7 @@ export SECRET_KEY="${SECRET_KEY:-$(openssl rand -hex 32)}"
 echo "📊 Dashboard will be available at: http://localhost:$MONITORING_PORT"
 echo "🔐 Username: $MONITORING_USERNAME"
 echo "🔑 Password: $MONITORING_PASSWORD"
-echo "🌐 Site: https://chinaxiv-english.pages.dev"
+echo "🌐 Site: https://chinarxiv.org"
 echo ""
 
 # Start the monitoring dashboard

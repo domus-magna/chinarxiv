@@ -4,7 +4,7 @@
 This document describes the API endpoints and functionality available in the ChinaXiv Translations system.
 
 ## Base URL
-- **Production**: `https://chinaxiv-english.pages.dev`
+- **Production**: `https://chinarxiv.org`
 - **Local Development**: `http://localhost:8001`
 
 ## Authentication
@@ -84,7 +84,7 @@ Returns system statistics and status.
 {
   "uptime": "Running",
   "last_update": "2025-10-05 20:00:00",
-  "site_url": "https://chinaxiv-english.pages.dev",
+  "site_url": "https://chinarxiv.org",
   "github_actions_status": "Active",
   "cloudflare_status": "Online"
 }
@@ -428,22 +428,22 @@ Monitoring endpoints require authentication via session cookies.
 
 ### Search for Papers
 ```bash
-curl "https://chinaxiv-english.pages.dev/search?q=machine%20learning"
+curl "https://chinarxiv.org/search?q=machine%20learning"
 ```
 
 ### Get Paper Details
 ```bash
-curl "https://chinaxiv-english.pages.dev/items/paper-20241005-001.html"
+curl "https://chinarxiv.org/items/paper-20241005-001.html"
 ```
 
 ### Download PDF
 ```bash
-curl -O "https://chinaxiv-english.pages.dev/items/paper-20241005-001.pdf"
+curl -O "https://chinarxiv.org/items/paper-20241005-001.pdf"
 ```
 
 ### Create Alert
 ```bash
-curl -X POST "https://chinaxiv-english.pages.dev/monitor/alerts/create" \
+curl -X POST "https://chinarxiv.org/monitor/alerts/create" \
   -H "Content-Type: application/json" \
   -d '{
     "level": "info",
@@ -455,7 +455,7 @@ curl -X POST "https://chinaxiv-english.pages.dev/monitor/alerts/create" \
 
 ### Get System Status
 ```bash
-curl "https://chinaxiv-english.pages.dev/monitor/api/system"
+curl "https://chinarxiv.org/monitor/api/system"
 ```
 
 ## SDKs and Libraries
@@ -465,11 +465,11 @@ curl "https://chinaxiv-english.pages.dev/monitor/api/system"
 import requests
 
 # Get paper details
-response = requests.get("https://chinaxiv-english.pages.dev/items/paper-20241005-001.html")
+response = requests.get("https://chinarxiv.org/items/paper-20241005-001.html")
 
 # Create alert
 response = requests.post(
-    "https://chinaxiv-english.pages.dev/monitor/alerts/create",
+    "https://chinarxiv.org/monitor/alerts/create",
     json={
         "level": "info",
         "title": "Test Alert",
@@ -482,12 +482,12 @@ response = requests.post(
 ### JavaScript
 ```javascript
 // Get paper details
-fetch('https://chinaxiv-english.pages.dev/items/paper-20241005-001.html')
+fetch('https://chinarxiv.org/items/paper-20241005-001.html')
   .then(response => response.text())
   .then(html => console.log(html));
 
 // Create alert
-fetch('https://chinaxiv-english.pages.dev/monitor/alerts/create', {
+fetch('https://chinarxiv.org/monitor/alerts/create', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -512,6 +512,6 @@ fetch('https://chinaxiv-english.pages.dev/monitor/alerts/create', {
 - Performance monitoring
 
 ## Support
-- **Documentation**: [GitHub Repository](https://github.com/your-org/chinaxiv-english)
-- **Issues**: [GitHub Issues](https://github.com/your-org/chinaxiv-english/issues)
-- **Contact**: [Email](mailto:support@chinaxiv-english.com)
+- **Documentation**: [GitHub Repository](https://github.com/domus-magna/chinarxiv)
+- **Issues**: [GitHub Issues](https://github.com/domus-magna/chinarxiv/issues)
+- **Contact**: [Email](mailto:support@chinarxiv.org)

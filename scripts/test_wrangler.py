@@ -108,9 +108,9 @@ def main():
     if all_passed:
         print("🎉 All tests passed! Wrangler CLI is ready to use.")
         print("\nNext steps:")
-        print("1. Deploy to Pages: wrangler pages deploy site --project-name chinaxiv-english")
-        print("2. Check deployment: wrangler pages deployment list chinaxiv-english")
-        print("3. Visit your site: https://chinaxiv-english.pages.dev")
+        print("1. Deploy to Pages: wrangler pages deploy site --project-name chinarxiv")
+        print("2. Check deployment: wrangler pages deployment list chinarxiv")
+        print("3. Visit your site: https://chinarxiv.org")
     else:
         print("❌ Some tests failed. Please fix the issues above.")
         return 1

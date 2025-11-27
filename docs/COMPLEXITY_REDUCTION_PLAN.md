@@ -276,7 +276,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: |
           npm install -g wrangler
-          wrangler pages deploy site --project-name chinaxiv-english
+          wrangler pages deploy site --project-name chinarxiv
 ```
 
 #### Remove Duplicate:
@@ -458,8 +458,8 @@ find docs -name "*.md" -exec wc -l {} + | sort -n
 ### Installation
 ```bash
 # Clone repository
-git clone https://github.com/your-org/chinaxiv-english
-cd chinaxiv-english
+git clone https://github.com/domus-magna/chinarxiv
+cd chinarxiv
 
 # Create virtual environment
 python -m venv .venv
@@ -589,8 +589,8 @@ See [SETUP.md](docs/SETUP.md) for detailed instructions.
 
 ## Status
 - **Papers Translated**: 3,096 / 3,461 (89.5%)
-- **Site**: https://chinaxiv-english.pages.dev
-- **Monitoring**: https://chinaxiv-english.pages.dev/monitor
+- **Site**: https://chinarxiv.org
+- **Monitoring**: https://chinarxiv.org/monitor
 
 ## Contributing
 See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for contribution guidelines.
