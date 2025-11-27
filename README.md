@@ -1,9 +1,9 @@
 # ChinaRxiv
 
-[![Daily Build](https://github.com/alexanderhuth/chinarxiv/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/alexanderhuth/chinarxiv/actions/workflows/build.yml)
-[![Preflight Checks](https://github.com/alexanderhuth/chinarxiv/actions/workflows/preflight.yml/badge.svg?branch=main)](https://github.com/alexanderhuth/chinarxiv/actions/workflows/preflight.yml)
-[![Render Gate](https://github.com/alexanderhuth/chinarxiv/actions/workflows/render-gate.yml/badge.svg?branch=main)](https://github.com/alexanderhuth/chinarxiv/actions/workflows/render-gate.yml)
-[![Translation Gate](https://github.com/alexanderhuth/chinarxiv/actions/workflows/translation-gate.yml/badge.svg?branch=main)](https://github.com/alexanderhuth/chinarxiv/actions/workflows/translation-gate.yml)
+[![Daily Build](https://github.com/domus-magna/chinarxiv/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinarxiv/actions/workflows/build.yml)
+[![Preflight Checks](https://github.com/domus-magna/chinarxiv/actions/workflows/preflight.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinarxiv/actions/workflows/preflight.yml)
+[![Render Gate](https://github.com/domus-magna/chinarxiv/actions/workflows/render-gate.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinarxiv/actions/workflows/render-gate.yml)
+[![Translation Gate](https://github.com/domus-magna/chinarxiv/actions/workflows/translation-gate.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinarxiv/actions/workflows/translation-gate.yml)
 
 English translations of Chinese academic papers from ChinaXiv.
 
