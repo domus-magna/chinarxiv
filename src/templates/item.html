@@ -257,7 +257,7 @@
 
     function bookmarkPaper() {
       try {
-        const bookmarks = JSON.parse(localStorage.getItem('chinaxiv_bookmarks') || '[]');
+        const bookmarks = JSON.parse(localStorage.getItem('chinarxiv_bookmarks') || '[]');
         const bookmark = {
           id: {{ item.id|tojson }},
           title: {{ item.title_en|tojson }},
@@ -267,7 +267,7 @@
         if (!bookmarks.find(b => b.id === bookmark.id)) {
           bookmarks.push(bookmark);
           try {
-            localStorage.setItem('chinaxiv_bookmarks', JSON.stringify(bookmarks));
+            localStorage.setItem('chinarxiv_bookmarks', JSON.stringify(bookmarks));
             showToast('Bookmarked!');
           } catch (storageError) {
             if (storageError.name === 'QuotaExceededError') {

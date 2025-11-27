@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Backfill Progress | ChinaXiv English</title>
+  <title>Backfill Progress | ChinaRxiv</title>
   <style>
     :root {
       --bg: #fafafa;
@@ -311,7 +311,7 @@
     <div id="dashboard-section" style="display: none;">
       <header>
         <h1>Backfill Progress</h1>
-        <p class="subtitle">ChinaXiv Paper Translation Pipeline</p>
+        <p class="subtitle">ChinaRxiv Paper Translation Pipeline</p>
       </header>
 
       <div id="error-container"></div>
@@ -400,8 +400,8 @@
   <script>
     // Configuration
     // Use direct Worker URLs (works locally and on Cloudflare Pages)
-    const API_BASE = 'https://chinaxiv-backfill-orchestrator.chinaxiv-backfill.workers.dev';
-    const PAPER_API_BASE = 'https://chinaxiv-backfill-api.chinaxiv-backfill.workers.dev';
+    const API_BASE = 'https://chinarxiv-backfill-orchestrator.chinarxiv-backfill.workers.dev';
+    const PAPER_API_BASE = 'https://chinarxiv-backfill-api.chinarxiv-backfill.workers.dev';
     const REFRESH_INTERVAL = 30000; // 30 seconds
 
     // State

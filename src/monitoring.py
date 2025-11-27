@@ -397,7 +397,7 @@ class MonitoringService:
                     {"name": "Details", "value": metadata_str, "inline": False}
                 )
 
-            payload = {"embeds": [embed], "username": "ChinaXiv Monitor"}
+            payload = {"embeds": [embed], "username": "ChinaRxiv Monitor"}
 
             response = requests.post(self.discord_webhook_url, json=payload, timeout=10)
             response.raise_for_status()

@@ -28,7 +28,7 @@ REQUIRED_FIELDS = [
     "source_url",
     "pdf_url",
 ]
-USER_AGENT = "chinaxiv-harvest-gate/1.0"
+USER_AGENT = "chinarxiv-harvest-gate/1.0"
 logger = logging.getLogger(__name__)
 
 

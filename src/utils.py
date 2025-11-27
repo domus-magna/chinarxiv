@@ -38,7 +38,7 @@ from .data_utils import utc_date_range_str, stable_id_from_oai, has_full_body_co
 
 # Constants
 DEFAULT_TIMEOUT = (10, 60)  # connect, read
-USER_AGENT = "chinaxiv-english/1.0 (+https://github.com/)"
+USER_AGENT = "chinarxiv/1.0 (+https://github.com/alexanderhuth/chinarxiv)"
 
 # Re-export everything for backward compatibility
 __all__ = [

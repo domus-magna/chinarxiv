@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Monitoring dashboard for ChinaXiv Translations.
+Monitoring dashboard for ChinaRxiv.
 """
 
 import os
@@ -22,7 +22,7 @@ MONITORING_PASSWORD = os.getenv("MONITORING_PASSWORD")
 MONITORING_PASSWORD_HASH = os.getenv("MONITORING_PASSWORD_HASH")
 MONITORING_PORT = int(os.getenv("MONITORING_PORT", "5000"))
 SECRET_KEY = os.getenv(
-    "SECRET_KEY", "chinaxiv-monitoring-secret-key-change-in-production"
+    "SECRET_KEY", "chinarxiv-monitoring-secret-key-change-in-production"
 )
 
 
@@ -50,7 +50,7 @@ class SystemStats:
 
 
 class MonitoringDashboard:
-    """Monitoring dashboard for ChinaXiv Translations."""
+    """Monitoring dashboard for ChinaRxiv."""
 
     def __init__(self):
         self.app = Flask(__name__)
@@ -352,7 +352,7 @@ class MonitoringDashboard:
             last_update = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             # Site URL
-            site_url = "https://chinaxiv-english.pages.dev"
+            site_url = "https://chinarxiv.org"
 
             # Check GitHub Actions status
             github_status = "Active"
@@ -428,7 +428,7 @@ class MonitoringDashboard:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChinaXiv Translations Monitor</title>
+    <title>ChinaRxiv Monitor</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
@@ -455,7 +455,7 @@ class MonitoringDashboard:
 </head>
 <body>
     <div class="header">
-        <h1>🚀 ChinaXiv Translations Monitor</h1>
+        <h1>ChinaRxiv Monitor</h1>
         <p>Real-time monitoring dashboard</p>
     </div>
     
@@ -621,7 +621,7 @@ class MonitoringDashboard:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChinaXiv Monitor - Login</title>
+    <title>ChinaRxiv Monitor - Login</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
@@ -641,7 +641,7 @@ class MonitoringDashboard:
     <div class="login-container">
         <div class="login-header">
             <h1>🔐 Login</h1>
-            <p>ChinaXiv Translations Monitor</p>
+            <p>ChinaRxiv Monitor</p>
         </div>
         
         <form method="POST">
@@ -703,11 +703,11 @@ class MonitoringDashboard:
 
     def run(self, host="0.0.0.0", port=MONITORING_PORT, debug=False):
         """Run the monitoring dashboard."""
-        print("🚀 Starting ChinaXiv Translations Monitor")
+        print("Starting ChinaRxiv Monitor")
         print(f"📊 Dashboard: http://{host}:{port}")
         print(f"🔐 Username: {MONITORING_USERNAME}")
         print(f"🔑 Password: {MONITORING_PASSWORD}")
-        print("🌐 Site: https://chinaxiv-english.pages.dev")
+        print("Site: https://chinarxiv.org")
 
         self.app.run(host=host, port=port, debug=debug)
 

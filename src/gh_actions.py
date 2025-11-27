@@ -76,7 +76,7 @@ class GHClient:
                 "Authorization": f"Bearer {cfg.token}",
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
-                "User-Agent": "chinaxiv-admin-ci/1.0",
+                "User-Agent": "chinarxiv-admin-ci/1.0",
             }
         )
 

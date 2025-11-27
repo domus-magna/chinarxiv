@@ -6,7 +6,7 @@
   - [ ] Remove emojis from headers
   - [ ] Move inline styles to assets/style.css
   - [ ] Extend base.html for consistent header/footer
-  - [ ] Fix hardcoded URL (chinaxiv-english.pages.dev)
+  - [ ] Fix hardcoded URL (chinarxiv.org)
 
   FUNCTIONAL:
   - [ ] Connect to real backend API for job statistics
@@ -19,7 +19,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChinaXiv Translations Monitor</title>
+    <title>ChinaRxiv Monitor</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
@@ -49,7 +49,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>🚀 ChinaXiv Translations Monitor</h1>
+        <h1>ChinaRxiv Monitor</h1>
         <p>Real-time monitoring dashboard</p>
     </div>
     
@@ -164,7 +164,7 @@
             // Update system stats
             document.getElementById('uptime').textContent = 'Running';
             document.getElementById('lastUpdate').textContent = now.toLocaleString();
-            document.getElementById('siteUrl').textContent = 'https://chinaxiv-english.pages.dev';
+            document.getElementById('siteUrl').textContent = 'https://chinarxiv.org';
             
             const githubStatus = document.getElementById('githubStatus');
             githubStatus.textContent = 'Active';
