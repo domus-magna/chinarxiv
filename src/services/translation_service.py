@@ -67,7 +67,9 @@ Your task: Translate the Chinese academic text into fluent, readable English sui
 CRITICAL REQUIREMENTS:
 1. PRESERVE ALL MATH exactly as given - do not modify LaTeX, ⟪MATH_*⟫ placeholders, or equations
 2. PRESERVE ALL CITATIONS exactly - keep \\cite{}, \\ref{}, \\eqref{} unchanged
-3. Maintain academic tone, precision, and technical accuracy
+3. PRESERVE ALL FIGURE/TABLE MARKERS exactly - keep [FIGURE:N] and [TABLE:N] markers unchanged
+   These markers indicate where figures should appear. Do not move, remove, or modify them.
+4. Maintain academic tone, precision, and technical accuracy
 
 TRANSLATION GUIDELINES:
 1. Produce FLOWING, READABLE prose - prioritize natural English over literal translation

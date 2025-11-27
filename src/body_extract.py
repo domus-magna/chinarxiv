@@ -379,3 +379,471 @@ def extract_body_paragraphs(rec: dict) -> List[str]:
     if paras:
         return paras
     return []
+
+
+# =============================================================================
+# FIGURE DETECTION: For logging and placeholder insertion
+# =============================================================================
+
+# Patterns to detect figure/table captions
+# Each pattern: (compiled_regex, type, is_caption_pattern)
+# is_caption_pattern=True means this is likely a caption definition, not just a reference
+FIGURE_PATTERNS = [
+    # ==========================================================================
+    # SUPPLEMENTARY FIGURES (HIGH PRIORITY - catches ~15-20% more)
+    # ==========================================================================
+    # "Supplementary Figure S1", "Supp. Fig. A1", "SI Figure 2", "Extended Data Fig. 1"
+    (re.compile(r'(?:Supplementary|Supp\.?|SI|Extended\s+Data)\s*(?:Figure|Fig\.?)\s*([A-Z]?\d+(?:\.\d+)?)', re.IGNORECASE), 'figure', False),
+    # "Figure S1", "Fig. A1" (letter prefix without "Supplementary")
+    (re.compile(r'(?:Figure|Fig\.?)\s+([A-Z]\d+(?:\.\d+)?)[:\.\s]', re.IGNORECASE), 'figure', False),
+    # Supplementary tables: "Supplementary Table S1", "SI Table 2"
+    (re.compile(r'(?:Supplementary|Supp\.?|SI|Extended\s+Data)\s*(?:Table)\s*([A-Z]?\d+(?:\.\d+)?)', re.IGNORECASE), 'table', False),
+    # "Table S1", "Table A1"
+    (re.compile(r'(?:Table)\s+([A-Z]\d+(?:\.\d+)?)[:\.\s]', re.IGNORECASE), 'table', False),
+
+    # ==========================================================================
+    # FIGURES WITH SUB-LETTERS (e.g., Figure 1a, Fig 2B, Figure 1A-C)
+    # ==========================================================================
+    # Caption-style: "Figure 1a:" or "Figure 1a." at start
+    (re.compile(r'^(?:Figure|Fig\.?)\s+(\d+)([a-z](?:-[a-z])?)[:\.\s]', re.IGNORECASE), 'figure', True),
+    # Reference-style: "in Figure 1a" or "see Fig. 2b"
+    (re.compile(r'\b(?:Figure|Fig\.?)\s+(\d+)([a-z](?:-[a-z])?)\b', re.IGNORECASE), 'figure', False),
+    # Range with letters: "Figure 1A-C", "Figures 1a-d"
+    (re.compile(r'(?:Figure|Fig\.?)s?\s+(\d+)([A-Za-z])\s*[-–—]\s*([A-Za-z])', re.IGNORECASE), 'figure', False),
+
+    # ==========================================================================
+    # FIGURE RANGES (e.g., Figures 1-3, Figs. 2 to 5)
+    # ==========================================================================
+    # "Figures 1-3", "Figs 2–5", "Figures 1 to 3"
+    (re.compile(r'(?:Figures?|Figs?\.?)\s+(\d+)\s*(?:to|[-–—])\s*(\d+)', re.IGNORECASE), 'figure', False),
+    # "Tables 1-3", "Tables 2 and 3"
+    (re.compile(r'(?:Tables?)\s+(\d+)\s*(?:to|[-–—]|and)\s*(\d+)', re.IGNORECASE), 'table', False),
+
+    # ==========================================================================
+    # STANDARD ENGLISH PATTERNS (existing, refined)
+    # ==========================================================================
+    # Caption-style (at start of line): "Figure 1:" or "Figure 1."
+    (re.compile(r'^(?:Figure|Fig\.?)\s+(\d+(?:\.\d+)?)[:\.\s]', re.IGNORECASE), 'figure', True),
+    # Reference-style: "in Figure 1" or "see Figure 1"
+    (re.compile(r'\b(?:Figure|Fig\.?)\s+(\d+(?:\.\d+)?)[:\.\s\)]', re.IGNORECASE), 'figure', False),
+    # Table caption-style
+    (re.compile(r'^(?:Table)\s+(\d+(?:\.\d+)?)[:\.\s]', re.IGNORECASE), 'table', True),
+    # Table reference-style
+    (re.compile(r'\b(?:Table)\s+(\d+(?:\.\d+)?)[:\.\s\)]', re.IGNORECASE), 'table', False),
+    # Scheme/Chart/Diagram/Plate/Panel
+    (re.compile(r'^(?:Scheme|Chart|Diagram|Plate|Panel)\s+(\d+)[:\.\s]', re.IGNORECASE), 'figure', True),
+
+    # ==========================================================================
+    # CHINESE PATTERNS (expanded significantly)
+    # ==========================================================================
+    # Standard Chinese figures: "图 1:", "图1：", "图1."
+    (re.compile(r'^图\s*(\d+(?:\.\d+)?)[：:．.\s]'), 'figure', True),
+    (re.compile(r'图\s*(\d+(?:\.\d+)?)[：:．.\s]'), 'figure', False),
+    # Chinese figures with letters: "图1a", "图 2b"
+    (re.compile(r'图\s*(\d+)([a-z])', re.IGNORECASE), 'figure', False),
+    # Chinese figure ranges: "图 1-3", "图1～5"
+    (re.compile(r'图\s*(\d+)\s*[－\-–—～~]\s*(\d+)'), 'figure', False),
+    # Chinese tables: "表 1:", "表1：", "表1."
+    (re.compile(r'^表\s*(\d+(?:\.\d+)?)[：:．.\s]'), 'table', True),
+    (re.compile(r'表\s*(\d+(?:\.\d+)?)[：:．.\s]'), 'table', False),
+    # Chinese tables with letters: "表1a"
+    (re.compile(r'表\s*(\d+)([a-z])', re.IGNORECASE), 'table', False),
+    # Chinese table ranges: "表 1-3"
+    (re.compile(r'表\s*(\d+)\s*[－\-–—～~]\s*(\d+)'), 'table', False),
+
+    # ==========================================================================
+    # CHINESE SUPPLEMENTARY PATTERNS
+    # ==========================================================================
+    # "补充图 1", "补充图S1", "附图1", "附表1"
+    (re.compile(r'(?:补充|附加|附)\s*图\s*([A-Za-z]?\d+)'), 'figure', False),
+    (re.compile(r'(?:补充|附加|附)\s*表\s*([A-Za-z]?\d+)'), 'table', False),
+    # "扩展数据图 1" (Extended Data Figure)
+    (re.compile(r'扩展数据\s*图\s*(\d+)'), 'figure', False),
+    (re.compile(r'扩展数据\s*表\s*(\d+)'), 'table', False),
+    # "SI图1", "SI表1" (Chinese docs using SI prefix)
+    (re.compile(r'SI\s*图\s*(\d+)'), 'figure', False),
+    (re.compile(r'SI\s*表\s*(\d+)'), 'table', False),
+
+    # ==========================================================================
+    # CHINESE SPECIALIZED FIGURE TYPES
+    # ==========================================================================
+    # "图表1" (combined figure-table)
+    (re.compile(r'^图表\s*(\d+)[：:]'), 'figure', True),
+    (re.compile(r'图表\s*(\d+)'), 'figure', False),
+    # "插图1" (illustration), "示意图1" (schematic), "流程图1" (flowchart)
+    (re.compile(r'(?:插图|示意图|流程图|框架图|原理图)\s*(\d+)'), 'figure', False),
+    # "曲线图1" (curve), "柱状图1" (bar chart), "饼图1" (pie chart)
+    (re.compile(r'(?:曲线图|柱状图|饼图|散点图|直方图)\s*(\d+)'), 'figure', False),
+]
+
+# Maximum caption length to extract (improved from 150)
+MAX_CAPTION_LENGTH = 500
+
+
+def _extract_caption_text(para: str, match_end: int) -> str:
+    """
+    Extract caption text after the figure/table reference.
+
+    Looks for caption content after "Figure 1:" or similar patterns,
+    extracting up to MAX_CAPTION_LENGTH chars until the next sentence
+    or paragraph break.
+    """
+    # Start from match end position
+    remainder = para[match_end:].strip()
+
+    # If starts with : or . followed by space, skip that
+    if remainder and remainder[0] in ':：.．':
+        remainder = remainder[1:].strip()
+
+    # Take up to MAX_CAPTION_LENGTH
+    if len(remainder) > MAX_CAPTION_LENGTH:
+        # Try to break at sentence boundary
+        truncated = remainder[:MAX_CAPTION_LENGTH]
+        # Find last sentence ending
+        last_period = max(
+            truncated.rfind('. '),
+            truncated.rfind('。'),
+            truncated.rfind('! '),
+            truncated.rfind('? ')
+        )
+        if last_period > MAX_CAPTION_LENGTH // 2:
+            return truncated[:last_period + 1].strip()
+        return truncated.strip() + '...'
+
+    return remainder
+
+
+def _compute_confidence(para: str, match, is_caption_pattern: bool) -> float:
+    """
+    Compute confidence score (0.0-1.0) for a figure detection.
+
+    Higher confidence for:
+    - Caption patterns (start of paragraph with colon/period)
+    - Longer surrounding context
+    - Clear caption text following the reference
+
+    Lower confidence for:
+    - In-text references ("as shown in Figure 1")
+    - Very short paragraphs
+    - Ambiguous contexts
+    """
+    confidence = 0.5  # Base confidence
+
+    # Caption at start of paragraph = high confidence
+    if is_caption_pattern and match.start() < 5:
+        confidence += 0.3
+    elif match.start() < 20:
+        confidence += 0.1
+
+    # Check for caption indicators after match
+    post_match = para[match.end():match.end() + 20] if match.end() < len(para) else ''
+    if post_match and post_match.strip() and post_match.strip()[0] in ':：.．':
+        confidence += 0.15  # Has caption delimiter
+
+    # Check for reference indicators (lower confidence)
+    pre_match = para[max(0, match.start() - 30):match.start()].lower()
+    reference_phrases = ['see ', 'shown in ', 'as in ', 'refer to ', '参见', '如图', '见表']
+    if any(phrase in pre_match for phrase in reference_phrases):
+        confidence -= 0.15  # Just a reference, not definition
+
+    # Paragraph length heuristic
+    if len(para) > 200:
+        confidence += 0.05  # Longer paragraphs more likely to be captions
+
+    return min(1.0, max(0.0, confidence))
+
+
+def detect_figures(paragraphs: List[str]) -> List[Dict[str, Any]]:
+    """
+    Detect figure and table references in a list of paragraphs.
+
+    Args:
+        paragraphs: List of paragraph strings to scan
+
+    Returns:
+        List of detected figures, each with:
+        - type: 'figure' or 'table'
+        - number: The figure/table number (as string, may include letters)
+        - caption_preview: Up to 500 chars of caption text
+        - paragraph_index: Index in the paragraphs list
+        - confidence: 0.0-1.0 confidence score
+        - is_caption: True if this appears to be a caption definition
+    """
+    if not paragraphs:
+        return []
+
+    figures: List[Dict[str, Any]] = []
+    seen: set = set()  # Track (type, number) to avoid duplicates
+
+    for para_idx, para in enumerate(paragraphs):
+        if not para:
+            continue
+
+        for pattern_tuple in FIGURE_PATTERNS:
+            # Handle both 2-tuple (old) and 3-tuple (new) formats
+            if len(pattern_tuple) == 3:
+                pattern, fig_type, is_caption_pattern = pattern_tuple
+            else:
+                pattern, fig_type = pattern_tuple
+                is_caption_pattern = False
+
+            match = pattern.search(para)
+            if match:
+                # Extract number - try group(1) first, then group(2) for patterns
+                # with multiple groups (like "Figure 1a" where group(1)=1, group(2)=a)
+                try:
+                    number = match.group(1)
+                    # For sub-letter patterns, append the letter
+                    if match.lastindex and match.lastindex >= 2:
+                        sub_letter = match.group(2)
+                        if sub_letter and len(sub_letter) <= 2:
+                            number = f"{number}{sub_letter}"
+                except (IndexError, TypeError):
+                    continue
+
+                if not number:
+                    continue
+
+                key = (fig_type, number)
+
+                if key not in seen:
+                    seen.add(key)
+
+                    # Compute confidence score
+                    confidence = _compute_confidence(para, match, is_caption_pattern)
+
+                    # Extract caption text
+                    caption = _extract_caption_text(para, match.end())
+                    if not caption:
+                        # Fallback to paragraph truncation
+                        caption = para[:MAX_CAPTION_LENGTH] if len(para) > MAX_CAPTION_LENGTH else para
+
+                    figures.append({
+                        'type': fig_type,
+                        'number': number,
+                        'caption_preview': caption,
+                        'paragraph_index': para_idx,
+                        'confidence': round(confidence, 2),
+                        'is_caption': is_caption_pattern and match.start() < 5,
+                    })
+
+    # Sort by type then number (handle letters in number)
+    def sort_key(f):
+        num_str = f['number'] or '0'
+        # Extract numeric part for sorting
+        numeric_match = re.match(r'([A-Za-z]?)(\d+)', num_str)
+        if numeric_match:
+            prefix = numeric_match.group(1) or ''
+            num = int(numeric_match.group(2))
+            return (0 if f['type'] == 'figure' else 1, prefix, num)
+        return (0 if f['type'] == 'figure' else 1, '', 0)
+
+    figures.sort(key=sort_key)
+
+    return figures
+
+
+def add_figure_metadata(translation: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Add figure metadata to a translation dict.
+
+    Scans body_en, body_md, and body_zh for figures and tables,
+    then adds _figures, _has_figures, _figure_count, _table_count fields.
+
+    Args:
+        translation: Translation dict with body content
+
+    Returns:
+        Updated translation dict with figure metadata
+    """
+    all_figures: List[Dict[str, Any]] = []
+    seen: set = set()
+
+    # Check body_en (list of paragraphs)
+    body_en = translation.get('body_en')
+    if body_en and isinstance(body_en, list):
+        for fig in detect_figures(body_en):
+            key = (fig['type'], fig['number'])
+            if key not in seen:
+                seen.add(key)
+                all_figures.append(fig)
+
+    # Check body_md (markdown string)
+    body_md = translation.get('body_md')
+    if body_md and isinstance(body_md, str):
+        # Split into paragraphs for detection
+        md_paragraphs = [p.strip() for p in body_md.split('\n') if p.strip()]
+        for fig in detect_figures(md_paragraphs):
+            key = (fig['type'], fig['number'])
+            if key not in seen:
+                seen.add(key)
+                fig['source'] = 'md'
+                all_figures.append(fig)
+
+    # Check body_zh for Chinese-only figures
+    body_zh = translation.get('body_zh')
+    if body_zh and isinstance(body_zh, list):
+        for fig in detect_figures(body_zh):
+            key = (fig['type'], fig['number'])
+            if key not in seen:
+                seen.add(key)
+                fig['source'] = 'zh'
+                all_figures.append(fig)
+
+    # Count by type
+    figure_count = sum(1 for f in all_figures if f['type'] == 'figure')
+    table_count = sum(1 for f in all_figures if f['type'] == 'table')
+
+    # Add metadata to translation
+    translation['_figures'] = all_figures
+    translation['_has_figures'] = len(all_figures) > 0
+    translation['_figure_count'] = figure_count
+    translation['_table_count'] = table_count
+
+    return translation
+
+
+# =============================================================================
+# FIGURE MARKER INJECTION: For position tracking across translation
+# =============================================================================
+
+# Simplified patterns for marker injection (subset of FIGURE_PATTERNS that are clear references)
+MARKER_PATTERNS = [
+    # English figures: "Figure 1", "Fig. 2", "Figure 1a"
+    (re.compile(r'((?:Figure|Fig\.?)\s+(\d+)([a-z]?))', re.IGNORECASE), 'FIGURE'),
+    # English tables: "Table 1", "Table 2a"
+    (re.compile(r'((?:Table)\s+(\d+)([a-z]?))', re.IGNORECASE), 'TABLE'),
+    # Chinese figures: "图1", "图 2", "图1a"
+    (re.compile(r'(图\s*(\d+)([a-z]?))'), 'FIGURE'),
+    # Chinese tables: "表1", "表 2"
+    (re.compile(r'(表\s*(\d+)([a-z]?))'), 'TABLE'),
+]
+
+
+def inject_figure_markers(
+    paragraphs: List[str],
+    seen_markers: Optional[set] = None,
+) -> tuple:
+    """
+    Inject [FIGURE:N] and [TABLE:N] markers into paragraphs.
+
+    These markers are preserved during translation and allow the assembler
+    to know exactly where to insert figure images in the final output.
+
+    Args:
+        paragraphs: List of paragraph strings (pre-translation)
+        seen_markers: Optional set to track markers already injected
+
+    Returns:
+        Tuple of:
+        - List of paragraphs with markers injected
+        - Dict mapping marker (e.g., "FIGURE:1") to original paragraph index
+        - Set of all markers injected
+
+    Example:
+        Input:  "如图1所示,数据分布呈正态分布"
+        Output: "如图1 [FIGURE:1] 所示,数据分布呈正态分布"
+    """
+    if not paragraphs:
+        return [], {}, set()
+
+    marked_paragraphs: List[str] = []
+    marker_map: Dict[str, int] = {}  # marker -> paragraph index
+    injected: set = seen_markers.copy() if seen_markers else set()
+
+    for para_idx, para in enumerate(paragraphs):
+        if not para:
+            marked_paragraphs.append(para)
+            continue
+
+        # Find all figure/table references and their positions
+        insertions: List[tuple] = []  # (position, marker_text)
+
+        for pattern, marker_type in MARKER_PATTERNS:
+            for match in pattern.finditer(para):
+                # Extract the full match and number
+                full_match = match.group(1)
+                number = match.group(2)
+                sub_letter = match.group(3) if match.lastindex >= 3 else ''
+
+                # Create unique marker
+                fig_num = f"{number}{sub_letter}" if sub_letter else number
+                marker_key = f"{marker_type}:{fig_num}"
+
+                # Only inject once per unique figure
+                if marker_key not in injected:
+                    injected.add(marker_key)
+                    marker_text = f" [{marker_key}]"
+                    insertions.append((match.end(), marker_text, marker_key))
+                    marker_map[marker_key] = para_idx
+
+        # Sort insertions by position (reverse order to preserve indices)
+        insertions.sort(key=lambda x: x[0], reverse=True)
+
+        # Apply insertions
+        result = para
+        for pos, marker_text, _ in insertions:
+            result = result[:pos] + marker_text + result[pos:]
+
+        marked_paragraphs.append(result)
+
+    return marked_paragraphs, marker_map, injected
+
+
+def inject_markers_in_sections(
+    sections: List[Dict[str, Any]],
+) -> tuple:
+    """
+    Inject figure markers into section-structured content.
+
+    Args:
+        sections: List of section dicts with 'name' and 'paragraphs' keys
+
+    Returns:
+        Tuple of:
+        - List of sections with markers injected in paragraphs
+        - Dict mapping marker to (section_index, paragraph_index)
+        - Set of all markers
+    """
+    marked_sections: List[Dict[str, Any]] = []
+    marker_map: Dict[str, tuple] = {}
+    all_markers: set = set()
+
+    for section_idx, section in enumerate(sections):
+        name = section.get('name', 'Untitled')
+        paragraphs = section.get('paragraphs', [])
+
+        # Inject markers in this section's paragraphs
+        marked_paras, para_map, markers = inject_figure_markers(
+            paragraphs, seen_markers=all_markers
+        )
+
+        # Update all_markers
+        all_markers.update(markers)
+
+        # Update marker_map with section context
+        for marker, para_idx in para_map.items():
+            marker_map[marker] = (section_idx, para_idx)
+
+        marked_sections.append({
+            'name': name,
+            'paragraphs': marked_paras,
+        })
+
+    return marked_sections, marker_map, all_markers
+
+
+def strip_figure_markers(text: str) -> str:
+    """
+    Remove all [FIGURE:N] and [TABLE:N] markers from text.
+
+    Useful for displaying text without markers or cleaning up
+    if markers weren't properly replaced.
+
+    Args:
+        text: Text potentially containing markers
+
+    Returns:
+        Text with markers removed
+    """
+    return re.sub(r'\s*\[(?:FIGURE|TABLE):[A-Za-z]?\d+[a-z]?\]', '', text)
