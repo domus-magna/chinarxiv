@@ -512,6 +512,6 @@ fetch('https://chinarxiv.org/monitor/alerts/create', {
 - Performance monitoring
 
 ## Support
-- **Documentation**: [GitHub Repository](https://github.com/your-org/chinaxiv-english)
-- **Issues**: [GitHub Issues](https://github.com/your-org/chinaxiv-english/issues)
-- **Contact**: [Email](mailto:support@chinaxiv-english.com)
+- **Documentation**: [GitHub Repository](https://github.com/domus-magna/chinarxiv)
+- **Issues**: [GitHub Issues](https://github.com/domus-magna/chinarxiv/issues)
+- **Contact**: [Email](mailto:support@chinarxiv.org)

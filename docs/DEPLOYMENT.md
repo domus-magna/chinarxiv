@@ -25,7 +25,7 @@ This guide covers deploying ChinaXiv Translations to production using Cloudflare
 6. Authorize Cloudflare to access your repository
 
 ### 3. Configure Build Settings
-- **Project Name**: `chinaxiv-english`
+- **Project Name**: `chinarxiv`
 - **Production Branch**: `main`
 - **Build Command**: (leave empty)
 - **Build Output Directory**: `site`
