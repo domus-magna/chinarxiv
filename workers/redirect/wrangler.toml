@@ -1,0 +1,10 @@
+name = "chinarxiv-redirect"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Routes for .com domain and www subdomains
+routes = [
+  { pattern = "chinarxiv.com/*", zone_name = "chinarxiv.com" },
+  { pattern = "www.chinarxiv.com/*", zone_name = "chinarxiv.com" },
+  { pattern = "www.chinarxiv.org/*", zone_name = "chinarxiv.org" }
+]
