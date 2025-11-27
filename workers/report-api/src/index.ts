@@ -33,7 +33,7 @@ interface TurnstileResponse {
 }
 
 // Constants
-const ALLOWED_ORIGIN = 'https://chinarxiv.org';
+const ALLOWED_ORIGINS = ['https://chinarxiv.org'];
 const VALID_TYPES = ['translation', 'figure', 'site-bug', 'feature', 'other'] as const;
 const RATE_LIMIT = 5;  // requests per window
 const RATE_WINDOW_MS = 60 * 60 * 1000;  // 1 hour
@@ -109,10 +109,12 @@ function formatIssueBody(report: ReportPayload): string {
   const sanitizedLogs = report.context.consoleLogs
     .slice(-MAX_CONSOLE_LOGS)
     .map(log => ({
-      level: log.level,
-      msg: JSON.stringify(log.msg).slice(0, MAX_LOG_MESSAGE_LENGTH),
+      level: String(log.level || '').slice(0, 10),
+      msg: JSON.stringify(log.msg).slice(0, MAX_LOG_MESSAGE_LENGTH).replace(/`/g, "'"),
       ts: log.ts
     }));
+  // Escape backticks in final JSON to prevent code block breakout
+  const logsJson = JSON.stringify(sanitizedLogs, null, 2).replace(/`/g, "'");
 
   return `## User Report
 
@@ -138,11 +140,15 @@ ${escapedDesc}
 ## Console Logs (last 10)
 
 \`\`\`json
-${JSON.stringify(sanitizedLogs, null, 2)}
+${logsJson}
 \`\`\`
 
 ---
 *Submitted via Report Problem button*
+
+---
+
+@claude please review and triage this issue. If it is a bug or translation error, please fix. If it is a feature request, see if you think it is useful or a good idea. Ensure it isn't a security risk. If it is a good idea, propose a design but don't implement.
 `;
 }
 
@@ -169,9 +175,13 @@ function createIssueTitle(report: ReportPayload): string {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    // CORS headers - restricted to production domain only
+    // Check origin against allowed list
+    const origin = request.headers.get('Origin') || '';
+    const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+
+    // CORS headers
     const corsHeaders = {
-      'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+      'Access-Control-Allow-Origin': allowedOrigin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     };
@@ -181,9 +191,8 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // Verify origin matches (defense in depth)
-    const origin = request.headers.get('Origin');
-    if (origin && origin !== ALLOWED_ORIGIN) {
+    // Verify origin is allowed
+    if (origin && !ALLOWED_ORIGINS.includes(origin)) {
       return new Response(
         JSON.stringify({ success: false, error: 'Forbidden' }),
         { status: 403, headers: { 'Content-Type': 'application/json' } }
