@@ -330,15 +330,15 @@
         </div>
       </div>
 
-      <!-- Stats Grid -->
+      <!-- Month Stats Grid -->
       <div class="card">
         <div class="stats-grid">
           <div class="stat-card">
-            <div class="stat-label">Remaining</div>
+            <div class="stat-label">Remaining Months</div>
             <div class="stat-value pending" id="stat-pending">--</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Completed</div>
+            <div class="stat-label">Completed Months</div>
             <div class="stat-value done" id="stat-done">--</div>
           </div>
           <div class="stat-card">
@@ -350,6 +350,30 @@
             <div class="stat-value failed" id="stat-errors">--</div>
           </div>
         </div>
+      </div>
+
+      <!-- Paper Stats -->
+      <div class="card">
+        <h2 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">Paper Statistics</h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Papers</div>
+            <div class="stat-value" id="paper-total">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Translated</div>
+            <div class="stat-value done" id="paper-translated">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Flagged</div>
+            <div class="stat-value flagged" id="paper-flagged">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Cost</div>
+            <div class="stat-value" id="paper-cost">--</div>
+          </div>
+        </div>
+        <div id="paper-stats-note" style="font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 0.5rem;"></div>
       </div>
 
       <!-- Progress History Chart -->
@@ -375,8 +399,9 @@
 
   <script>
     // Configuration
-    // Use direct Worker URL (works locally and on Cloudflare Pages)
+    // Use direct Worker URLs (works locally and on Cloudflare Pages)
     const API_BASE = 'https://chinaxiv-backfill-orchestrator.chinaxiv-backfill.workers.dev';
+    const PAPER_API_BASE = 'https://chinaxiv-backfill-api.chinaxiv-backfill.workers.dev';
     const REFRESH_INTERVAL = 30000; // 30 seconds
 
     // State
@@ -476,6 +501,7 @@
       if (!credentials) return;
 
       try {
+        // Fetch month status from orchestrator
         const statusRes = await fetch(`${API_BASE}/status`, {
           headers: { 'Authorization': `Basic ${credentials}` }
         });
@@ -496,8 +522,58 @@
         updateChart(status);
         clearError();
 
+        // Fetch paper stats from backfill-api (separate try/catch - non-fatal if unavailable)
+        fetchPaperStats();
+
       } catch (err) {
         showError(`Failed to load data: ${err.message}`);
+      }
+    }
+
+    // Fetch paper-level statistics
+    async function fetchPaperStats() {
+      try {
+        const res = await fetch(`${PAPER_API_BASE}/status`, {
+          headers: { 'Authorization': `Basic ${credentials}` }
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        updatePaperStats(data);
+      } catch (err) {
+        // Non-fatal - just show N/A if paper API is unavailable
+        updatePaperStats(null, err.message);
+      }
+    }
+
+    // Update paper statistics display
+    function updatePaperStats(data, error) {
+      const noteEl = document.getElementById('paper-stats-note');
+
+      if (!data || error) {
+        document.getElementById('paper-total').textContent = 'N/A';
+        document.getElementById('paper-translated').textContent = 'N/A';
+        document.getElementById('paper-flagged').textContent = 'N/A';
+        document.getElementById('paper-cost').textContent = 'N/A';
+        noteEl.textContent = error ? `Paper stats unavailable: ${error}` : 'Paper stats unavailable';
+        return;
+      }
+
+      document.getElementById('paper-total').textContent = formatNumber(data.total_papers);
+      document.getElementById('paper-translated').textContent = formatNumber(data.translated);
+      document.getElementById('paper-flagged').textContent = formatNumber(data.flagged);
+      document.getElementById('paper-cost').textContent = data.total_cost_usd > 0
+        ? `$${data.total_cost_usd.toFixed(2)}`
+        : '$0.00';
+
+      if (data.total_papers === 0) {
+        noteEl.textContent = 'No paper runs recorded yet';
+      } else {
+        const percent = Math.round((data.translated / data.total_papers) * 100);
+        noteEl.textContent = `${percent}% success rate`;
       }
     }
 

@@ -23,11 +23,9 @@
         <label for="category-filter">Category:</label>
         <select id="category-filter">
           <option value="">All Categories</option>
-          <option value="physics">Physics & Nuclear</option>
-          <option value="engineering">Engineering & Geology</option>
-          <option value="psychology">Psychology</option>
-          <option value="cs">Computer Science & Information</option>
-          <option value="astronomy">Astronomy</option>
+          {% for name, count in categories %}
+          <option value="{{ name }}">{{ name }} ({{ count }})</option>
+          {% endfor %}
         </select>
       </div>
       <div class="filter-group">

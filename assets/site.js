@@ -19,15 +19,6 @@ function searchSubject(subject) {
   let lastSearchResults = [];
   let currentQuery = '';
 
-  // Category keywords for filtering (must match template dropdown)
-  const categoryMap = {
-    physics: ['physics', 'nuclear', 'optics', 'quantum', 'mechanics'],
-    engineering: ['engineering', 'geology', 'technical', 'material'],
-    psychology: ['psychology', 'cognitive', 'behavioral', 'mental'],
-    cs: ['computer', 'information', 'software', 'algorithm', 'artificial intelligence', 'machine learning'],
-    astronomy: ['astronomy', 'astrophysics', 'celestial', 'cosmic']
-  };
-
   // Date filter: days ago lookup
   const dateDays = { today: 0, week: 7, month: 30, year: 365 };
 
@@ -71,8 +62,11 @@ function searchSubject(subject) {
     const dateRange = dateFilter?.value || '';
 
     const filtered = lastSearchResults.filter(hit => {
-      // Category filter
-      if (cat && !(categoryMap[cat] || []).some(kw => (hit.subjects || '').toLowerCase().includes(kw))) return false;
+      // Category filter - exact match (subjects is comma-separated string like "Physics, Nuclear Physics")
+      if (cat) {
+        const subjects = (hit.subjects || '').split(',').map(s => s.trim().toLowerCase());
+        if (!subjects.includes(cat.toLowerCase())) return false;
+      }
       // Date filter (reset to start of day to include papers from today)
       if (dateRange && dateDays[dateRange] !== undefined) {
         const cutoff = new Date();

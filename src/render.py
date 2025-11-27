@@ -11,6 +11,7 @@ import time
 
 from .utils import ensure_dir, log, read_json, write_text, write_json
 from .data_utils import has_full_body_content
+from .body_extract import add_figure_metadata
 
 
 def load_translated() -> List[Dict[str, Any]]:
@@ -76,6 +77,79 @@ def load_translated() -> List[Dict[str, Any]]:
     return items
 
 
+def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List[tuple]:
+    """Collect unique categories from papers, filtered by minimum count."""
+    from collections import Counter
+
+    category_counts: Counter = Counter()
+    for item in items:
+        subjects = item.get("subjects_en") or item.get("subjects") or []
+        for subject in subjects:
+            if subject and subject.strip():
+                category_counts[subject.strip()] += 1
+
+    # Filter to categories with at least min_count papers, sort by count desc
+    categories = [
+        (name, count)
+        for name, count in category_counts.most_common()
+        if count >= min_count
+    ]
+    return categories
+
+
+def generate_figure_manifest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Generate a manifest of all papers with figures for later processing.
+
+    This scans all items for figure metadata (added by add_figure_metadata)
+    and creates a queryable manifest for figure extraction pipeline.
+
+    Args:
+        items: List of translation items
+
+    Returns:
+        Manifest dict with papers that have figures
+    """
+    from datetime import datetime
+
+    papers_with_figures: List[Dict[str, Any]] = []
+    total_figures = 0
+    total_tables = 0
+
+    for item in items:
+        # Add figure metadata if not already present
+        if '_figures' not in item:
+            add_figure_metadata(item)
+
+        figures = item.get('_figures', [])
+        figure_count = item.get('_figure_count', 0)
+        table_count = item.get('_table_count', 0)
+
+        if figures:
+            papers_with_figures.append({
+                'id': item.get('id'),
+                'figure_count': figure_count,
+                'table_count': table_count,
+                'figures': figures,
+            })
+            total_figures += figure_count
+            total_tables += table_count
+
+    # Sort by total figure/table count (most first)
+    papers_with_figures.sort(key=lambda p: -(p['figure_count'] + p['table_count']))
+
+    manifest = {
+        'generated': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'total_papers_scanned': len(items),
+        'total_papers_with_figures': len(papers_with_figures),
+        'total_figures': total_figures,
+        'total_tables': total_tables,
+        'papers': papers_with_figures,
+    }
+
+    return manifest
+
+
 def render_site(items: List[Dict[str, Any]]) -> None:
     from .format_translation import format_translation_to_markdown
 
@@ -125,9 +199,21 @@ def render_site(items: List[Dict[str, Any]]) -> None:
 
     build_version = int(time.time())
 
+    # Collect categories for dynamic filter (min 10 papers)
+    categories = collect_categories(items, min_count=10)
+    log(f"Found {len(categories)} categories with 10+ papers")
+
+    # Generate figure manifest for future extraction pipeline
+    figure_manifest = generate_figure_manifest(items)
+    figure_manifest_path = os.path.join("reports", "figure_manifest.json")
+    ensure_dir(os.path.dirname(figure_manifest_path))
+    write_json(figure_manifest_path, figure_manifest)
+    log(f"Figure manifest: {figure_manifest['total_papers_with_figures']} papers with "
+        f"{figure_manifest['total_figures']} figures, {figure_manifest['total_tables']} tables")
+
     # Index page
     tmpl_index = env.get_template("index.html")
-    html_index = tmpl_index.render(items=items, root=".", build_version=build_version)
+    html_index = tmpl_index.render(items=items, root=".", build_version=build_version, categories=categories)
     write_text(os.path.join(base_out, "index.html"), html_index)
 
     # Monitor page
