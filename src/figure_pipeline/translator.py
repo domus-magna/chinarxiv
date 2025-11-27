@@ -1,29 +1,39 @@
 """
-Figure translation using Gemini 3 Pro Image API.
+Figure translation using Gemini via OpenRouter API.
 
 Translates Chinese text within figures while preserving layout and design.
 """
 from __future__ import annotations
 
+import base64
 import os
+from pathlib import Path
 from typing import Optional
+
+import requests
 
 from .models import PipelineConfig
 
 
 class FigureTranslator:
     """
-    Translate figure text using Gemini 3 Pro Image (Nano Banana Pro).
+    Translate figure text using Gemini via OpenRouter.
 
+    Model: google/gemini-3-pro-image-preview (Nano Banana Pro)
     Key capabilities:
     - Translates Chinese text to English within images
     - Preserves original design, colors, and layout
     - Works with charts, graphs, tables, diagrams
     """
 
+    # OpenRouter API endpoint
+    API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+    # Model for figure translation
+    MODEL = "google/gemini-3-pro-image-preview"
+
     # Translation prompt optimized for scientific figures
-    TRANSLATION_PROMPT = """
-Translate all Chinese text in this scientific figure to English.
+    TRANSLATION_PROMPT = """Edit this scientific figure: translate all Chinese text to English.
 
 Requirements:
 - Keep ALL visual elements exactly the same (colors, shapes, data, layout)
@@ -31,35 +41,61 @@ Requirements:
 - Preserve font sizes proportionally
 - Keep numbers, mathematical symbols, and units unchanged
 - If there are axis labels, translate them accurately
-- Technical terms should be translated precisely
+- Technical terms should be translated precisely for academic use
 
-Output a new image with the translated text.
-"""
+Generate a new version of this image with the Chinese text replaced by English translations."""
 
     def __init__(self, config: Optional[PipelineConfig] = None):
         """Initialize translator."""
         self.config = config or PipelineConfig()
-        self._model = None
+        self._api_key = None
 
     @property
-    def model(self):
-        """Lazy-load Gemini model."""
-        if self._model is None:
-            try:
-                import google.generativeai as genai
+    def api_key(self) -> str:
+        """Get OpenRouter API key."""
+        if self._api_key is None:
+            self._api_key = os.environ.get("OPENROUTER_API_KEY")
+            if not self._api_key:
+                raise ValueError("OPENROUTER_API_KEY not set")
+        return self._api_key
 
-                api_key = self.config.gemini_api_key or os.environ.get("GEMINI_API_KEY")
-                if not api_key:
-                    raise ValueError("GEMINI_API_KEY not set")
+    def _get_headers(self) -> dict:
+        """Get headers for OpenRouter API."""
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/",
+            "X-Title": "chinaxiv-english-figures",
+        }
 
-                genai.configure(api_key=api_key)
-                # Use Gemini 3 Pro Image for translation
-                self._model = genai.GenerativeModel("gemini-2.0-flash-exp")
-            except ImportError:
-                raise ImportError(
-                    "google-generativeai not installed. Install with: pip install google-generativeai"
-                )
-        return self._model
+    def _image_to_base64(self, image_path: str) -> tuple[str, str]:
+        """
+        Read image and convert to base64 data URL.
+
+        Returns:
+            Tuple of (data_url, mime_type)
+        """
+        path = Path(image_path)
+        ext = path.suffix.lower()
+
+        # Determine MIME type
+        mime_map = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".gif": "image/gif",
+        }
+        mime_type = mime_map.get(ext, "image/png")
+
+        # Read and encode
+        with open(image_path, "rb") as f:
+            image_data = f.read()
+
+        b64 = base64.b64encode(image_data).decode("utf-8")
+        data_url = f"data:{mime_type};base64,{b64}"
+
+        return data_url, mime_type
 
     def translate(
         self,
@@ -80,53 +116,103 @@ Output a new image with the translated text.
         Returns:
             Path to translated image, or None if translation failed
         """
-        import google.generativeai as genai
-        from PIL import Image
-
         if not os.path.exists(image_path):
             raise FileNotFoundError(f"Image not found: {image_path}")
 
         output_dir = output_dir or os.path.join(self.config.temp_dir, paper_id, "translated")
         os.makedirs(output_dir, exist_ok=True)
 
-        # Load image
-        img = Image.open(image_path)
+        # Convert image to base64
+        data_url, mime_type = self._image_to_base64(image_path)
 
-        # Call Gemini API
+        # Build request payload
+        payload = {
+            "model": self.MODEL,
+            "modalities": ["image", "text"],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": self.TRANSLATION_PROMPT},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": data_url}
+                        }
+                    ]
+                }
+            ],
+            "temperature": 0.2,
+            "max_tokens": 4096,
+        }
+
+        # Call OpenRouter API
         try:
-            response = self.model.generate_content(
-                [self.TRANSLATION_PROMPT, img],
-                generation_config={
-                    "temperature": 0.2,
-                    "max_output_tokens": 4096,
-                },
+            response = requests.post(
+                self.API_URL,
+                headers=self._get_headers(),
+                json=payload,
+                timeout=(10, 120),  # connect, read
             )
 
-            # Check if response contains an image
-            if hasattr(response, "candidates") and response.candidates:
-                candidate = response.candidates[0]
-                for part in candidate.content.parts:
-                    if hasattr(part, "inline_data") and part.inline_data:
-                        # Save the generated image
-                        ext = image_path.rsplit(".", 1)[-1] if "." in image_path else "png"
-                        output_path = os.path.join(
-                            output_dir, f"fig_{figure_number}_en.{ext}"
-                        )
+            if not response.ok:
+                from ..utils import log
+                log(f"OpenRouter API error {response.status_code}: {response.text[:500]}")
+                return None
 
-                        # Decode and save image
-                        import base64
-                        image_data = base64.b64decode(part.inline_data.data)
+            data = response.json()
+
+            # Extract generated image from response
+            choices = data.get("choices", [])
+            if not choices:
+                from ..utils import log
+                log(f"No choices in response for figure {figure_number}")
+                return None
+
+            message = choices[0].get("message", {})
+            images = message.get("images", [])
+
+            if not images:
+                # Model might have returned text instead of image
+                text_content = message.get("content", "")
+                from ..utils import log
+                log(f"No image in response for figure {figure_number}. Got text: {text_content[:200]}")
+                return None
+
+            # Get the first generated image
+            image_data = images[0]
+            if image_data.get("type") == "image_url":
+                img_url = image_data.get("image_url", {}).get("url", "")
+
+                # Parse data URL: data:image/png;base64,{data}
+                if img_url.startswith("data:"):
+                    parts = img_url.split(",", 1)
+                    if len(parts) == 2:
+                        header, b64_data = parts
+                        # Extract format from header
+                        if "png" in header:
+                            ext = "png"
+                        elif "jpeg" in header or "jpg" in header:
+                            ext = "jpg"
+                        else:
+                            ext = "png"
+
+                        # Decode and save
+                        output_path = os.path.join(output_dir, f"fig_{figure_number}_en.{ext}")
+                        image_bytes = base64.b64decode(b64_data)
+
                         with open(output_path, "wb") as f:
-                            f.write(image_data)
+                            f.write(image_bytes)
 
                         return output_path
 
-            # If no image in response, Gemini might not support image generation yet
-            # Fall back to returning None (figure won't be translated)
             from ..utils import log
-            log(f"Gemini did not return an image for figure {figure_number}")
+            log(f"Could not extract image from response for figure {figure_number}")
             return None
 
+        except requests.exceptions.Timeout:
+            from ..utils import log
+            log(f"Timeout translating figure {figure_number}")
+            return None
         except Exception as e:
             from ..utils import log
             log(f"Translation failed for figure {figure_number}: {e}")
@@ -172,7 +258,7 @@ Output a new image with the translated text.
             for future in as_completed(futures):
                 path, output = future.result()
                 results[path] = output
-                # Rate limiting
-                time.sleep(0.5)
+                # Rate limiting - be gentle with the API
+                time.sleep(1.0)
 
         return results
