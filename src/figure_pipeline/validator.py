@@ -123,11 +123,12 @@ class FigureValidator:
         translated_path: str,
     ) -> dict:
         """
-        Compare original and translated figures.
+        Validate a translated figure using separate queries.
 
-        Uses Moondream 3's multi-image reasoning to compare:
-        - Are figures identical except for text translation?
-        - Any differences in layout, colors, data, structure?
+        Since Moondream doesn't support multi-image comparison, we validate by:
+        1. Checking translated image has English text
+        2. Checking translated image has no Chinese text remaining
+        3. Verifying the figure type matches original
 
         Args:
             original_path: Path to original Chinese figure
@@ -136,39 +137,79 @@ class FigureValidator:
         Returns:
             Dict with:
                 - passed: bool - Did QA pass?
-                - differences: str - Description of any differences
+                - has_english: bool - Does translated have English?
+                - has_chinese_remaining: bool - Does Chinese text remain?
+                - figure_type_match: bool - Same figure type?
+                - details: str - Description of validation
         """
         from PIL import Image
 
         if not os.path.exists(original_path) or not os.path.exists(translated_path):
             return {
                 "passed": False,
-                "differences": "One or both image files not found",
+                "has_english": False,
+                "has_chinese_remaining": True,
+                "figure_type_match": False,
+                "details": "One or both image files not found",
             }
 
-        img_original = Image.open(original_path)
-        img_translated = Image.open(translated_path)
-
         try:
-            # Multi-image comparison - THE CORE QA QUESTION
-            result = self.model.query(
-                [img_original, img_translated],
-                "Are these two figures identical except that the text has been "
-                "translated from Chinese to English? Answer yes or no, then list "
-                "any differences in layout, colors, data, or structure."
-            )
+            img_translated = Image.open(translated_path)
 
-            answer = result.get("answer", "")
-            passed = "yes" in answer.lower().split(".")[0]  # Check first sentence
+            # Check 1: Does translated image have English text?
+            result_english = self.model.query(
+                img_translated,
+                "Does this image contain English text? Answer yes or no."
+            )
+            has_english = "yes" in result_english.get("answer", "").lower()
+
+            # Check 2: Does translated image still have Chinese text?
+            result_chinese = self.model.query(
+                img_translated,
+                "Does this image contain any Chinese characters? Answer yes or no."
+            )
+            has_chinese_remaining = "yes" in result_chinese.get("answer", "").lower()
+
+            # Check 3: Get figure type of translated for comparison
+            img_original = Image.open(original_path)
+            original_type = self._get_figure_type(img_original)
+            translated_type = self._get_figure_type(img_translated)
+            figure_type_match = original_type == translated_type
+
+            # Determine overall pass/fail
+            # Pass if: has English AND no Chinese remaining AND same figure type
+            passed = has_english and not has_chinese_remaining and figure_type_match
+
+            details_parts = []
+            if has_english:
+                details_parts.append("English text detected")
+            else:
+                details_parts.append("WARNING: No English text detected")
+
+            if has_chinese_remaining:
+                details_parts.append("WARNING: Chinese text still present")
+            else:
+                details_parts.append("No Chinese text remaining")
+
+            if figure_type_match:
+                details_parts.append(f"Figure type preserved ({translated_type})")
+            else:
+                details_parts.append(f"WARNING: Figure type changed ({original_type} -> {translated_type})")
 
             return {
                 "passed": passed,
-                "differences": answer,
+                "has_english": has_english,
+                "has_chinese_remaining": has_chinese_remaining,
+                "figure_type_match": figure_type_match,
+                "details": "; ".join(details_parts),
             }
         except Exception as e:
             return {
                 "passed": False,
-                "differences": f"QA comparison failed: {e}",
+                "has_english": False,
+                "has_chinese_remaining": True,
+                "figure_type_match": False,
+                "details": f"QA validation failed: {e}",
             }
 
     def should_translate(self, image_path: str) -> bool:
