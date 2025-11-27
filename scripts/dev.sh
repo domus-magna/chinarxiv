@@ -88,10 +88,10 @@ build_site() {
 deploy_site() {
     print_status "Deploying to Cloudflare Pages..."
     
-    wrangler pages deploy site --project-name chinaxiv-english --commit-message "Local development deployment"
+    wrangler pages deploy site --project-name chinarxiv --commit-message "Local development deployment"
     if [ $? -eq 0 ]; then
         print_success "Site deployed successfully"
-        print_status "Visit: https://chinaxiv-english.pages.dev"
+        print_status "Visit: https://chinarxiv.org"
     else
         print_error "Deployment failed"
         exit 1

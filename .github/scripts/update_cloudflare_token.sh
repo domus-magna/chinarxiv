@@ -43,7 +43,7 @@ if echo "$VALIDATION" | grep -q '"success":true'; then
   # Update GitHub secret
   echo ""
   echo "🔐 Updating GitHub secret CF_API_TOKEN..."
-  echo "$CF_TOKEN" | gh secret set CF_API_TOKEN -R seconds-0/chinaxiv-english
+  echo "$CF_TOKEN" | gh secret set CF_API_TOKEN -R domus-magna/chinarxiv
 
   echo "✅ GitHub secret updated successfully!"
   echo ""
