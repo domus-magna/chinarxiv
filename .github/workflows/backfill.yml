@@ -260,7 +260,7 @@ jobs:
           set -e
           echo "🚀 Deploying to Cloudflare Pages..."
           npm install -g wrangler
-          wrangler pages deploy site --project-name chinaxiv-english
+          wrangler pages deploy site --project-name chinarxiv
       - name: Flush B2 alert buffer (if any)
         run: |
           python -m src.tools.b2_alerts flush || true
