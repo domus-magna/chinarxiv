@@ -138,16 +138,7 @@ jobs:
               exit 1
             fi
 
-            SELECTION_COUNT=$(python - <<'PY'
-import json, pathlib
-path = pathlib.Path("data/selected.json")
-try:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    print(len(data) if isinstance(data, list) else -1)
-except Exception:
-    print(-1)
-PY
-)
+            SELECTION_COUNT=$(python3 .github/scripts/count_json_array.py data/selected.json)
             if [ "$SELECTION_COUNT" -lt 0 ]; then
               echo "❌ Unable to read selection output"
               python -m src.tools.b2_alerts add "selection unreadable"
@@ -212,18 +203,8 @@ PY
               exit 1
             fi
 
-            PIPELINE_SUCCESS_COUNT=$(python - <<'PY'
-import json, pathlib
-data = json.loads(pathlib.Path("reports/pipeline_summary.json").read_text(encoding="utf-8"))
-print(data.get("successes", 0))
-PY
-)
-            PIPELINE_QA_PASSED=$(python - <<'PY'
-import json, pathlib
-data = json.loads(pathlib.Path("reports/pipeline_summary.json").read_text(encoding="utf-8"))
-print(data.get("qa_passed", 0))
-PY
-)
+            PIPELINE_SUCCESS_COUNT=$(python3 .github/scripts/read_pipeline_summary.py successes)
+            PIPELINE_QA_PASSED=$(python3 .github/scripts/read_pipeline_summary.py qa_passed)
             echo "PIPELINE_SUCCESS_COUNT=$PIPELINE_SUCCESS_COUNT" >> $GITHUB_ENV
             echo "PIPELINE_QA_PASSED=$PIPELINE_QA_PASSED" >> $GITHUB_ENV
             echo "B2_PUBLISH_SUMMARY_PATH=reports/b2_publish_summary.json" >> $GITHUB_ENV
