@@ -589,8 +589,8 @@ See [SETUP.md](docs/SETUP.md) for detailed instructions.
 
 ## Status
 - **Papers Translated**: 3,096 / 3,461 (89.5%)
-- **Site**: https://chinaxiv-english.pages.dev
-- **Monitoring**: https://chinaxiv-english.pages.dev/monitor
+- **Site**: https://chinarxiv.org
+- **Monitoring**: https://chinarxiv.org/monitor
 
 ## Contributing
 See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for contribution guidelines.

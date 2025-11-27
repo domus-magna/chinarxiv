@@ -116,7 +116,7 @@ on:
 1. Go to DNS tab in Cloudflare
 2. Add CNAME record:
    - **Name**: `@` (or `www`)
-   - **Target**: `chinaxiv-english.pages.dev`
+   - **Target**: `chinarxiv.pages.dev`
    - **Proxy**: Enabled (orange cloud)
 
 ### 4. SSL Certificate
