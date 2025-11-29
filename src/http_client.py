@@ -208,9 +208,11 @@ def parse_openrouter_error(resp: requests.Response) -> Dict[str, Any]:
             or ("invalid" in msg_lc and "key" in msg_lc)
         ) or any(w in msg_lc for w in ("insufficient", "balance", "credit")):
             fallback_ok = False
+            code = code or "unauthorized"
     elif status == 402:
         # Payment required / insufficient funds
         fallback_ok = False
+        code = code or "payment_required"
     elif status == 403:
         # Access forbidden; could be model-specific restriction
         fallback_ok = True
