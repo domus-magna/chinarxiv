@@ -33,9 +33,8 @@ MONITORING_USERNAME = os.getenv("MONITORING_USERNAME")
 MONITORING_PASSWORD = os.getenv("MONITORING_PASSWORD")
 MONITORING_PASSWORD_HASH = os.getenv("MONITORING_PASSWORD_HASH")
 MONITORING_PORT = int(os.getenv("MONITORING_PORT", "5000"))
-SECRET_KEY = os.getenv(
-    "SECRET_KEY", "chinaxiv-monitoring-secret-key-change-in-production"
-)
+# Generate random secret key if not provided (sessions won't persist across restarts)
+SECRET_KEY = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 
 
 @dataclass
