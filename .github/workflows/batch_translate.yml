@@ -114,6 +114,49 @@ jobs:
           echo "  Passed: $(ls data/translated/*.json 2>/dev/null | wc -l) files"
           echo "  Flagged: $(ls data/flagged/*.json 2>/dev/null | wc -l) files"
 
+      - name: Persist translations to B2 (MANDATORY)
+        if: always()
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          B2_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          B2_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+          # B2 persistence is MANDATORY - fail if secrets are missing
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ] || [ -z "${B2_S3_ENDPOINT}" ] || [ -z "${B2_BUCKET}" ]; then
+            echo "❌ B2 secrets missing - persistence is MANDATORY"
+            exit 1
+          fi
+
+          python -m pip install --upgrade pip >/dev/null 2>&1 || true
+          pip install awscli >/dev/null 2>&1 || true
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${B2_BUCKET}/${B2_PREFIX}"
+
+          echo "📤 Persisting translations to B2..."
+
+          # Upload passed translations
+          if [ -d data/translated ] && ls -1 data/translated/*.json 2>/dev/null | head -1 > /dev/null; then
+            aws s3 sync data/translated "${DEST}validated/translations/" \
+              --exclude "*" --include "*.json" \
+              --endpoint-url "${B2_S3_ENDPOINT}" --only-show-errors
+            PASSED_COUNT=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
+            echo "✅ Uploaded ${PASSED_COUNT} validated translations to B2"
+          fi
+
+          # Upload flagged translations
+          if [ -d data/flagged ] && ls -1 data/flagged/*.json 2>/dev/null | head -1 > /dev/null; then
+            aws s3 sync data/flagged "${DEST}flagged/translations/" \
+              --exclude "*" --include "*.json" \
+              --endpoint-url "${B2_S3_ENDPOINT}" --only-show-errors
+            FLAGGED_COUNT=$(ls -1 data/flagged/*.json 2>/dev/null | wc -l | tr -d ' ')
+            echo "✅ Uploaded ${FLAGGED_COUNT} flagged translations to B2"
+          fi
+
+          echo "✅ B2 persistence complete"
+
       - name: Commit queue progress
         if: always()
         run: |

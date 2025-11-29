@@ -145,3 +145,59 @@ A **pre-push git hook** is installed at `.git/hooks/pre-push` that:
 2. Checks if your `.env` GH_TOKEN matches the keyring token
 3. Warns and offers to auto-sync if tokens are stale
 4. Blocks push if token doesn't have `workflow` scope
+
+## CRITICAL: Backblaze B2 Persistence is MANDATORY
+
+```
++==============================================================================+
+|  ALL PIPELINE DATA MUST BE PERSISTED TO B2 - NO EPHEMERAL OPTIONS            |
+|                                                                              |
+|  GitHub Actions runners are ephemeral. If data is not uploaded to B2,        |
+|  it is LOST when the job ends. This is a HARD requirement.                   |
++==============================================================================+
+```
+
+### What MUST be persisted to B2
+
+| Data Type | B2 Path | Workflow Step |
+|-----------|---------|---------------|
+| Downloaded PDFs | `pdfs/{paper_id}.pdf` | After download, before translation |
+| Validated translations | `validated/translations/{paper_id}.json` | After QA pass |
+| Flagged translations | `flagged/translations/{paper_id}.json` | After QA flag |
+| Translated figures | `figures/{paper_id}/` | After figure translation |
+| Selection files | `selections/daily/{date}.json` | After selection |
+| Records | `records/chinaxiv_{month}.json` | After harvest |
+
+### Workflow Requirements
+
+**EVERY workflow that produces output MUST:**
+1. Have B2 credentials as required secrets (not optional)
+2. Upload outputs to B2 BEFORE the job ends
+3. **FAIL** (not skip) if B2 upload fails
+4. **FAIL** (not continue) if B2 credentials are missing
+
+**There are NO ephemeral options:**
+- No `--skip-persist` flags
+- No "local only" modes for production workflows
+- No silent skips when B2 credentials are missing
+- PR builds are the ONLY exception (secrets are withheld by GitHub)
+
+### Why This Matters
+
+1. **GitHub runners are ephemeral** - all local data is destroyed after job ends
+2. **PDFs cost money to download** - re-downloading wastes BrightData credits
+3. **Translations cost money** - re-translating wastes OpenRouter credits
+4. **Retries must resume** - without B2 persistence, retries start from scratch
+
+### Verifying B2 Persistence
+
+```bash
+# Check if PDFs are in B2
+aws s3 ls s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}pdfs/ --endpoint-url ${BACKBLAZE_S3_ENDPOINT}
+
+# Check if translations are in B2
+aws s3 ls s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}validated/translations/ --endpoint-url ${BACKBLAZE_S3_ENDPOINT}
+
+# Count files for a specific month
+aws s3 ls s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}pdfs/chinaxiv-202401 --endpoint-url ${BACKBLAZE_S3_ENDPOINT} | wc -l
+```

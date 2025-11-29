@@ -334,9 +334,11 @@ jobs:
           B2_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
         run: |
           set -e
+          # B2 persistence is MANDATORY - fail if secrets are missing
           if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ] || [ -z "${B2_S3_ENDPOINT}" ] || [ -z "${B2_BUCKET}" ]; then
-            echo "ℹ️ Backblaze B2 secrets not set; skipping persistence"
-            exit 0
+            echo "❌ B2 secrets missing - persistence is MANDATORY"
+            python -m src.tools.b2_alerts add "B2 persistence failed: missing secrets"
+            exit 1
           fi
           python -m pip install --upgrade pip
           pip install awscli
