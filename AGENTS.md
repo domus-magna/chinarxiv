@@ -583,6 +583,8 @@ chinaxiv/
 | Text translation | ~$0.001 (existing) |
 | **Total per paper** | **~$0.27** |
 
+**Note on cost tracking**: Google AI Studio API costs are billed directly to your Google account and are not tracked in the pipeline logs. Only OpenRouter fallback usage shows in the batch summary. Check your Google Cloud Console for actual Gemini API usage.
+
 ### CLI Commands
 
 ```bash

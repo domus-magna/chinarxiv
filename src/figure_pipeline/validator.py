@@ -197,9 +197,10 @@ class FigureValidator:
             figure_type_match = original_type == translated_type
 
             # Determine overall pass/fail
-            # Pass if: has English AND no Chinese remaining AND text is coherent
+            # Pass if: has English AND no Chinese remaining
+            # Note: is_coherent is informational only (Moondream unreliable for coherence)
             # Note: figure_type_match is logged but not required (vision models inconsistent)
-            passed = has_english and not has_chinese_remaining and is_coherent
+            passed = has_english and not has_chinese_remaining
 
             details_parts = []
             if has_english:

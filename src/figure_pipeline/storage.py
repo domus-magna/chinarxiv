@@ -68,8 +68,7 @@ class FigureStorage:
             Public URL if successful, None otherwise
         """
         if not os.path.exists(local_path):
-            from ..utils import log
-            log(f"File not found for upload: {local_path}")
+            print(f"[storage] File not found for upload: {local_path}")
             return None
 
         try:
@@ -85,8 +84,7 @@ class FigureStorage:
             return download_url
 
         except Exception as e:
-            from ..utils import log
-            log(f"Upload failed for {local_path}: {e}")
+            print(f"[storage] Upload failed for {local_path}: {e}")
             return None
 
     def download(self, remote_key: str, local_path: str) -> bool:
@@ -108,8 +106,7 @@ class FigureStorage:
             return True
 
         except Exception as e:
-            from ..utils import log
-            log(f"Download failed for {remote_key}: {e}")
+            print(f"[storage] Download failed for {remote_key}: {e}")
             return False
 
     def exists(self, remote_key: str) -> bool:
@@ -163,7 +160,6 @@ class FigureStorage:
                 self.bucket.delete_file_version(file_info.id_, file_info.file_name)
                 deleted += 1
         except Exception as e:
-            from ..utils import log
-            log(f"Delete failed for {paper_id}: {e}")
+            print(f"[storage] Delete failed for {paper_id}: {e}")
 
         return deleted

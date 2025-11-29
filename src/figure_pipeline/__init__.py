@@ -142,12 +142,19 @@ class FigurePipeline:
         ]
         log(f"Translating {len(figures_to_translate)} figures...")
 
+        # Define QA check function for multi-pass iteration
+        def check_has_chinese(image_path: str) -> bool:
+            """Return True if Chinese text detected (translation needs retry)."""
+            validation = self.validator.validate(image_path)
+            return validation.get("has_chinese", False)
+
         for fig in figures_to_translate:
             try:
                 translated_path = self.translator.translate(
                     fig.original_path,
                     fig.figure_number,
                     paper_id,
+                    qa_check=check_has_chinese,  # Enable multi-pass iteration
                 )
                 if translated_path:
                     fig.translated_path = translated_path
@@ -171,7 +178,7 @@ class FigurePipeline:
 
         # Step 5: Upload to B2
         if not self.config.dry_run:
-            log(f"Uploading figures to B2...")
+            log("Uploading figures to B2...")
             for fig in figures:
                 if fig.original_path:
                     fig.original_url = self.storage.upload(
@@ -209,10 +216,16 @@ class FigurePipeline:
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
+        # Create per-task pipeline instances to avoid shared state issues
+        # (translator mutates _current_model, clients may not be thread-safe)
+        def process_single(paper_id: str) -> FigureProcessingResult:
+            pipeline = FigurePipeline(self.config)
+            return pipeline.process_paper(paper_id)
+
         results = []
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(self.process_paper, pid): pid
+                executor.submit(process_single, pid): pid
                 for pid in paper_ids
             }
             for future in as_completed(futures):
@@ -241,14 +254,28 @@ class FigurePipeline:
 
     def _find_pdf(self, paper_id: str) -> Optional[str]:
         """Find PDF path for a paper ID."""
+        import re
+        # Validate paper_id to prevent path traversal attacks
+        # Only allow alphanumeric, dots, hyphens, and underscores
+        if not re.match(r'^[\w\-\.]+$', paper_id):
+            log(f"Invalid paper_id format: {paper_id}")
+            return None
+
+        # Double-check no path traversal sequences
+        if '..' in paper_id or '/' in paper_id or '\\' in paper_id:
+            log(f"Suspicious paper_id rejected: {paper_id}")
+            return None
+
         candidates = [
             os.path.join(self.config.pdf_dir, f"{paper_id}.pdf"),
             os.path.join("data", "pdfs", f"{paper_id}.pdf"),
             os.path.join("/tmp", "pdfs", f"{paper_id}.pdf"),
         ]
         for path in candidates:
-            if os.path.exists(path):
-                return path
+            # Resolve to absolute path and verify it's within expected directory
+            abs_path = os.path.realpath(path)
+            if os.path.exists(abs_path):
+                return abs_path
         return None
 
 

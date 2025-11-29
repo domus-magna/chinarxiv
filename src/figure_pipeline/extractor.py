@@ -133,7 +133,6 @@ class FigureExtractor:
                 return True, "passed"  # Too small to analyze
 
             edge_count = 0
-            total_pixels = (width - 2) * (height - 2)
 
             # Sample-based edge detection (faster than full scan)
             sample_step = max(1, min(width, height) // 50)
@@ -142,7 +141,6 @@ class FigureExtractor:
             for y in range(1, height - 1, sample_step):
                 for x in range(1, width - 1, sample_step):
                     # Get pixel values around current position
-                    p = gray.getpixel((x, y))
                     pl = gray.getpixel((x - 1, y))
                     pr = gray.getpixel((x + 1, y))
                     pt = gray.getpixel((x, y - 1))
@@ -267,97 +265,96 @@ class FigureExtractor:
         figures: List[Figure] = []
 
         doc = self.fitz.open(pdf_path)
-        image_count = 0
+        try:
+            image_count = 0
+            filtered_count = 0
+            duplicate_count = 0
+            total_extracted = 0
+            seen_hashes = []  # For deduplication
 
-        filtered_count = 0
-        duplicate_count = 0
-        total_extracted = 0
-        seen_hashes = []  # For deduplication
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                image_list = page.get_images(full=True)
 
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            image_list = page.get_images(full=True)
+                for img_index, img_info in enumerate(image_list):
+                    xref = img_info[0]
 
-            for img_index, img_info in enumerate(image_list):
-                xref = img_info[0]
+                    # Extract image
+                    try:
+                        base_image = doc.extract_image(xref)
+                        if not base_image:
+                            continue
 
-                # Extract image
-                try:
-                    base_image = doc.extract_image(xref)
-                    if not base_image:
-                        continue
+                        image_bytes = base_image["image"]
+                        image_ext = base_image.get("ext", "png")
+                        width = base_image.get("width")
+                        height = base_image.get("height")
 
-                    image_bytes = base_image["image"]
-                    image_ext = base_image.get("ext", "png")
-                    width = base_image.get("width")
-                    height = base_image.get("height")
+                        total_extracted += 1
 
-                    total_extracted += 1
+                        # Apply size-based filtering
+                        passes, reason = self._passes_size_filter(image_bytes, width, height)
+                        if not passes:
+                            filtered_count += 1
+                            continue
 
-                    # Apply size-based filtering
-                    passes, reason = self._passes_size_filter(image_bytes, width, height)
-                    if not passes:
-                        filtered_count += 1
-                        continue
+                        # Apply visual content detection
+                        has_content, content_reason = self._has_visual_content(image_bytes)
+                        if not has_content:
+                            filtered_count += 1
+                            continue
 
-                    # Apply visual content detection
-                    has_content, content_reason = self._has_visual_content(image_bytes)
-                    if not has_content:
-                        filtered_count += 1
-                        continue
+                        # Deduplication check
+                        img_hash = self._compute_perceptual_hash(image_bytes)
+                        if img_hash and self._is_duplicate(img_hash, seen_hashes):
+                            duplicate_count += 1
+                            continue
+                        if img_hash:
+                            seen_hashes.append(img_hash)
 
-                    # Deduplication check
-                    img_hash = self._compute_perceptual_hash(image_bytes)
-                    if img_hash and self._is_duplicate(img_hash, seen_hashes):
-                        duplicate_count += 1
-                        continue
-                    if img_hash:
-                        seen_hashes.append(img_hash)
+                        # Determine figure number (only count images that pass filtering)
+                        image_count += 1
+                        figure_number = str(image_count)
 
-                    # Determine figure number (only count images that pass filtering)
-                    image_count += 1
-                    figure_number = str(image_count)
+                        # Save to disk
+                        filename = f"fig_{figure_number}.{image_ext}"
+                        output_path = os.path.join(output_dir, filename)
 
-                    # Save to disk
-                    filename = f"fig_{figure_number}.{image_ext}"
-                    output_path = os.path.join(output_dir, filename)
+                        with open(output_path, "wb") as f:
+                            f.write(image_bytes)
 
-                    with open(output_path, "wb") as f:
-                        f.write(image_bytes)
+                        # Get bounding box if available
+                        bbox = None
+                        for item in page.get_image_info(xrefs=True):
+                            if item.get("xref") == xref:
+                                bbox = item.get("bbox", [0, 0, 0, 0])
+                                break
 
-                    # Get bounding box if available
-                    bbox = None
-                    for item in page.get_image_info(xrefs=True):
-                        if item.get("xref") == xref:
-                            bbox = (
-                                item.get("bbox", [0, 0, 0, 0])
-                            )
-                            break
+                        # Create Figure object
+                        figure = Figure(
+                            paper_id=paper_id,
+                            figure_number=figure_number,
+                            figure_type=FigureType.FIGURE,
+                            location=FigureLocation(
+                                page_number=page_num + 1,
+                                bounding_box=tuple(bbox) if bbox else None,
+                                marker=f"[FIGURE:{figure_number}]",
+                            ),
+                            status=ProcessingStatus.EXTRACTED,
+                            original_path=output_path,
+                        )
+                        figures.append(figure)
 
-                    # Create Figure object
-                    figure = Figure(
-                        paper_id=paper_id,
-                        figure_number=figure_number,
-                        figure_type=FigureType.FIGURE,  # Default, can be classified later
-                        location=FigureLocation(
-                            page_number=page_num + 1,  # 1-indexed
-                            bounding_box=tuple(bbox) if bbox else None,
-                            marker=f"[FIGURE:{figure_number}]",
-                        ),
-                        status=ProcessingStatus.EXTRACTED,
-                        original_path=output_path,
-                    )
-                    figures.append(figure)
+                    except Exception as e:
+                        print(f"[extractor] Failed to extract image {img_index} from page {page_num}: {e}")
 
-                except Exception as e:
-                    # Log but continue extracting other images
-                    print(f"[extractor] Failed to extract image {img_index} from page {page_num}: {e}")
+            # Log filtering summary
+            if filtered_count > 0 or duplicate_count > 0:
+                print(f"[extractor] Filtered {filtered_count} (size/content), {duplicate_count} duplicates from {total_extracted} images")
 
-        # Log filtering summary
-        if filtered_count > 0 or duplicate_count > 0:
-            print(f"[extractor] Filtered {filtered_count} (size/content), {duplicate_count} duplicates from {total_extracted} images")
+        finally:
+            doc.close()
 
-        doc.close()
         return figures
 
     def extract_page(self, pdf_path: str, page_num: int) -> List[Figure]:
@@ -378,7 +375,7 @@ class FigureExtractor:
         if page_num >= len(doc):
             raise ValueError(f"Page {page_num} does not exist (PDF has {len(doc)} pages)")
 
-        page = doc[page_num]
+        _page = doc[page_num]  # Reserved for future single-page implementation
         figures = []
 
         # Similar extraction logic for single page

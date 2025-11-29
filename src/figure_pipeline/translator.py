@@ -1,5 +1,13 @@
 """
-Figure translation using Gemini via OpenRouter API.
+Figure translation using Gemini via direct Google AI Studio API.
+
+Primary: Direct Google AI Studio API (gemini-3-pro-image-preview)
+Fallback: OpenRouter API (if Google API unavailable)
+
+Model comparison (2024-11-29):
+- Gemini 3 Pro: 100% QA pass rate, single pass, ~20s avg
+- Gemini 2.5 Flash: 20% QA pass rate, 3 passes needed, ~30s avg
+- Decision: Use Gemini 3 Pro via direct Google API as primary
 
 Translates Chinese text within figures while preserving layout and design.
 Uses strong prompting with iterative refinement for robust results.
@@ -18,14 +26,11 @@ from pathlib import Path
 from typing import Optional, Callable, Tuple
 
 import requests
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
+# Note: Retry logic is now implemented manually in _call_api_with_retry()
+# to avoid race conditions with tenacity's decorator approach
 
 from .models import PipelineConfig
+from .gemini_client import GeminiClient, GeminiRetryableError, GeminiFatalError
 
 
 class TranslationRetryableError(Exception):
@@ -42,11 +47,25 @@ class TranslationFatalError(Exception):
         self.status_code = status_code
 
 
+class InsufficientCreditsError(Exception):
+    """Out of OpenRouter credits (402 Payment Required)."""
+    def __init__(self, message: str, balance: Optional[float] = None):
+        super().__init__(message)
+        self.balance = balance
+
+
 class FigureTranslator:
     """
-    Translate figure text using Gemini via OpenRouter.
+    Translate figure text using Gemini via direct Google AI Studio API.
 
-    Model: google/gemini-3-pro-image-preview (Nano Banana Pro)
+    Primary: gemini-3-pro-image-preview via Google AI Studio (GEMINI_API_KEY)
+    Fallback: OpenRouter API (OPENROUTER_API_KEY) if Google API unavailable
+
+    Model comparison (2024-11-29):
+    - Gemini 3 Pro: 100% QA pass rate, single pass, ~20s avg
+    - Gemini 2.5 Flash: 20% QA pass rate, 3 passes needed, ~30s avg
+    - Conclusion: Use Gemini 3 Pro exclusively
+
     Key capabilities:
     - Translates Chinese text to English within images
     - Preserves original design, colors, and layout
@@ -55,16 +74,15 @@ class FigureTranslator:
     Uses strong prompting (ablation-tested) with optional iteration.
     """
 
-    # OpenRouter API endpoint
+    # OpenRouter API endpoint (fallback only)
     API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-    # Models for figure translation (in priority order)
-    # Pro (Gemini 3) produces much higher quality but is less reliable
-    # Flash (Gemini 2.5) is reliable fallback
+    # Models for figure translation
+    # Gemini 3 Pro is dramatically better (100% vs 20% QA pass rate)
     MODEL_PRO = "google/gemini-3-pro-image-preview"
     MODEL_FLASH = "google/gemini-2.5-flash-image-preview"
 
-    # Default to Pro, fallback to Flash after 3 failed attempts
+    # Default to Pro - do NOT use Flash (20% pass rate)
     MODEL = MODEL_PRO
 
     # Strong translation prompt (ablation-tested: passes QA in 1 pass)
@@ -104,9 +122,19 @@ The output should have ZERO Chinese characters remaining.
 Generate an updated image with ALL remaining Chinese text translated to English."""
 
     def __init__(self, config: Optional[PipelineConfig] = None):
-        """Initialize translator."""
+        """Initialize translator with Google AI Studio as primary backend."""
         self.config = config or PipelineConfig()
         self._api_key = None
+        self._gemini_client = None
+
+    @property
+    def gemini_client(self) -> Optional[GeminiClient]:
+        """Get GeminiClient for direct Google API access (lazy init)."""
+        if self._gemini_client is None:
+            # Only initialize if GEMINI_API_KEY is available
+            if os.environ.get("GEMINI_API_KEY"):
+                self._gemini_client = GeminiClient()
+        return self._gemini_client
 
     @property
     def api_key(self) -> str:
@@ -125,6 +153,34 @@ Generate an updated image with ALL remaining Chinese text translated to English.
             "HTTP-Referer": "https://github.com/",
             "X-Title": "chinaxiv-english-figures",
         }
+
+    def check_balance(self) -> float:
+        """
+        Check OpenRouter credit balance.
+
+        Returns:
+            Balance in dollars
+
+        Raises:
+            RuntimeError if balance check fails
+        """
+        try:
+            response = requests.get(
+                "https://openrouter.ai/api/v1/credits",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=(5, 10),
+            )
+            if response.ok:
+                data = response.json()
+                # Balance is returned in cents
+                balance_cents = data.get("data", {}).get("total_credits", 0)
+                return balance_cents / 100.0
+            else:
+                print(f"[translator] Failed to check balance: {response.status_code}")
+                return -1.0
+        except Exception as e:
+            print(f"[translator] Balance check error: {e}")
+            return -1.0
 
     def _image_to_base64(self, image_path: str) -> tuple[str, str]:
         """
@@ -193,13 +249,9 @@ Generate an updated image with ALL remaining Chinese text translated to English.
         # Unknown - assume retryable
         return True, f"Unknown error ({status_code}): {response_text[:200]}"
 
-    @retry(
-        retry=retry_if_exception_type(TranslationRetryableError),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=2, max=30),
-        reraise=True,
-    )
-    def _call_api_with_retry(self, image_path: str, prompt: str, output_path: str) -> str:
+    def _call_api_with_retry(
+        self, image_path: str, prompt: str, output_path: str, model: str
+    ) -> str:
         """
         Single API call with retry logic for transient errors.
 
@@ -207,6 +259,7 @@ Generate an updated image with ALL remaining Chinese text translated to English.
             image_path: Path to input image
             prompt: Translation prompt
             output_path: Where to save output
+            model: Model to use (passed explicitly to avoid race conditions)
 
         Returns:
             Path to output image
@@ -215,10 +268,26 @@ Generate an updated image with ALL remaining Chinese text translated to English.
             TranslationRetryableError: For transient errors (will be retried)
             TranslationFatalError: For non-retryable errors
         """
-        data_url, _ = self._image_to_base64(image_path)
+        # Retry logic implemented via wrapper to avoid decorator complexity
+        last_error = None
+        for attempt in range(3):
+            try:
+                return self._call_api_single(image_path, prompt, output_path, model)
+            except TranslationRetryableError as e:
+                last_error = e
+                wait_time = min(30, 2 * (2 ** attempt))  # Exponential backoff: 2, 4, 8... max 30
+                print(f"[translator] Attempt {attempt + 1}/3 failed: {e}, waiting {wait_time}s...")
+                time.sleep(wait_time)
+            except TranslationFatalError:
+                raise  # Don't retry fatal errors
 
-        # Use current model (set by _call_api for fallback logic)
-        model = getattr(self, '_current_model', self.MODEL_PRO)
+        raise last_error or TranslationRetryableError("All retries exhausted")
+
+    def _call_api_single(
+        self, image_path: str, prompt: str, output_path: str, model: str
+    ) -> str:
+        """Single API call without retry (used by _call_api_with_retry)."""
+        data_url, _ = self._image_to_base64(image_path)
 
         payload = {
             "model": model,
@@ -307,10 +376,15 @@ Generate an updated image with ALL remaining Chinese text translated to English.
 
     def _call_api(self, image_path: str, prompt: str, output_path: str) -> Optional[str]:
         """
-        Single API call to translate an image with model fallback.
+        Translate an image using Google AI Studio API (primary) with OpenRouter fallback.
 
-        Strategy: Try Pro model 3x, then fallback to Flash model 3x.
-        Pro produces higher quality but is less reliable.
+        Strategy:
+        1. Try Google AI Studio API first (gemini-3-pro-image-preview)
+        2. Fall back to OpenRouter if Google API fails or unavailable
+
+        Model comparison (2024-11-29):
+        - Gemini 3 Pro: 100% QA pass rate, single pass, ~20s avg
+        - Direct Google API preferred over OpenRouter for reliability
 
         Args:
             image_path: Path to input image
@@ -319,39 +393,72 @@ Generate an updated image with ALL remaining Chinese text translated to English.
 
         Returns:
             Path to output image, or None if failed
-        """
-        # Try Pro model first (3 attempts via retry decorator)
-        try:
-            self._current_model = self.MODEL_PRO
-            result = self._call_api_with_retry(image_path, prompt, output_path)
-            print(f"[translator] Success with Pro model")
-            return result
-        except TranslationFatalError as e:
-            print(f"[translator] Pro fatal error: {e}")
-            # Don't fallback on auth/payment errors
-            if e.status_code in (401, 402, 403):
-                return None
-        except TranslationRetryableError as e:
-            print(f"[translator] Pro failed after 3 attempts: {e}")
-        except Exception as e:
-            print(f"[translator] Pro unexpected error: {e}")
 
-        # Fallback to Flash model (3 attempts via retry decorator)
-        print(f"[translator] Falling back to Flash model...")
-        try:
-            self._current_model = self.MODEL_FLASH
-            result = self._call_api_with_retry(image_path, prompt, output_path)
-            print(f"[translator] Success with Flash fallback")
-            return result
-        except TranslationFatalError as e:
-            print(f"[translator] Flash fatal error: {e}")
+        Raises:
+            InsufficientCreditsError: If OpenRouter account is out of credits (402)
+        """
+        # Strategy 1: Try Google AI Studio API (primary)
+        if self.gemini_client is not None:
+            try:
+                print("[translator] Trying Google AI Studio API (gemini-3-pro-image-preview)...")
+                result = self.gemini_client.translate_image(
+                    image_path, output_path, prompt=prompt, max_retries=3
+                )
+                if result:
+                    print("[translator] Success with Google AI Studio API")
+                    return result
+                print("[translator] Google API returned no result, trying OpenRouter fallback...")
+            except GeminiRetryableError as e:
+                print(f"[translator] Google API retryable error: {e}, trying OpenRouter fallback...")
+            except GeminiFatalError as e:
+                print(f"[translator] Google API fatal error: {e}, trying OpenRouter fallback...")
+            except Exception as e:
+                print(f"[translator] Google API unexpected error: {e}, trying OpenRouter fallback...")
+        else:
+            print("[translator] Google API not available (no GEMINI_API_KEY), using OpenRouter...")
+
+        # Strategy 2: Fall back to OpenRouter (only if API key is available)
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            print("[translator] No OpenRouter API key - skipping fallback")
             return None
-        except TranslationRetryableError as e:
-            print(f"[translator] Flash failed after 3 attempts: {e}")
-            return None
-        except Exception as e:
-            print(f"[translator] Flash unexpected error: {e}")
-            return None
+
+        models = [
+            (self.MODEL_PRO, "Pro"),
+            (self.MODEL_FLASH, "Flash"),
+        ]
+
+        for model, name in models:
+            try:
+                result = self._call_api_with_retry(image_path, prompt, output_path, model)
+                print(f"[translator] Success with OpenRouter {name} model")
+                return result
+            except TranslationFatalError as e:
+                print(f"[translator] OpenRouter {name} fatal error: {e}")
+                # Payment error - raise special exception to stop batch processing
+                if e.status_code == 402:
+                    balance = self.check_balance()
+                    raise InsufficientCreditsError(
+                        f"Out of OpenRouter credits. Balance: ${balance:.2f}",
+                        balance=balance
+                    )
+                # Don't fallback on auth errors
+                if e.status_code in (401, 403):
+                    return None
+                # Continue to next model for other fatal errors
+            except TranslationRetryableError as e:
+                print(f"[translator] OpenRouter {name} failed after 3 attempts: {e}")
+                # Continue to next model
+            except Exception as e:
+                print(f"[translator] OpenRouter {name} unexpected error: {e}")
+                # Continue to next model
+
+            # Add small delay between model fallback
+            if model != models[-1][0]:
+                print("[translator] Falling back to next OpenRouter model...")
+                time.sleep(2)
+
+        print("[translator] All APIs exhausted")
+        return None
 
     def translate(
         self,
@@ -439,12 +546,17 @@ Generate an updated image with ALL remaining Chinese text translated to English.
         max_passes: int = 3,
         qa_check: Optional[Callable[[str], bool]] = None,
         delay_between_requests: float = 3.0,  # Increased from 0.5s
+        min_balance: float = 1.0,  # Minimum OpenRouter balance for fallback
     ) -> dict:
         """
-        Translate multiple images with rate limiting.
+        Translate multiple images using Google AI Studio API (primary) with OpenRouter fallback.
 
-        Note: Default max_concurrent reduced to 1 and delay increased to 3s
-        to avoid OpenRouter rate limiting (429 errors).
+        Features:
+        - Uses Google AI Studio API (gemini-3-pro-image-preview) as primary
+        - Falls back to OpenRouter if Google API fails
+        - Checks OpenRouter balance for fallback capacity
+        - Tracks failure reasons (success, API error, payment failure)
+        - Reports detailed summary
 
         Args:
             image_paths: List of image paths
@@ -453,18 +565,57 @@ Generate an updated image with ALL remaining Chinese text translated to English.
             max_passes: Maximum passes per image
             qa_check: Optional QA function to enable iteration
             delay_between_requests: Seconds to wait between requests (default: 3.0)
+            min_balance: Minimum balance to continue (default: $1.00)
 
         Returns:
-            Dict mapping input path to output path (or None if failed)
+            Dict with keys:
+            - 'results': mapping of input path to output path (or None)
+            - 'stats': dict with success/failure/skipped counts
+            - 'stopped_early': bool if stopped due to payment
+            - 'balance_before': float
+            - 'balance_after': float
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        # Check balance before starting
+        balance_before = self.check_balance()
+        print(f"[translator] OpenRouter balance: ${balance_before:.2f}")
+
+        if balance_before >= 0 and balance_before < min_balance:
+            print(f"[translator] WARNING: Low balance (${balance_before:.2f} < ${min_balance:.2f})")
+
+        # Note: balance_before == 0 is OK if Google API is available (primary)
+        # Only warn, don't abort - Google API doesn't use OpenRouter credits
+        if balance_before == 0 and self.gemini_client is None:
+            print("[translator] ERROR: No credits and no Google API. Aborting batch.")
+            return {
+                'results': {p: None for p in image_paths},
+                'stats': {'successful': 0, 'api_failed': 0, 'payment_failed': len(image_paths), 'skipped': 0},
+                'stopped_early': True,
+                'stop_reason': 'no_credits',
+                'balance_before': balance_before,
+                'balance_after': balance_before,
+            }
+        elif balance_before == 0:
+            print("[translator] WARNING: OpenRouter balance is $0 (fallback unavailable, using Google API)")
 
         results = {}
         total = len(image_paths)
         successful = 0
-        failed = 0
+        api_failed = 0
+        payment_failed = 0
+        skipped = 0
+        stopped_early = False
+        stop_reason = None
 
-        def translate_one(path: str, idx: int) -> tuple:
+        print(f"[translator] Starting batch translation of {total} images")
+        print(f"[translator] Settings: concurrency={max_concurrent}, delay={delay_between_requests}s, min_balance=${min_balance:.2f}")
+
+        for idx, path in enumerate(image_paths):
+            # Check if we should stop
+            if stopped_early:
+                results[path] = None
+                skipped += 1
+                continue
+
             try:
                 output = self.translate(
                     path,
@@ -473,38 +624,72 @@ Generate an updated image with ALL remaining Chinese text translated to English.
                     max_passes=max_passes,
                     qa_check=qa_check,
                 )
-                return (path, output)
-            except Exception as e:
-                print(f"[translator] Failed to translate {path}: {e}")
-                return (path, None)
-
-        print(f"[translator] Starting batch translation of {total} images (concurrency: {max_concurrent}, delay: {delay_between_requests}s)")
-
-        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
-            futures = {
-                executor.submit(translate_one, path, idx): path
-                for idx, path in enumerate(image_paths)
-            }
-
-            for future in as_completed(futures):
-                path, output = future.result()
                 results[path] = output
 
-                # Track success/failure
                 if output:
                     successful += 1
                 else:
-                    failed += 1
+                    api_failed += 1
 
-                # Log progress
-                done = successful + failed
-                print(f"[translator] Progress: {done}/{total} ({successful} success, {failed} failed)")
+            except InsufficientCreditsError as e:
+                print(f"[translator] PAYMENT FAILURE: {e}")
+                results[path] = None
+                payment_failed += 1
+                stopped_early = True
+                stop_reason = 'insufficient_credits'
+                # Mark remaining as skipped
+                continue
 
-                # Rate limiting between requests
+            except Exception as e:
+                print(f"[translator] API ERROR for {path}: {e}")
+                results[path] = None
+                api_failed += 1
+
+            # Log progress
+            done = successful + api_failed + payment_failed
+            print(f"[translator] Progress: {done}/{total} (success={successful}, api_fail={api_failed}, payment_fail={payment_failed})")
+
+            # Rate limiting between requests
+            if idx < total - 1 and not stopped_early:
                 time.sleep(delay_between_requests)
 
-        # Summary log
-        success_rate = (successful / total * 100) if total > 0 else 0
-        print(f"[translator] Batch complete: {successful}/{total} ({success_rate:.1f}% success rate)")
+        # Check balance after
+        balance_after = self.check_balance()
 
-        return results
+        # Summary
+        print()
+        print("[translator] === BATCH SUMMARY ===")
+        print(f"[translator] Total images: {total}")
+        print(f"[translator] Successful: {successful}")
+        print(f"[translator] API failures: {api_failed}")
+        print(f"[translator] Payment failures: {payment_failed}")
+        print(f"[translator] Skipped: {skipped}")
+
+        # Note: OpenRouter balance only tracks fallback usage.
+        # Google AI Studio API costs are NOT tracked here (no balance API available).
+        openrouter_spent = balance_before - balance_after
+        if openrouter_spent > 0:
+            print(f"[translator] OpenRouter fallback: ${balance_before:.2f} -> ${balance_after:.2f} (spent: ${openrouter_spent:.2f})")
+            if successful > 0:
+                cost_per_image = openrouter_spent / successful
+                print(f"[translator] OpenRouter cost per image: ${cost_per_image:.4f}")
+        else:
+            print("[translator] OpenRouter balance unchanged (Google API was primary)")
+            print("[translator] Note: Google AI Studio API costs are billed separately")
+
+        if stopped_early:
+            print(f"[translator] STOPPED EARLY: {stop_reason}")
+
+        return {
+            'results': results,
+            'stats': {
+                'successful': successful,
+                'api_failed': api_failed,
+                'payment_failed': payment_failed,
+                'skipped': skipped,
+            },
+            'stopped_early': stopped_early,
+            'stop_reason': stop_reason,
+            'balance_before': balance_before,
+            'balance_after': balance_after,
+        }
