@@ -226,6 +226,19 @@ jobs:
           if [ -f data/selected.json ]; then
             aws s3 cp data/selected.json "${DEST}selections/${GITHUB_RUN_ID}/selected.json" --endpoint-url "${B2_S3_ENDPOINT}" --only-show-errors
           fi
+          # CRITICAL: Upload PDFs to B2 for persistence across workflow runs
+          echo "📤 Uploading PDFs to B2 for persistence..."
+          if [ -d data/pdfs ] && ls -1 data/pdfs/chinaxiv-${{ inputs.month }}*.pdf 2>/dev/null | head -1 > /dev/null; then
+            aws s3 sync data/pdfs "${DEST}pdfs/" \
+              --exclude "*" \
+              --include "chinaxiv-${{ inputs.month }}*.pdf" \
+              --endpoint-url "${B2_S3_ENDPOINT}" \
+              --only-show-errors
+            PDF_COUNT=$(ls -1 data/pdfs/chinaxiv-${{ inputs.month }}*.pdf 2>/dev/null | wc -l | tr -d ' ')
+            echo "✅ Uploaded ${PDF_COUNT} PDFs to B2"
+          else
+            echo "ℹ️ No PDFs found for month ${{ inputs.month }}"
+          fi
       - name: Upload harvest artifacts (records + selection)
         uses: actions/upload-artifact@v4
         with:
