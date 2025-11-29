@@ -1,4 +1,4 @@
-name: Translation Orchestrator
+name: Batch Queue Orchestrator
 
 on:
   workflow_dispatch:

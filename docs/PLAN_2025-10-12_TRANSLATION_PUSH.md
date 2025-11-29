@@ -13,7 +13,7 @@ Design principle: Prefer the simplest working path that maximizes throughput wit
 
 ## Decision Summary
 - Primary path: Queue-based batches (fastest, already wired)
-  - Workflows: `.github/workflows/batch_translate.yml`, `translate_orchestrator.yml`, `qa_report.yml`, `build.yml`.
+  - Workflows: `.github/workflows/batch_translate.yml`, `batch-queue-orchestrator.yml`, `qa_report.yml`, `build.yml`.
   - QA gating: enabled in batch worker via `--with-qa` (keeps flagged output out of site).
 - Fallback path: Month-by-month backfill (simpler mental model, slower)
   - Workflow: `.github/workflows/backfill.yml` (translates + builds per month).
@@ -47,7 +47,7 @@ Design principle: Prefer the simplest working path that maximizes throughput wit
   - Translation command:
     - `python -m src.pipeline --cloud-mode --with-qa --batch-size "$BATCH_SIZE" --workers "$WORKERS" --worker-id "$WORKER_ID" --skip-selection`
   - Commits progress to `data/cloud_jobs.json`, and saves outputs to `data/translated/` and `data/flagged/`.
-- Orchestrator: `.github/workflows/translate_orchestrator.yml`
+- Orchestrator: `.github/workflows/batch-queue-orchestrator.yml`
   - Triggers sequential batches until the queue is empty (or a configured limit), then kicks `qa_report.yml` and `build.yml`.
 
 ### Phase 4 — Dry Run (small batch)
@@ -158,7 +158,7 @@ Design principle: Prefer the simplest working path that maximizes throughput wit
 ## File Map (touched/used)
 - Workflows:
   - `.github/workflows/batch_translate.yml`
-  - `.github/workflows/translate_orchestrator.yml`
+  - `.github/workflows/batch-queue-orchestrator.yml`
   - `.github/workflows/qa_report.yml`
   - `.github/workflows/build.yml`
   - `.github/workflows/backfill.yml` (fallback)

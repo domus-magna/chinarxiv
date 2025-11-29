@@ -143,17 +143,14 @@ Each CI/CD workflow below must stay in sync with our Backblaze-first source of t
 
 **Translation execution & queue health**
 - `batch_translate` (`batch_translate.yml`): Cloud-mode worker that installs OCR deps, validates OpenRouter, pulls queue state, runs `src.pipeline --cloud-mode --with-qa` for a configurable batch/worker count, commits queue progress, and uploads flagged outputs.
-- `test_batch_trigger` (`test_batch_trigger.yml`): Manual 50-paper batch run on 8-core runners; mirrors `batch_translate` but with fixed limits to validate queue settings.
-- `batch_test` (`batch_test.yml`): Lightweight workflow for verifying dispatch inputs only; prints the requested batch size.
 - `smoke-translate` (`smoke-translate.yml`): Manual smoke test that can harvest a month if missing, runs `scripts/smoke_translate.py` for a small sample, and optionally deploys the rendered site.
 - `integration-translate` (`integration-translate.yml`): Manual targeted translator that selects IDs from `data/records/<run_id>.json`, prepares `data/selected.json`, and runs `src.pipeline --with-qa` for a bounded sample while collecting artifacts (including failure logs).
-- `translate_orchestrator` (`translate_orchestrator.yml`): CLI-driven loop that repeatedly dispatches `batch_translate.yml` runs until the cloud queue empties (or a fixed number of batches completes), polling queue stats between runs and optionally triggering QA report + site rebuild at the end.
-- `translation-orchestrator` (`translation-orchestrator.yml`): Backfill dispatcher that iterates over a month range and fires `backfill.yml` for each via the GitHub API, respecting requested parallelism, worker counts, and deploy toggles.
+- `batch-queue-orchestrator` (`batch-queue-orchestrator.yml`): CLI-driven loop that repeatedly dispatches `batch_translate.yml` runs until the cloud queue empties (or a fixed number of batches completes), polling queue stats between runs and optionally triggering QA report + site rebuild at the end.
+- `month-range-backfill` (`month-range-backfill.yml`): Backfill dispatcher that iterates over a month range and fires `backfill.yml` for each via the GitHub API, respecting requested parallelism, worker counts, and deploy toggles.
 - `queue-maintenance` (`queue-maintenance.yml`): Nightly job that runs `src.tools.compact_cloud_queue --retain-completed 100`, committing updates to `data/cloud_jobs*.json` to keep queue files manageable.
 
-**Quality reporting + ad-hoc testing**
+**Quality reporting**
 - `qa_report` (`qa_report.yml`): Daily/manual job that counts passed vs flagged translations, raises GitHub issues if pass rate <90%, writes `data/qa_report.md`, and uploads the report artifact.
-- `test_dispatch` (`test_dispatch.yml`): Minimal “hello world” dispatcher used to verify workflow dispatch plumbing.
 - `smoke-translate` artifacts plus `qa_report` outputs feed manual QA reviews; always capture run links.
 
 **Automation assist**
