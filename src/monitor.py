@@ -4,6 +4,7 @@ Monitoring dashboard for ChinaXiv Translations.
 """
 
 import os
+import secrets
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -124,15 +125,17 @@ class MonitoringDashboard:
                 ok = False
                 if MONITORING_PASSWORD_HASH:
                     try:
-                        ok = (username == MONITORING_USERNAME) and check_password_hash(
-                            MONITORING_PASSWORD_HASH, password
-                        )
+                        # Use constant-time comparison to prevent timing attacks
+                        ok = secrets.compare_digest(
+                            username, MONITORING_USERNAME
+                        ) and check_password_hash(MONITORING_PASSWORD_HASH, password)
                     except Exception:
                         ok = False
                 else:
-                    ok = (username == MONITORING_USERNAME) and (
-                        password == MONITORING_PASSWORD
-                    )
+                    # Use constant-time comparison to prevent timing attacks
+                    ok = secrets.compare_digest(
+                        username, MONITORING_USERNAME
+                    ) and secrets.compare_digest(password, MONITORING_PASSWORD)
 
                 if ok:
                     # Use Flask's signed session (cryptographically secure)
