@@ -31,6 +31,7 @@ from flask import Flask, Response, abort, redirect, render_template, request, ur
 
 from .gh_actions import GHClient, make_config
 from .gha_workflow_config import get_dispatch_inputs, describe_workflow
+import contextlib
 
 
 logger = logging.getLogger(__name__)
@@ -300,10 +301,8 @@ def make_app() -> Flask:
                                 data = json.loads(zf.read(zname))
                                 previews[name] = data.get("summary", data)
                                 break
-                    try:
+                    with contextlib.suppress(Exception):
                         tmp_zip.unlink(missing_ok=True)
-                    except Exception:
-                        pass
             return render_template(
                 "admin/run.html",
                 run=run,
@@ -346,7 +345,7 @@ def make_app() -> Flask:
                 for name, spec in inputs_spec.items():
                     typ = (spec.get("type") or "string").lower()
                     if typ == "boolean":
-                        inputs[name] = True if request.form.get(name) == "on" else False
+                        inputs[name] = request.form.get(name) == "on"
                     else:
                         val = request.form.get(name)
                         if val is not None and val != "":

@@ -7,6 +7,7 @@ import pytest
 
 from src.services.translation_service import TranslationService, CircuitBreakerOpen
 from src.services.circuit_breaker import CircuitBreaker
+import contextlib
 
 
 class TestCircuitBreaker:
@@ -45,7 +46,7 @@ class TestCircuitBreaker:
     def test_transient_error_threshold(self):
         """Test that 5 consecutive transient errors trigger circuit breaker."""
         # First 4 transient errors
-        for i in range(4):
+        for _i in range(4):
             self.service._record_failure("network_error")
             assert not self.service._circuit_breaker.is_open
 
@@ -188,10 +189,8 @@ class TestCircuitBreaker:
         # Trigger persistent error threshold
         self.service._record_failure("payment_required")
 
-        try:
+        with contextlib.suppress(CircuitBreakerOpen):
             self.service._record_failure("insufficient_quota")
-        except CircuitBreakerOpen:
-            pass
 
         # Alert should have been called
         mock_alert.assert_called_once()
@@ -203,13 +202,11 @@ class TestCircuitBreaker:
     def test_alert_sent_on_transient_threshold(self, mock_alert):
         """Test that alert is sent when transient error threshold is reached."""
         # Trigger transient error threshold
-        for i in range(4):
+        for _i in range(4):
             self.service._record_failure("network_error")
 
-        try:
+        with contextlib.suppress(CircuitBreakerOpen):
             self.service._record_failure("network_error")
-        except CircuitBreakerOpen:
-            pass
 
         # Alert should have been called
         mock_alert.assert_called_once()
@@ -226,10 +223,8 @@ class TestCircuitBreaker:
         # Trigger circuit breaker
         self.service._record_failure("payment_required")
 
-        try:
+        with contextlib.suppress(CircuitBreakerOpen):
             self.service._record_failure("payment_required")
-        except CircuitBreakerOpen:
-            pass
 
         # Check that log was called with the alert failure
         log_calls = [str(call) for call in mock_log.call_args_list]

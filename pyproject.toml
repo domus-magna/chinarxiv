@@ -8,9 +8,16 @@ select = [
     "W",    # pycodestyle warnings
     "F",    # pyflakes
     "B",    # flake8-bugbear
-    "BLE",  # flake8-blind-except (bare except detection)
     "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",   # Line too long - handled by formatter
+    "B904",   # Raise from - stylistic preference
+    "SIM102", # Nested if - sometimes clearer
+    "SIM112", # Env var case - we check both for compatibility
+    "SIM115", # Context manager - not always applicable
+    "SIM117", # Nested with - sometimes clearer
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["BLE001"]  # Allow broader exception catching in tests
+"tests/*" = ["B904"]  # Allow raise without from in tests

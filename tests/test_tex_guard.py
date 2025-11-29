@@ -110,11 +110,11 @@ class TestMathMasking:
     def test_complex_math_expressions(self):
         """Test masking complex math expressions."""
         text = """
-        The equation $\\frac{d}{dx}f(x) = \\lim_{h \\to 0} \\frac{f(x+h) - f(x)}{h}$ 
+        The equation $\\frac{d}{dx}f(x) = \\lim_{h \\to 0} \\frac{f(x+h) - f(x)}{h}$
         is fundamental.
-        
+
         $$\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}$$
-        
+
         \\begin{align}
         x &= y + z \\\\
         a &= b \\cdot c

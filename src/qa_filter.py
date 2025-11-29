@@ -102,10 +102,7 @@ class ChineseCharacterDetector:
                 return True
 
         # Check Chinese-specific punctuation (distinct from English)
-        if char in self.CHINESE_PUNCTUATION:
-            return True
-
-        return False
+        return char in self.CHINESE_PUNCTUATION
 
     def is_chinese_ideograph(self, char: str) -> bool:
         """Check if a character is a Chinese ideograph (excluding punctuation)."""
@@ -115,11 +112,7 @@ class ChineseCharacterDetector:
         code_point = ord(char)
 
         # Check Chinese character ranges (CJK ideographs only)
-        for start, end in self.CHINESE_RANGES:
-            if start <= code_point <= end:
-                return True
-
-        return False
+        return any(start <= code_point <= end for start, end in self.CHINESE_RANGES)
 
     def find_chinese_chars(self, text: str) -> List[str]:
         """Find all Chinese characters in text."""
@@ -158,11 +151,7 @@ class ChineseCharacterDetector:
         if not text:
             return False
 
-        for marker in self.CHINESE_METADATA_MARKERS:
-            if marker in text:
-                return True
-
-        return False
+        return any(marker in text for marker in self.CHINESE_METADATA_MARKERS)
 
 
 class SynthesisQAFilter:
@@ -308,9 +297,7 @@ class SynthesisQAFilter:
         if result.chinese_ratio > 0.01:  # 1%
             return False
         # Block if watermarks detected
-        if result.status == QAStatus.FLAG_CONTENT and "Watermark" in str(result.issues):
-            return False
-        return True
+        return not (result.status == QAStatus.FLAG_CONTENT and "Watermark" in str(result.issues))
 
 
 if __name__ == "__main__":

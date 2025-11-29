@@ -56,10 +56,7 @@ def is_watermark_or_garbage(text: str) -> bool:
             return True
 
     # Pure punctuation or numbers (page numbers, etc.)
-    if re.match(r"^[\d\s\.\-–—]+$", text):
-        return True
-
-    return False
+    return bool(re.match("^[\\d\\s\\.\\-–—]+$", text))
 
 
 # =============================================================================

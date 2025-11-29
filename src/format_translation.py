@@ -46,10 +46,7 @@ def is_section_heading(text: str) -> bool:
     }
 
     cleaned = text.strip().lower().rstrip(".")
-    if cleaned in heading_words and len(text) < 50:
-        return True
-
-    return False
+    return bool(cleaned in heading_words and len(text) < 50)
 
 
 def is_short_fragment(text: str, min_length: int = 50) -> bool:
@@ -69,10 +66,7 @@ def is_mathematical_formula(text: str) -> bool:
 
     # Check for high density of math symbols
     math_chars = sum(1 for c in text if c in "∑∏∫∂∇±×÷≤≥≠≈∞∈∉⊂⊃∩∪∀∃()[]{}")
-    if len(text) > 0 and math_chars / len(text) > 0.3:
-        return True
-
-    return False
+    return bool(len(text) > 0 and math_chars / len(text) > 0.3)
 
 
 def merge_short_fragments(paragraphs: List[str]) -> List[str]:
