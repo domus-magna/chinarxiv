@@ -107,3 +107,41 @@ wrangler pages deploy site --project-name chinarxiv
 - Discord alerts for circuit breaker trips
 - Check `python -m src.batch_translate status` for progress
 - B2 manifests in `indexes/validated/manifest-*.csv`
+
+## GitHub Token Management
+
+**IMPORTANT**: The `.env` file contains `GH_TOKEN` which overrides `gh` CLI keyring authentication.
+
+### Problem
+When you run `gh auth refresh -s workflow`, it updates the token in macOS keyring, but `.env` still has the OLD token without `workflow` scope. This causes "refusing to allow OAuth App to create or update workflow" errors when pushing workflow files.
+
+### Solution
+After refreshing GitHub auth, sync the token to `.env`:
+```bash
+# Refresh with workflow scope (updates keyring)
+gh auth refresh -s workflow
+
+# Sync keyring token to .env
+./scripts/sync-gh-token.sh
+```
+
+### One-liner alternative:
+```bash
+# Get fresh token and update .env directly
+NEW_TOKEN=$(unset GH_TOKEN && gh auth token) && \
+sed -i.bak "s|^GH_TOKEN=.*|GH_TOKEN=$NEW_TOKEN|" .env && \
+rm .env.bak && echo "Updated GH_TOKEN in .env"
+```
+
+### Verify token has correct scopes:
+```bash
+unset GH_TOKEN && gh auth status
+# Should show: Token scopes: 'gist', 'read:org', 'repo', 'workflow'
+```
+
+### Automated Protection
+A **pre-push git hook** is installed at `.git/hooks/pre-push` that:
+1. Detects if you're pushing workflow files (`.github/workflows/*`)
+2. Checks if your `.env` GH_TOKEN matches the keyring token
+3. Warns and offers to auto-sync if tokens are stale
+4. Blocks push if token doesn't have `workflow` scope
