@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+from .circuit_breaker import classify_api_error, get_circuit_breaker
 from .models import PipelineConfig
 
 
@@ -28,6 +29,22 @@ class FigureValidator:
         """Initialize validator."""
         self.config = config or PipelineConfig()
         self._model = None
+
+    def _handle_api_error(self, error: Exception, context: str = "") -> None:
+        """
+        Handle API errors and record to circuit breaker if billing-related.
+
+        Args:
+            error: The exception
+            context: Additional context for logging
+        """
+        # Use shared error classification (no HTTP status for SDK errors)
+        error_code = classify_api_error(None, str(error))
+        if error_code:
+            circuit_breaker = get_circuit_breaker()
+            circuit_breaker.record_failure(
+                error_code, "moondream", f"{context}: {error}"
+            )
 
     @property
     def model(self):
@@ -90,7 +107,8 @@ class FigureValidator:
                 "Is this image readable and not corrupted? Answer yes or no."
             )
             return "yes" in result.get("answer", "").lower()
-        except Exception:
+        except Exception as e:
+            self._handle_api_error(e, "check_readable")
             return True  # Assume readable if check fails
 
     def _has_chinese_text(self, img) -> bool:
@@ -101,7 +119,8 @@ class FigureValidator:
                 "Does this image contain any Chinese characters or text? Answer yes or no."
             )
             return "yes" in result.get("answer", "").lower()
-        except Exception:
+        except Exception as e:
+            self._handle_api_error(e, "has_chinese_text")
             return False
 
     def _get_figure_type(self, img) -> str:
@@ -114,7 +133,8 @@ class FigureValidator:
             answer = result.get("answer", "other").lower().strip()
             valid_types = {"chart", "graph", "table", "diagram", "photo", "equation", "other"}
             return answer if answer in valid_types else "other"
-        except Exception:
+        except Exception as e:
+            self._handle_api_error(e, "get_figure_type")
             return "other"
 
     def qa_translation(
@@ -160,18 +180,26 @@ class FigureValidator:
             img_translated = Image.open(translated_path)
 
             # Check 1: Does translated image have English text?
-            result_english = self.model.query(
-                img_translated,
-                "Does this image contain English text? Answer yes or no."
-            )
-            has_english = "yes" in result_english.get("answer", "").lower()
+            try:
+                result_english = self.model.query(
+                    img_translated,
+                    "Does this image contain English text? Answer yes or no."
+                )
+                has_english = "yes" in result_english.get("answer", "").lower()
+            except Exception as e:
+                self._handle_api_error(e, "qa_translation_english")
+                has_english = False
 
             # Check 2: Does translated image still have Chinese text?
-            result_chinese = self.model.query(
-                img_translated,
-                "Does this image contain any Chinese characters? Answer yes or no."
-            )
-            has_chinese_remaining = "yes" in result_chinese.get("answer", "").lower()
+            try:
+                result_chinese = self.model.query(
+                    img_translated,
+                    "Does this image contain any Chinese characters? Answer yes or no."
+                )
+                has_chinese_remaining = "yes" in result_chinese.get("answer", "").lower()
+            except Exception as e:
+                self._handle_api_error(e, "qa_translation_chinese")
+                has_chinese_remaining = True
 
             # Check 3: Is the English text coherent (not gibberish)?
             # Note: Moondream is unreliable at spelling/coherence checks, so we use
@@ -187,7 +215,8 @@ class FigureValidator:
                 coherent_answer = result_coherent.get("answer", "").lower()
                 # Lenient check - pass if we can identify any English words
                 is_coherent = "yes" in coherent_answer or "no" not in coherent_answer
-            except Exception:
+            except Exception as e:
+                self._handle_api_error(e, "qa_translation_coherent")
                 is_coherent = True  # Default to coherent if check fails
 
             # Check 4: Get figure type of translated for comparison
@@ -232,6 +261,7 @@ class FigureValidator:
                 "details": "; ".join(details_parts),
             }
         except Exception as e:
+            self._handle_api_error(e, "qa_translation")
             return {
                 "passed": False,
                 "has_english": False,

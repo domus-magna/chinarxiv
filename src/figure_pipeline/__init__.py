@@ -16,6 +16,8 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
+from .circuit_breaker import get_circuit_breaker
+
 
 def log(message: str) -> None:
     """Simple logging function."""
@@ -102,7 +104,14 @@ class FigurePipeline:
 
         Returns:
             FigureProcessingResult with all figures and stats
+
+        Raises:
+            RuntimeError: If circuit breaker is open (billing/quota error)
         """
+        # Check circuit breaker before starting
+        circuit_breaker = get_circuit_breaker()
+        circuit_breaker.check()  # Raises if open
+
         result = FigureProcessingResult(paper_id=paper_id)
 
         # Find PDF path
