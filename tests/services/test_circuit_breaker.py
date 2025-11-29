@@ -21,9 +21,9 @@ class TestCircuitBreaker:
             "translation": {
                 "circuit_breaker": {
                     "persistent_error_threshold": 2,
-                    "transient_error_threshold": 5
+                    "transient_error_threshold": 5,
                 }
-            }
+            },
         }
         self.service = TranslationService(config=config)
 
@@ -66,13 +66,15 @@ class TestCircuitBreaker:
             "insufficient_quota",
             "invalid_api_key",
             "invalid_credentials",
-            "unauthorized"
+            "unauthorized",
         ]
 
         for code in persistent_codes:
             service = TranslationService(config=self.service.config)
             service._record_failure(code)
-            assert service._circuit_breaker.consecutive_persistent == 1, f"{code} should be classified as persistent"
+            assert (
+                service._circuit_breaker.consecutive_persistent == 1
+            ), f"{code} should be classified as persistent"
             assert service._circuit_breaker.consecutive_transient == 0
 
     def test_error_classification_transient(self):
@@ -84,13 +86,15 @@ class TestCircuitBreaker:
             "rate_limit_exceeded",
             "timeout",
             None,  # Unknown errors are transient
-            "some_random_error"
+            "some_random_error",
         ]
 
         for code in transient_codes:
             service = TranslationService(config=self.service.config)
             service._record_failure(code)
-            assert service._circuit_breaker.consecutive_transient == 1, f"{code} should be classified as transient"
+            assert (
+                service._circuit_breaker.consecutive_transient == 1
+            ), f"{code} should be classified as transient"
             assert service._circuit_breaker.consecutive_persistent == 0
 
     def test_counter_reset_on_success(self):
@@ -99,7 +103,9 @@ class TestCircuitBreaker:
         self.service._record_failure("payment_required")
         self.service._record_failure("network_error")
 
-        assert self.service._circuit_breaker.consecutive_persistent == 0  # Reset when switching to transient
+        assert (
+            self.service._circuit_breaker.consecutive_persistent == 0
+        )  # Reset when switching to transient
         assert self.service._circuit_breaker.consecutive_transient == 1
 
         # Reset counters
@@ -176,7 +182,7 @@ class TestCircuitBreaker:
         with pytest.raises(CircuitBreakerOpen):
             self.service._check_circuit_breaker()
 
-    @patch('src.services.circuit_breaker.alert_critical')
+    @patch("src.services.circuit_breaker.alert_critical")
     def test_alert_sent_on_persistent_threshold(self, mock_alert):
         """Test that alert is sent when persistent error threshold is reached."""
         # Trigger persistent error threshold
@@ -193,7 +199,7 @@ class TestCircuitBreaker:
         assert "Persistent Error Threshold Reached" in call_args[0][0]
         assert call_args[1]["source"] == "translation_service"
 
-    @patch('src.services.circuit_breaker.alert_critical')
+    @patch("src.services.circuit_breaker.alert_critical")
     def test_alert_sent_on_transient_threshold(self, mock_alert):
         """Test that alert is sent when transient error threshold is reached."""
         # Trigger transient error threshold
@@ -210,8 +216,8 @@ class TestCircuitBreaker:
         call_args = mock_alert.call_args
         assert "Transient Error Threshold Reached" in call_args[0][0]
 
-    @patch('src.services.circuit_breaker.alert_critical')
-    @patch('src.services.circuit_breaker.log')
+    @patch("src.services.circuit_breaker.alert_critical")
+    @patch("src.services.circuit_breaker.log")
     def test_alert_failure_is_logged(self, mock_log, mock_alert):
         """Test that if alert fails, the error is logged."""
         # Make alert raise an exception
@@ -227,7 +233,9 @@ class TestCircuitBreaker:
 
         # Check that log was called with the alert failure
         log_calls = [str(call) for call in mock_log.call_args_list]
-        assert any("Failed to send circuit breaker alert" in str(call) for call in log_calls)
+        assert any(
+            "Failed to send circuit breaker alert" in str(call) for call in log_calls
+        )
 
     def test_config_defaults(self):
         """Test that circuit breaker works with default config values."""
@@ -246,9 +254,9 @@ class TestCircuitBreaker:
             "translation": {
                 "circuit_breaker": {
                     "persistent_error_threshold": 3,
-                    "transient_error_threshold": 10
+                    "transient_error_threshold": 10,
                 }
-            }
+            },
         }
         service = TranslationService(config=config)
 

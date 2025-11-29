@@ -4,6 +4,7 @@ Environment variable diagnostic and resolution tool.
 
 Simple, robust tool to diagnose and fix API key mismatches.
 """
+
 import argparse
 import os
 import sys
@@ -35,12 +36,12 @@ def check_env_consistency():
 
     try:
         # Read .env file
-        with open(env_file, 'r') as f:
+        with open(env_file, "r") as f:
             env_vars = {}
             for line in f:
                 line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, value = line.split('=', 1)
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
                     env_vars[key] = value
     except Exception as e:
         log(f"❌ Could not read .env file: {e}")
@@ -53,10 +54,7 @@ def check_env_consistency():
             shell_value = os.getenv(key)
 
             if shell_value != env_value:
-                mismatches[key] = {
-                    'env_value': env_value,
-                    'shell_value': shell_value
-                }
+                mismatches[key] = {"env_value": env_value, "shell_value": shell_value}
 
     return mismatches
 
@@ -78,7 +76,11 @@ def fix_env_issues():
     for key, values in mismatches.items():
         log(f"  {key}:")
         log(f"    .env file: {values['env_value'][:20]}...")
-        log(f"    Shell:     {values['shell_value'][:20]}..." if values['shell_value'] else "    Shell:     None")
+        log(
+            f"    Shell:     {values['shell_value'][:20]}..."
+            if values["shell_value"]
+            else "    Shell:     None"
+        )
 
     log("\n🔧 To fix:")
     log("  source .env")
@@ -87,7 +89,7 @@ def fix_env_issues():
     # Try to auto-fix for current session
     try:
         for key, values in mismatches.items():
-            os.environ[key] = values['env_value']
+            os.environ[key] = values["env_value"]
         log("✅ Auto-fixed current session (run 'source .env' for permanent fix)")
         return True
     except Exception as e:
@@ -140,7 +142,10 @@ def check_brightdata_access(timeout: int = 10) -> Dict[str, Any]:
             result["error"] = "BRIGHTDATA_ZONE not set"
             return result
 
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
         # Use a lightweight public page as target; we don't need the body
         payload = {
             "url": "https://chinaxiv.org/",
@@ -149,7 +154,12 @@ def check_brightdata_access(timeout: int = 10) -> Dict[str, Any]:
             "country": "cn",
             "format": "json",
         }
-        resp = requests.post("https://api.brightdata.com/request", headers=headers, json=payload, timeout=timeout)
+        resp = requests.post(
+            "https://api.brightdata.com/request",
+            headers=headers,
+            json=payload,
+            timeout=timeout,
+        )
         status = resp.status_code
         result["status_code"] = status
         if status in (200, 206):
@@ -170,7 +180,7 @@ def check_disk_free(path: str = ".", min_gb: float = 1.0) -> Dict[str, Any]:
     """Check free disk space at path; ensure at least min_gb GB available."""
     try:
         usage = shutil.disk_usage(path)
-        free_gb = round(usage.free / (1024 ** 3), 2)
+        free_gb = round(usage.free / (1024**3), 2)
         return {"ok": free_gb >= min_gb, "free_gb": free_gb, "min_gb": min_gb}
     except Exception as e:
         return {"ok": False, "free_gb": None, "min_gb": min_gb, "error": str(e)}
@@ -220,7 +230,9 @@ def main():
     parser.add_argument("--check", action="store_true", help="Check for mismatches")
     parser.add_argument("--fix", action="store_true", help="Fix environment issues")
     parser.add_argument("--validate", action="store_true", help="Validate API keys")
-    parser.add_argument("--preflight", action="store_true", help="Run full preflight and emit reports")
+    parser.add_argument(
+        "--preflight", action="store_true", help="Run full preflight and emit reports"
+    )
     args = parser.parse_args()
 
     if not any([args.check, args.fix, args.validate, args.preflight]):
@@ -265,7 +277,11 @@ def main():
         checks["openrouter_api"] = {"ok": validate_api_key("OPENROUTER_API_KEY")}
         # Bright Data reachability (optional; ok also if creds absent)
         bd = check_brightdata_access()
-        checks["brightdata"] = {"available": bd.get("available"), "status_code": bd.get("status_code"), "error": bd.get("error")}
+        checks["brightdata"] = {
+            "available": bd.get("available"),
+            "status_code": bd.get("status_code"),
+            "error": bd.get("error"),
+        }
         # Binaries
         bins = check_binaries()
         checks["binaries"] = {k: {"ok": v} for k, v in bins.items()}
@@ -273,8 +289,16 @@ def main():
         checks["disk"] = check_disk_free()
 
         # Determine pass/fail: all required items should be ok; BrightData only required if env vars set
-        required_ok = checks["openrouter_api"]["ok"] and checks["binaries"]["ocrmypdf"]["ok"] and checks["binaries"]["tesseract"]["ok"] and checks["disk"]["ok"]
-        bd_required = checks["env_vars"]["BRIGHTDATA_API_KEY"] and checks["env_vars"]["BRIGHTDATA_ZONE"]
+        required_ok = (
+            checks["openrouter_api"]["ok"]
+            and checks["binaries"]["ocrmypdf"]["ok"]
+            and checks["binaries"]["tesseract"]["ok"]
+            and checks["disk"]["ok"]
+        )
+        bd_required = (
+            checks["env_vars"]["BRIGHTDATA_API_KEY"]
+            and checks["env_vars"]["BRIGHTDATA_ZONE"]
+        )
         bd_ok = (not bd_required) or bool(checks["brightdata"]["available"])
         overall = required_ok and bd_ok
 

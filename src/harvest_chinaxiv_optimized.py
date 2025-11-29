@@ -74,8 +74,10 @@ class OptimizedChinaXivScraper:
                     # Check for error responses
                     if "<ErrorResponseData>" in html or len(html) < 1000:
                         if attempt < max_retries:
-                            log(f"Error response, retrying {url} (attempt {attempt + 1})")
-                            time.sleep(2 ** attempt)  # Exponential backoff
+                            log(
+                                f"Error response, retrying {url} (attempt {attempt + 1})"
+                            )
+                            time.sleep(2**attempt)  # Exponential backoff
                             continue
                         return None
 
@@ -84,8 +86,10 @@ class OptimizedChinaXivScraper:
                 elif response.status_code in [429, 503, 504]:
                     # Rate limiting or server errors - retry with backoff
                     if attempt < max_retries:
-                        backoff_time = 2 ** attempt
-                        log(f"Rate limited, retrying {url} in {backoff_time}s (attempt {attempt + 1})")
+                        backoff_time = 2**attempt
+                        log(
+                            f"Rate limited, retrying {url} in {backoff_time}s (attempt {attempt + 1})"
+                        )
                         time.sleep(backoff_time)
                         continue
                     return None
@@ -97,7 +101,7 @@ class OptimizedChinaXivScraper:
             except requests.exceptions.Timeout:
                 if attempt < max_retries:
                     log(f"Timeout, retrying {url} (attempt {attempt + 1})")
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                     continue
                 log(f"Timeout after {max_retries} retries for {url}")
                 return None
@@ -105,7 +109,7 @@ class OptimizedChinaXivScraper:
             except Exception as e:
                 if attempt < max_retries:
                     log(f"Fetch exception, retrying {url}: {e} (attempt {attempt + 1})")
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                     continue
                 log(f"Fetch exception after {max_retries} retries for {url}: {e}")
                 return None

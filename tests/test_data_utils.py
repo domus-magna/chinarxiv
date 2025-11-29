@@ -2,7 +2,6 @@
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 
 from src.data_utils import filter_by_timestamp, utc_date_range_str, stable_id_from_oai
 

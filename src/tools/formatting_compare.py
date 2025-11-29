@@ -59,7 +59,7 @@ def pick_candidates(count: int) -> List[str]:
 
 
 def build_markdown_variants(
-    rec: Dict[str, Any]
+    rec: Dict[str, Any],
 ) -> Tuple[Dict[str, str], Dict[str, str], str]:
     """Return (before_md, after_md, note). Each is a dict with 'abstract' and 'body'."""
     # Before: Raw unformatted translation
@@ -176,9 +176,7 @@ def render_index(ids: List[str], out_dir: str) -> None:
     <ol>{links}</ol>
     <p>Open each link to compare unformatted vs LLM formatting.</p>
     </body></html>
-    """.format(
-        links=links
-    )
+    """.format(links=links)
     ensure_dir(out_dir)
     write_text(os.path.join(out_dir, "index.html"), html)
 

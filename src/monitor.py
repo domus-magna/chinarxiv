@@ -136,7 +136,11 @@ class MonitoringDashboard:
 
                 if ok:
                     response = Response(self.render_login_success())
-                    response.set_cookie("auth_token", "authenticated", max_age=AUTH_SESSION_TIMEOUT_SECONDS)
+                    response.set_cookie(
+                        "auth_token",
+                        "authenticated",
+                        max_age=AUTH_SESSION_TIMEOUT_SECONDS,
+                    )
                     return response
                 else:
                     return self.render_login(error="Invalid credentials")

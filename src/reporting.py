@@ -11,7 +11,9 @@ def _ensure_dir(path: Path) -> None:
 
 
 def build_markdown_report(
-    title: str, summary_items: Sequence[Tuple[str, Any]], reasons: Sequence[str] | None = None
+    title: str,
+    summary_items: Sequence[Tuple[str, Any]],
+    reasons: Sequence[str] | None = None,
 ) -> str:
     lines = [f"# {title}", ""]
     for label, value in summary_items:
@@ -26,7 +28,11 @@ def build_markdown_report(
 
 
 def save_validation_report(
-    report_dir: str, basename: str, payload: Dict[str, Any], markdown: str, summary: Dict[str, Any] | None = None
+    report_dir: str,
+    basename: str,
+    payload: Dict[str, Any],
+    markdown: str,
+    summary: Dict[str, Any] | None = None,
 ) -> None:
     report_path = Path(report_dir)
     _ensure_dir(report_path)

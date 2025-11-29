@@ -1,7 +1,7 @@
 """
 Formatting service for consistent Markdown output.
 
-Uses LLM-based formatting to convert translated fields into consistent Markdown 
+Uses LLM-based formatting to convert translated fields into consistent Markdown
 while preserving math and citations. Fails loudly if LLM formatting is unavailable.
 """
 

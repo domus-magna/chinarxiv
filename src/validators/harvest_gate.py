@@ -192,7 +192,9 @@ def _resolve_pdf(rec: Dict[str, Any]) -> Tuple[Optional[str], List[str], bool]:
     return None, issues, False
 
 
-def run_harvest_gate(records_path: Optional[str] = None, out_dir: str = "reports") -> HarvestGateSummary:
+def run_harvest_gate(
+    records_path: Optional[str] = None, out_dir: str = "reports"
+) -> HarvestGateSummary:
     records_path = records_path or _find_latest_records()
     if not records_path:
         summary = {
@@ -219,7 +221,9 @@ def run_harvest_gate(records_path: Optional[str] = None, out_dir: str = "reports
             summary["reasons"],
         )
         save_validation_report(out_dir, "harvest_report", detail, markdown, summary)
-        return HarvestGateSummary(total=0, schema_pass=0, pdf_ok=0, dup_ids=0, pass_threshold_met=False)
+        return HarvestGateSummary(
+            total=0, schema_pass=0, pdf_ok=0, dup_ids=0, pass_threshold_met=False
+        )
 
     recs = _load_records(records_path)
     total = len(recs)
@@ -259,7 +263,11 @@ def run_harvest_gate(records_path: Optional[str] = None, out_dir: str = "reports
     # Thresholds: schema >= configured %, pdf_ok >= configured % of schema_ok
     schema_rate = (schema_pass / total) * 100 if total else 0.0
     pdf_rate = (pdf_ok / schema_pass * 100) if schema_pass else 0.0
-    pass_threshold = (schema_rate >= min_schema_rate) and (pdf_rate >= min_pdf_rate) and (dup_ids == 0)
+    pass_threshold = (
+        (schema_rate >= min_schema_rate)
+        and (pdf_rate >= min_pdf_rate)
+        and (dup_ids == 0)
+    )
 
     reasons: List[str] = []
     if schema_rate < min_schema_rate:
@@ -301,19 +309,31 @@ def run_harvest_gate(records_path: Optional[str] = None, out_dir: str = "reports
     )
     save_validation_report(out_dir, "harvest_report", detail, markdown, summary)
 
-    return HarvestGateSummary(total=total, schema_pass=schema_pass, pdf_ok=pdf_ok, dup_ids=dup_ids, pass_threshold_met=pass_threshold)
+    return HarvestGateSummary(
+        total=total,
+        schema_pass=schema_pass,
+        pdf_ok=pdf_ok,
+        dup_ids=dup_ids,
+        pass_threshold_met=pass_threshold,
+    )
 
 
 if __name__ == "__main__":
     summary = run_harvest_gate()
-    print(json.dumps({
-        "total": summary.total,
-        "schema_pass": summary.schema_pass,
-        "pdf_ok": summary.pdf_ok,
-        "dup_ids": summary.dup_ids,
-        "pass": summary.pass_threshold_met,
-    }))
+    print(
+        json.dumps(
+            {
+                "total": summary.total,
+                "schema_pass": summary.schema_pass,
+                "pdf_ok": summary.pdf_ok,
+                "dup_ids": summary.dup_ids,
+                "pass": summary.pass_threshold_met,
+            }
+        )
+    )
     should_fail = (summary.total == 0) or not summary.pass_threshold_met
     if should_fail:
-        sys.stderr.write("Harvest gate failed: no records processed or thresholds not met.\n")
+        sys.stderr.write(
+            "Harvest gate failed: no records processed or thresholds not met.\n"
+        )
         sys.exit(1)

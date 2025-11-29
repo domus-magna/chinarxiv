@@ -7,7 +7,6 @@ Covers:
 - Translation validation errors
 """
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -134,7 +133,9 @@ class TestCircuitBreaker:
         for code in persistent_codes:
             service._circuit_breaker.reset()
             service._record_failure(code)
-            assert service._circuit_breaker.consecutive_persistent == 1, f"Code {code} should be persistent"
+            assert (
+                service._circuit_breaker.consecutive_persistent == 1
+            ), f"Code {code} should be persistent"
             assert service._circuit_breaker.consecutive_transient == 0
 
 
@@ -301,9 +302,7 @@ class TestOpenRouterRequest:
 
         mock_response = MagicMock()
         mock_response.ok = True
-        mock_response.json.return_value = {
-            "choices": [{"message": {"content": ""}}]
-        }
+        mock_response.json.return_value = {"choices": [{"message": {"content": ""}}]}
         mock_response.text = '{"choices": [{"message": {"content": ""}}]}'
         mock_post.return_value = mock_response
 

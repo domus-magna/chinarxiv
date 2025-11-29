@@ -45,7 +45,13 @@ def _extend_archive(path: Path, jobs: List[dict]) -> None:
 
 
 def _completed_sort_key(job: dict) -> Tuple[bool, str]:
-    ts = job.get("completed_at") or job.get("updated_at") or job.get("started_at") or job.get("created_at") or ""
+    ts = (
+        job.get("completed_at")
+        or job.get("updated_at")
+        or job.get("started_at")
+        or job.get("created_at")
+        or ""
+    )
     return (False, ts) if ts else (True, "")
 
 
@@ -63,7 +69,9 @@ def compact_queue(
         return (0, 0)
 
     jobs: List[dict] = payload["jobs"]
-    completed_jobs: List[dict] = [job for job in jobs if job.get("status") == COMPLETED_STATUS]
+    completed_jobs: List[dict] = [
+        job for job in jobs if job.get("status") == COMPLETED_STATUS
+    ]
     retain_completed = max(retain_completed, 0)
 
     retained_jobs: List[dict] = []
@@ -81,7 +89,10 @@ def compact_queue(
     )
     retained_subset = completed_sorted[:retain_completed] if retain_completed else []
     retained_keys = {
-        (job.get("paper_id"), job.get("completed_at") or job.get("started_at") or job.get("created_at"))
+        (
+            job.get("paper_id"),
+            job.get("completed_at") or job.get("started_at") or job.get("created_at"),
+        )
         for job in retained_subset
     }
 
@@ -89,7 +100,10 @@ def compact_queue(
         if job.get("status") != COMPLETED_STATUS:
             retained_jobs.append(job)
             continue
-        key = (job.get("paper_id"), job.get("completed_at") or job.get("started_at") or job.get("created_at"))
+        key = (
+            job.get("paper_id"),
+            job.get("completed_at") or job.get("started_at") or job.get("created_at"),
+        )
         if key in retained_keys:
             retained_jobs.append(job)
             retained_keys.remove(key)
@@ -108,8 +122,15 @@ def compact_queue(
 
 
 def main(argv: Optional[Iterable[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Compact cloud job queue and archive completed entries.")
-    parser.add_argument("--queue-file", type=Path, default=QUEUE_DEFAULT, help="Queue JSON path (default: data/cloud_jobs.json)")
+    parser = argparse.ArgumentParser(
+        description="Compact cloud job queue and archive completed entries."
+    )
+    parser.add_argument(
+        "--queue-file",
+        type=Path,
+        default=QUEUE_DEFAULT,
+        help="Queue JSON path (default: data/cloud_jobs.json)",
+    )
     parser.add_argument(
         "--archive-file",
         type=Path,
@@ -124,7 +145,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    archived, retained = compact_queue(args.queue_file, args.archive_file, args.retain_completed)
+    archived, retained = compact_queue(
+        args.queue_file, args.archive_file, args.retain_completed
+    )
     print(f"Archived {archived} completed jobs; retained {retained}.")
     return 0
 

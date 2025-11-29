@@ -56,7 +56,11 @@ def describe_workflow(path: str | Path) -> str:
     name = data.get("name") or p.stem.replace("-", " ")
     on_block = data.get("on") or {}
     triggers: list[str] = sorted(on_block.keys()) if isinstance(on_block, dict) else []
-    inputs = (on_block.get("workflow_dispatch") or {}).get("inputs") if isinstance(on_block, dict) else None
+    inputs = (
+        (on_block.get("workflow_dispatch") or {}).get("inputs")
+        if isinstance(on_block, dict)
+        else None
+    )
     jobs = sorted((data.get("jobs") or {}).keys())
 
     # Curated by filename keywords (simple and effective)

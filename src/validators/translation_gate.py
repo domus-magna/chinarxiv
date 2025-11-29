@@ -22,7 +22,9 @@ class GateSummary:
     total: int
 
 
-def run_translation_gate(output_path: str = "reports/translation_report.json") -> GateSummary:
+def run_translation_gate(
+    output_path: str = "reports/translation_report.json",
+) -> GateSummary:
     from src.qa_filter import SynthesisQAFilter
 
     qa = SynthesisQAFilter()
@@ -108,7 +110,11 @@ def run_translation_gate(output_path: str = "reports/translation_report.json") -
     if flagged > max_flagged_absolute >= 0:
         reasons.append("flagged_count_exceeds_threshold")
 
-    pass_ok = total > 0 and flagged_ratio <= max_flagged_ratio and not (flagged > max_flagged_absolute >= 0)
+    pass_ok = (
+        total > 0
+        and flagged_ratio <= max_flagged_ratio
+        and not (flagged > max_flagged_absolute >= 0)
+    )
 
     summary = {
         "total": total,
@@ -135,14 +141,18 @@ def run_translation_gate(output_path: str = "reports/translation_report.json") -
         ],
         reasons,
     )
-    save_validation_report(str(report_path.parent), report_path.stem, payload, markdown, summary)
+    save_validation_report(
+        str(report_path.parent), report_path.stem, payload, markdown, summary
+    )
 
     return GateSummary(passed=passed, flagged=flagged, total=total)
 
 
 if __name__ == "__main__":
     summary = run_translation_gate()
-    print(f"Summary: total={summary.total} passed={summary.passed} flagged={summary.flagged}")
+    print(
+        f"Summary: total={summary.total} passed={summary.passed} flagged={summary.flagged}"
+    )
     # Intentional hard stop: any QA-flagged translation must be reviewed before downstream stages run.
     thresholds = get_config().get("validation_thresholds", {}).get("translation", {})
     max_flagged_ratio = float(thresholds.get("max_flagged_ratio", 0.0))
@@ -152,5 +162,7 @@ if __name__ == "__main__":
     exceeds_absolute = summary.flagged > max_flagged_absolute >= 0
     should_fail = (summary.total == 0) or exceeds_ratio or exceeds_absolute
     if should_fail:
-        sys.stderr.write("Translation gate failed: no translations processed or QA flagged items.\n")
+        sys.stderr.write(
+            "Translation gate failed: no translations processed or QA flagged items.\n"
+        )
         sys.exit(1)

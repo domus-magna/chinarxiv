@@ -5,6 +5,7 @@ Reformat existing translations using the improved LLM formatter.
 This script processes all existing translated papers in data/translated/
 and applies the improved formatting with better spacing and readability.
 """
+
 import argparse
 import json
 import sys

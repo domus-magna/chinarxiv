@@ -25,7 +25,9 @@ def _write_summary(payload: dict) -> None:
     """Persist pipeline summary so CI can make decisions without parsing logs."""
     SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-    SUMMARY_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    SUMMARY_PATH.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def run_cli() -> None:

@@ -279,9 +279,7 @@ class SynthesisQAFilter:
         # Determine status
         if chinese_ratio > self.MAX_CHINESE_RATIO:
             status = QAStatus.FLAG_CHINESE
-        elif watermark_count > 0:
-            status = QAStatus.FLAG_CONTENT
-        elif len(issues) >= 3:
+        elif watermark_count > 0 or len(issues) >= 3:
             status = QAStatus.FLAG_CONTENT
         elif issues:
             status = QAStatus.FLAG_FORMATTING
@@ -310,7 +308,7 @@ class SynthesisQAFilter:
         if result.chinese_ratio > 0.01:  # 1%
             return False
         # Block if watermarks detected
-        if QAStatus.FLAG_CONTENT == result.status and "Watermark" in str(result.issues):
+        if result.status == QAStatus.FLAG_CONTENT and "Watermark" in str(result.issues):
             return False
         return True
 

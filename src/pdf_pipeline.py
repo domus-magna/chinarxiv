@@ -4,6 +4,7 @@ PDF Download + Text Extraction Pipeline
 
 Downloads PDFs from provided URLs and extracts text using pdfminer.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,7 +31,13 @@ except ImportError:  # pragma: no cover
 
 
 @retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(3))
-def download_pdf(url: str, output_path: str, *, referer: str | None = None, session_id: str | None = None) -> bool:
+def download_pdf(
+    url: str,
+    output_path: str,
+    *,
+    referer: str | None = None,
+    session_id: str | None = None,
+) -> bool:
     """
     Download a PDF from a URL with validation.
 
@@ -91,8 +98,8 @@ def download_pdf(url: str, output_path: str, *, referer: str | None = None, sess
             raise http_err
 
         # Validate PDF content
-        content_type = resp.headers.get('content-type', '').lower()
-        if 'pdf' not in content_type and not resp.content.startswith(b'%PDF-'):
+        content_type = resp.headers.get("content-type", "").lower()
+        if "pdf" not in content_type and not resp.content.startswith(b"%PDF-"):
             preview = ""
             with suppress(Exception):
                 preview = (resp.text or "")[:200]
@@ -102,9 +109,13 @@ def download_pdf(url: str, output_path: str, *, referer: str | None = None, sess
                 f"preview={preview!r}"
             )
             log("Falling back to Unlocker proxy, then headless browser if needed")
-            if _unlocker_raw_fetch(url, output_path, referer=referer, session_id=session_id):
+            if _unlocker_raw_fetch(
+                url, output_path, referer=referer, session_id=session_id
+            ):
                 return True
-            if _headless_pdf_fetch(url, output_path, referer=referer, session_id=session_id):
+            if _headless_pdf_fetch(
+                url, output_path, referer=referer, session_id=session_id
+            ):
                 return True
             return False
 
@@ -132,9 +143,13 @@ def download_pdf(url: str, output_path: str, *, referer: str | None = None, sess
     except Exception as e:
         log(f"Failed to download {url}: {e}")
         # Fallback order: Unlocker first, then headless (consistent with invalid-content handler)
-        if _unlocker_raw_fetch(url, output_path, referer=referer, session_id=session_id):
+        if _unlocker_raw_fetch(
+            url, output_path, referer=referer, session_id=session_id
+        ):
             return True
-        if _headless_pdf_fetch(url, output_path, referer=referer, session_id=session_id):
+        if _headless_pdf_fetch(
+            url, output_path, referer=referer, session_id=session_id
+        ):
             return True
         return False
 
@@ -209,7 +224,9 @@ def _headless_pdf_fetch(
             body = resp.body()
             content_type = (resp.headers.get("content-type") or "").lower()
             if "pdf" not in content_type and not body.startswith(b"%PDF-"):
-                log(f"Headless response not PDF for {url} (content-type={content_type})")
+                log(
+                    f"Headless response not PDF for {url} (content-type={content_type})"
+                )
                 return False
 
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -229,7 +246,9 @@ def _headless_pdf_fetch(
         # If the event loop is already running (common when invoked in some runtimes),
         # skip headless and let the caller fall back to Unlocker.
         if "event loop is already running" in str(exc).lower():
-            log(f"Headless Playwright fallback failed (loop running) for {url}; skipping headless and relying on Unlocker")
+            log(
+                f"Headless Playwright fallback failed (loop running) for {url}; skipping headless and relying on Unlocker"
+            )
             return False
         log(f"Headless Playwright fallback failed for {url}: {exc}")
         return False
@@ -251,7 +270,9 @@ def _unlocker_raw_fetch(
 ) -> bool:
     """Fallback to Bright Data Web Unlocker raw API."""
     api_key = os.getenv("BRIGHTDATA_API_KEY")
-    unlocker_zone = os.getenv("BRIGHTDATA_UNLOCKER_ZONE") or os.getenv("BRIGHTDATA_ZONE")
+    unlocker_zone = os.getenv("BRIGHTDATA_UNLOCKER_ZONE") or os.getenv(
+        "BRIGHTDATA_ZONE"
+    )
     if not api_key or not unlocker_zone:
         log("Bright Data Unlocker credentials missing; skipping Unlocker fallback")
         return False
@@ -268,7 +289,11 @@ def _unlocker_raw_fetch(
     username = f"brd-customer-{customer_id}-zone-{unlocker_zone}"
     if session_id:
         username += f"-session-{session_id}"
-    password = os.getenv("BRIGHTDATA_UNLOCKER_PASSWORD") or os.getenv("BRIGHTDATA_ZONE_PASSWORD") or os.getenv("BRIGHTDATA_ZONE")
+    password = (
+        os.getenv("BRIGHTDATA_UNLOCKER_PASSWORD")
+        or os.getenv("BRIGHTDATA_ZONE_PASSWORD")
+        or os.getenv("BRIGHTDATA_ZONE")
+    )
     if not password:
         log("Bright Data Unlocker password missing; skipping Unlocker fallback")
         return False
@@ -297,7 +322,9 @@ def _unlocker_raw_fetch(
     body = resp.content or b""
     if not body.startswith(b"%PDF-"):
         content_type = resp.headers.get("content-type", "")
-        log(f"Web Unlocker raw fallback did not return PDF for {url} (content-type={content_type})")
+        log(
+            f"Web Unlocker raw fallback did not return PDF for {url} (content-type={content_type})"
+        )
         return False
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -474,7 +501,9 @@ def process_paper(
                 ocr_out,
             ]
             log(f"Running OCR for {paper_id}…")
-            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(
+                cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
             # Re-extract
             paragraphs = extract_from_pdf(ocr_out)
             post_metrics = _compute_text_metrics(paragraphs)
@@ -499,7 +528,9 @@ def process_paper(
                     "ocr_pdf_path": ocr_out,
                     "post_ocr_chars": post_chars,
                     "post_alpha_ratio": round(post_metrics["alpha_ratio"], 4),
-                    "post_most_common_ratio": round(post_metrics["most_common_ratio"], 4),
+                    "post_most_common_ratio": round(
+                        post_metrics["most_common_ratio"], 4
+                    ),
                     "improved": improved_flag,
                     "improvement": char_gain,
                     "quality_ok": quality_ok,

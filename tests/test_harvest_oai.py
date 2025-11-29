@@ -27,5 +27,6 @@ def test_normalize_record_dc_minimal():
     assert rec["id"] == "2025-12345"
     assert rec["pdf_url"].endswith(".pdf")
     assert rec["title"] == "示例标题"
-    assert rec["license"]["raw"].startswith("CC-BY") or rec["license"]["raw"].startswith("CC BY")
-
+    assert rec["license"]["raw"].startswith("CC-BY") or rec["license"][
+        "raw"
+    ].startswith("CC BY")

@@ -40,13 +40,15 @@ class CircuitBreaker:
 
     # Default error codes considered "persistent" (payment/auth issues)
     # Using frozenset to prevent accidental mutation of shared default
-    DEFAULT_PERSISTENT_CODES: FrozenSet[str] = frozenset({
-        "payment_required",
-        "insufficient_quota",
-        "invalid_api_key",
-        "invalid_credentials",
-        "unauthorized",
-    })
+    DEFAULT_PERSISTENT_CODES: FrozenSet[str] = frozenset(
+        {
+            "payment_required",
+            "insufficient_quota",
+            "invalid_api_key",
+            "invalid_credentials",
+            "unauthorized",
+        }
+    )
 
     def __init__(
         self,

@@ -36,11 +36,11 @@ def detect_repo_from_git() -> Optional[str]:
     # Best-effort parse of 'origin' remote
     # Supports https remotes like github.com/<owner>/<repo>.git
     import subprocess
+
     try:
-        url = (
-            subprocess.check_output(["git", "remote", "get-url", "origin"], text=True)
-            .strip()
-        )
+        url = subprocess.check_output(
+            ["git", "remote", "get-url", "origin"], text=True
+        ).strip()
     except Exception:
         return None
     if "github.com" not in url:
@@ -80,7 +80,9 @@ class GHClient:
             }
         )
 
-    def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _get(
+        self, path: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         url = f"{API_BASE}{path}"
         r = self.session.get(url, params=params, timeout=20)
         if not r.ok:
@@ -102,7 +104,9 @@ class GHClient:
         return data.get("workflows", [])
 
     # Runs
-    def list_runs(self, workflow_id: Optional[int] = None, per_page: int = 50) -> List[Dict[str, Any]]:
+    def list_runs(
+        self, workflow_id: Optional[int] = None, per_page: int = 50
+    ) -> List[Dict[str, Any]]:
         if workflow_id:
             data = self._get(
                 f"/repos/{self.cfg.repo}/actions/workflows/{workflow_id}/runs",
@@ -137,7 +141,9 @@ class GHClient:
         return dest_path
 
     # Dispatch (workflow_dispatch)
-    def dispatch_workflow(self, workflow_id: int | str, ref: str, inputs: Optional[Dict[str, Any]] = None) -> None:
+    def dispatch_workflow(
+        self, workflow_id: int | str, ref: str, inputs: Optional[Dict[str, Any]] = None
+    ) -> None:
         payload: Dict[str, Any] = {"ref": ref}
         if inputs:
             payload["inputs"] = inputs

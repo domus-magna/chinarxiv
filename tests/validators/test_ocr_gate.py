@@ -22,8 +22,18 @@ def test_gate_flags_missing_execution(tmp_path: Path) -> None:
     """Missing execution entries for flagged items should fail the gate."""
     report_dir = tmp_path
     report = {
-        "paper-1": {"need_ocr": True, "pre_ocr_chars": 100, "ran_ocr": False, "post_ocr_chars": 100},
-        "paper-2": {"need_ocr": False, "pre_ocr_chars": 2000, "ran_ocr": False, "post_ocr_chars": 2000},
+        "paper-1": {
+            "need_ocr": True,
+            "pre_ocr_chars": 100,
+            "ran_ocr": False,
+            "post_ocr_chars": 100,
+        },
+        "paper-2": {
+            "need_ocr": False,
+            "pre_ocr_chars": 2000,
+            "ran_ocr": False,
+            "post_ocr_chars": 2000,
+        },
     }
     write_json(report_dir / "ocr_report.json", report)
 
@@ -43,7 +53,12 @@ def test_gate_passes_with_improvements(tmp_path: Path) -> None:
             "ran_ocr": True,
             "post_ocr_chars": 1000,
         },
-        "paper-2": {"need_ocr": False, "pre_ocr_chars": 2000, "ran_ocr": False, "post_ocr_chars": 2000},
+        "paper-2": {
+            "need_ocr": False,
+            "pre_ocr_chars": 2000,
+            "ran_ocr": False,
+            "post_ocr_chars": 2000,
+        },
     }
     write_json(report_dir / "ocr_report.json", report)
 

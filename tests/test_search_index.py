@@ -36,4 +36,11 @@ def test_build_index_fields():
     assert len(idx) == 2
     assert idx[0]["id"] == "1"
     assert idx[1]["id"] == "3"
-    assert set(idx[0].keys()) == {"id", "title", "authors", "abstract", "subjects", "date"}
+    assert set(idx[0].keys()) == {
+        "id",
+        "title",
+        "authors",
+        "abstract",
+        "subjects",
+        "date",
+    }

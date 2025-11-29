@@ -116,30 +116,32 @@ def generate_figure_manifest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     total_tables = 0
 
     for item in items:
-        figures = item.get('_figures', [])
-        figure_count = item.get('_figure_count', 0)
-        table_count = item.get('_table_count', 0)
+        figures = item.get("_figures", [])
+        figure_count = item.get("_figure_count", 0)
+        table_count = item.get("_table_count", 0)
 
         if figures:
-            papers_with_figures.append({
-                'id': item.get('id'),
-                'figure_count': figure_count,
-                'table_count': table_count,
-                'figures': figures,
-            })
+            papers_with_figures.append(
+                {
+                    "id": item.get("id"),
+                    "figure_count": figure_count,
+                    "table_count": table_count,
+                    "figures": figures,
+                }
+            )
             total_figures += figure_count
             total_tables += table_count
 
     # Sort by total figure/table count (most first)
-    papers_with_figures.sort(key=lambda p: -(p['figure_count'] + p['table_count']))
+    papers_with_figures.sort(key=lambda p: -(p["figure_count"] + p["table_count"]))
 
     manifest = {
-        'generated': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-        'total_papers_scanned': len(items),
-        'total_papers_with_figures': len(papers_with_figures),
-        'total_figures': total_figures,
-        'total_tables': total_tables,
-        'papers': papers_with_figures,
+        "generated": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "total_papers_scanned": len(items),
+        "total_papers_with_figures": len(papers_with_figures),
+        "total_figures": total_figures,
+        "total_tables": total_tables,
+        "papers": papers_with_figures,
     }
 
     return manifest
@@ -167,7 +169,9 @@ def render_site(items: List[Dict[str, Any]]) -> None:
             if not text:
                 return ""
             paragraphs = [p.strip() for p in str(text).split("\n\n")]
-            html = "".join("<p>{}</p>".format(p.replace("\n", "<br>")) for p in paragraphs if p)
+            html = "".join(
+                "<p>{}</p>".format(p.replace("\n", "<br>")) for p in paragraphs if p
+            )
             return html
 
         env.filters["markdown"] = simple_markdown
@@ -203,12 +207,16 @@ def render_site(items: List[Dict[str, Any]]) -> None:
     figure_manifest_path = os.path.join("reports", "figure_manifest.json")
     ensure_dir(os.path.dirname(figure_manifest_path))
     write_json(figure_manifest_path, figure_manifest)
-    log(f"Figure manifest: {figure_manifest['total_papers_with_figures']} papers with "
-        f"{figure_manifest['total_figures']} figures, {figure_manifest['total_tables']} tables")
+    log(
+        f"Figure manifest: {figure_manifest['total_papers_with_figures']} papers with "
+        f"{figure_manifest['total_figures']} figures, {figure_manifest['total_tables']} tables"
+    )
 
     # Index page
     tmpl_index = env.get_template("index.html")
-    html_index = tmpl_index.render(items=items, root=".", build_version=build_version, categories=categories)
+    html_index = tmpl_index.render(
+        items=items, root=".", build_version=build_version, categories=categories
+    )
     write_text(os.path.join(base_out, "index.html"), html_index)
 
     # Monitor page
@@ -246,9 +254,7 @@ def render_site(items: List[Dict[str, Any]]) -> None:
                 len([ln for ln in lines if ln.strip().startswith("#")]) >= 1
                 and len(non_heading_text) == 0
             )
-            if non_heading_text and len(non_heading_text) > 100:
-                has_full_text = True
-            elif not heading_only and len(body_md.strip()) > 200:
+            if non_heading_text and len(non_heading_text) > 100 or not heading_only and len(body_md.strip()) > 200:
                 has_full_text = True
         # Fallback: treat body_en arrays with sufficient content as full text
         if not has_full_text:
@@ -269,7 +275,7 @@ def render_site(items: List[Dict[str, Any]]) -> None:
                 it["formatted_body_md"] = format_translation_to_markdown(it)
 
         # Page metadata (arXiv-style polish): use absolute canonical
-        title_text = (it.get("title_en") or "")
+        title_text = it.get("title_en") or ""
         canonical_abs = f"{site_base}/items/{it['id']}/"
         html = tmpl_item.render(
             item=it,
@@ -341,11 +347,13 @@ def render_site(items: List[Dict[str, Any]]) -> None:
             )
 
         sitemap_xml = [
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
-            "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
+            '<?xml version="1.0" encoding="UTF-8"?>\n',
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n',
         ]
         # Home gets higher priority
-        sitemap_xml.append(url_entry(f"{site_base}/", priority="1.0", changefreq="daily"))
+        sitemap_xml.append(
+            url_entry(f"{site_base}/", priority="1.0", changefreq="daily")
+        )
         # Add the rest (skip duplicate home which we already added)
         for u in urls:
             if u == f"{site_base}/":

@@ -29,7 +29,11 @@ def test_preflight_offline(tmp_path, monkeypatch):
                 "BRIGHTDATA_ZONE": False,
             },
             "openrouter_api": {"ok": False},
-            "brightdata": {"available": False, "status_code": None, "error": "no creds"},
+            "brightdata": {
+                "available": False,
+                "status_code": None,
+                "error": "no creds",
+            },
             "binaries": {"ocrmypdf": {"ok": False}, "tesseract": {"ok": False}},
             "disk": {"ok": True, "free_gb": 2.0, "min_gb": 1.0},
         },
@@ -38,4 +42,3 @@ def test_preflight_offline(tmp_path, monkeypatch):
 
     assert os.path.exists("reports/preflight_report.json")
     assert os.path.exists("reports/preflight_report.md")
-

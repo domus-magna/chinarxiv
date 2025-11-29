@@ -52,12 +52,16 @@ def basic_auth(f):
     def wrapper(*args, **kwargs):
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Basic "):
-            return Response(status=401, headers={"WWW-Authenticate": "Basic realm=admin"})
+            return Response(
+                status=401, headers={"WWW-Authenticate": "Basic realm=admin"}
+            )
         try:
             raw = base64.b64decode(auth.split(" ", 1)[1]).decode("utf-8")
             username, password = raw.split(":", 1)
         except Exception:
-            return Response(status=401, headers={"WWW-Authenticate": "Basic realm=admin"})
+            return Response(
+                status=401, headers={"WWW-Authenticate": "Basic realm=admin"}
+            )
         creds = _get_passwords()
         ok = False
         if creds["hash"]:
@@ -65,11 +69,22 @@ def basic_auth(f):
         elif creds["plain"]:
             ok = password == creds["plain"]
             if ok:
-                logger.warning("ADMIN_PASSWORD used without hash; set ADMIN_PASSWORD_HASH for stronger security")
+                logger.warning(
+                    "ADMIN_PASSWORD used without hash; set ADMIN_PASSWORD_HASH for stronger security"
+                )
         if not ok:
-            logger.warning("Admin auth failed for user=%s from %s", username, request.remote_addr)
-            return Response(status=401, headers={"WWW-Authenticate": "Basic realm=admin"})
-        logger.info("Admin access %s by user=%s from %s", request.path, username, request.remote_addr)
+            logger.warning(
+                "Admin auth failed for user=%s from %s", username, request.remote_addr
+            )
+            return Response(
+                status=401, headers={"WWW-Authenticate": "Basic realm=admin"}
+            )
+        logger.info(
+            "Admin access %s by user=%s from %s",
+            request.path,
+            username,
+            request.remote_addr,
+        )
         return f(*args, **kwargs)
 
     return wrapper
@@ -147,19 +162,40 @@ def make_app() -> Flask:
             cfg = make_config()
             client = GHClient(cfg)
             latest_runs = client.list_runs(per_page=20)
+
             # Hide irrelevant automation runs (e.g., Claude Code)
             def _is_hidden_workflow(name: str, path: str | None = None) -> bool:
                 s = (name or "").lower()
                 p = (path or "").lower()
                 return ("claude" in s) or ("claude" in p)
 
-            latest_runs = [r for r in latest_runs if not _is_hidden_workflow(r.get("name",""), r.get("path"))]
+            latest_runs = [
+                r
+                for r in latest_runs
+                if not _is_hidden_workflow(r.get("name", ""), r.get("path"))
+            ]
 
             # Basic metrics from recent runs (simple counts)
-            successes = sum(1 for r in latest_runs if (r.get("conclusion") or "").lower() == "success")
-            failures = sum(1 for r in latest_runs if (r.get("conclusion") or "").lower() == "failure")
-            cancelled = sum(1 for r in latest_runs if (r.get("conclusion") or "").lower() == "cancelled")
-            in_progress = sum(1 for r in latest_runs if (r.get("status") or "").lower() in ("in_progress", "queued"))
+            successes = sum(
+                1
+                for r in latest_runs
+                if (r.get("conclusion") or "").lower() == "success"
+            )
+            failures = sum(
+                1
+                for r in latest_runs
+                if (r.get("conclusion") or "").lower() == "failure"
+            )
+            cancelled = sum(
+                1
+                for r in latest_runs
+                if (r.get("conclusion") or "").lower() == "cancelled"
+            )
+            in_progress = sum(
+                1
+                for r in latest_runs
+                if (r.get("status") or "").lower() in ("in_progress", "queued")
+            )
             metrics = {
                 "window": len(latest_runs),
                 "successes": successes,
@@ -196,6 +232,7 @@ def make_app() -> Flask:
         try:
             client = GHClient(make_config())
             workflows = client.list_workflows()
+
             # Hide irrelevant automation workflows (e.g., Claude Code)
             def _is_hidden_workflow(w: Dict[str, Any]) -> bool:
                 name = (w.get("name") or "").lower()
@@ -238,7 +275,9 @@ def make_app() -> Flask:
             artifacts = client.list_artifacts(run_id)
             previews: Dict[str, Dict[str, Any]] = {}
             # Attempt to preview well-known JSON artifacts
-            MAX_PREVIEW_BYTES = int(os.getenv("ADMIN_MAX_PREVIEW_BYTES", str(100 * 1024 * 1024)))
+            MAX_PREVIEW_BYTES = int(
+                os.getenv("ADMIN_MAX_PREVIEW_BYTES", str(100 * 1024 * 1024))
+            )
             for art in artifacts:
                 name = art.get("name", "")
                 if name in ("harvest_report", "translation_report", "ocr_report"):
@@ -249,7 +288,9 @@ def make_app() -> Flask:
                     # Download to memory and extract
                     zip_bytes = io.BytesIO()
                     tmp_zip = Path(tempfile.gettempdir()) / f"{art['id']}.zip"
-                    path = client.download_artifact_zip(art["id"], dest_path=str(tmp_zip))
+                    path = client.download_artifact_zip(
+                        art["id"], dest_path=str(tmp_zip)
+                    )
                     with open(path, "rb") as fh:
                         zip_bytes.write(fh.read())
                     zip_bytes.seek(0)
@@ -264,7 +305,11 @@ def make_app() -> Flask:
                     except Exception:
                         pass
             return render_template(
-                "admin/run.html", run=run, jobs=jobs, artifacts=artifacts, previews=previews
+                "admin/run.html",
+                run=run,
+                jobs=jobs,
+                artifacts=artifacts,
+                previews=previews,
             )
         except Exception as e:
             logger.error("admin_run error: %s", e, exc_info=True)
@@ -306,7 +351,9 @@ def make_app() -> Flask:
                         val = request.form.get(name)
                         if val is not None and val != "":
                             if typ == "choice":
-                                choices = (spec.get("options") or []) or (spec.get("choices") or [])
+                                choices = (spec.get("options") or []) or (
+                                    spec.get("choices") or []
+                                )
                                 if choices and val not in choices:
                                     return render_template(
                                         "admin/dispatch.html",
@@ -317,7 +364,9 @@ def make_app() -> Flask:
                             inputs[name] = val
                         elif "default" in spec:
                             inputs[name] = spec["default"]
-                logger.warning("Workflow %s dispatched ref=%s inputs=%s", wfid, ref, inputs)
+                logger.warning(
+                    "Workflow %s dispatched ref=%s inputs=%s", wfid, ref, inputs
+                )
                 client.dispatch_workflow(wfid, ref=ref, inputs=inputs or None)
                 return redirect(url_for("admin_runs"))
 

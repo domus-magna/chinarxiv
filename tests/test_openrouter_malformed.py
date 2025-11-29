@@ -37,9 +37,7 @@ def _patch_external_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         translation_service, "openrouter_headers", lambda: {"Authorization": "test"}
     )
-    monkeypatch.setattr(
-        translation_service, "get_proxies", lambda: ({}, "none")
-    )
+    monkeypatch.setattr(translation_service, "get_proxies", lambda: ({}, "none"))
 
 
 @pytest.fixture
@@ -51,7 +49,9 @@ def _collector(monkeypatch: pytest.MonkeyPatch) -> List[dict]:
     def _record_error(**kwargs) -> None:
         calls.append(kwargs)
 
-    monkeypatch.setattr(translation_service.monitoring_service, "record_error", _record_error)
+    monkeypatch.setattr(
+        translation_service.monitoring_service, "record_error", _record_error
+    )
     return calls
 
 
@@ -68,7 +68,11 @@ def test_invalid_json_response_logs_and_raises(tmp_path, monkeypatch, _collector
     service = translation_service.TranslationService()
     service.failure_log_dir = tmp_path / "failures"
 
-    monkeypatch.setattr(translation_service.requests, "post", _stub_post(_FakeResponse(text="{not valid")))
+    monkeypatch.setattr(
+        translation_service.requests,
+        "post",
+        _stub_post(_FakeResponse(text="{not valid")),
+    )
 
     call = translation_service.TranslationService._call_openrouter.__wrapped__
 

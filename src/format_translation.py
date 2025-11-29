@@ -4,6 +4,7 @@ Translation Formatter/Prettifier
 
 Post-processes translated paragraphs to improve formatting and readability.
 """
+
 from __future__ import annotations
 
 import re

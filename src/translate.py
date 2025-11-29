@@ -69,9 +69,7 @@ def translate_paper_synthesis(
 
     if not rec:
         records_dir = os.path.join("data", "records")
-        rec_files = sorted(
-            glob.glob(os.path.join(records_dir, "*.json")), reverse=True
-        )
+        rec_files = sorted(glob.glob(os.path.join(records_dir, "*.json")), reverse=True)
         for rf in rec_files:
             try:
                 records = read_json(rf)
@@ -125,7 +123,9 @@ def translate_paper_synthesis(
     out_path = os.path.join(out_dir, f"{paper_id}.json")
     write_json(out_path, translation)
 
-    print(f"Synthesis translation complete: QA={qa_result.status.value}, score={qa_result.score:.2f}")
+    print(
+        f"Synthesis translation complete: QA={qa_result.status.value}, score={qa_result.score:.2f}"
+    )
 
     return out_path
 
@@ -146,6 +146,7 @@ def main():
     except Exception as e:
         print(f"Error: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

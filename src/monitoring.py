@@ -345,7 +345,9 @@ class MonitoringService:
         """Clean up old alerts."""
         try:
             cutoff = datetime.now() - timedelta(days=days)
-            filtered_alerts = filter_by_timestamp(self.alerts, cutoff, keep_invalid=True)
+            filtered_alerts = filter_by_timestamp(
+                self.alerts, cutoff, keep_invalid=True
+            )
 
             if len(filtered_alerts) != len(self.alerts):
                 removed_count = len(self.alerts) - len(filtered_alerts)
@@ -476,9 +478,7 @@ class MonitoringService:
         cutoff = datetime.now() - timedelta(days=days)
 
         # Filter page views and search queries using utility function
-        page_views = filter_by_timestamp(
-            self.analytics.get("page_views", []), cutoff
-        )
+        page_views = filter_by_timestamp(self.analytics.get("page_views", []), cutoff)
         search_queries = filter_by_timestamp(
             self.analytics.get("search_queries", []), cutoff
         )
@@ -530,9 +530,7 @@ class MonitoringService:
         cutoff = datetime.now() - timedelta(days=days)
 
         # Filter metrics using utility function
-        metrics = filter_by_timestamp(
-            self.performance.get("metrics", []), cutoff
-        )
+        metrics = filter_by_timestamp(self.performance.get("metrics", []), cutoff)
 
         return {
             "metrics": metrics,

@@ -75,23 +75,32 @@ def filter_by_timestamp(
 
     Note:
         Handles timezone-aware and naive datetime comparison by normalizing
-        both to the same type. If cutoff is naive, timezone info is stripped
-        from item timestamps. If cutoff is aware, naive item timestamps are
-        assumed to be in the same timezone as cutoff.
+        both to UTC. Timezone-aware timestamps are converted to UTC before
+        comparison. This ensures correct filtering regardless of timezone
+        offsets in the stored data.
     """
     result = []
     for item in items:
         try:
             item_time = datetime.fromisoformat(item.get(timestamp_key, ""))
-            # Normalize timezone awareness to match cutoff
+            # Normalize both to UTC for correct comparison
             if cutoff.tzinfo is None:
-                # Naive cutoff - strip timezone from item_time if present
+                # Naive cutoff - assume UTC, convert item_time to UTC then strip
                 if item_time.tzinfo is not None:
-                    item_time = item_time.replace(tzinfo=None)
+                    # Convert to UTC before stripping timezone
+                    item_time = item_time.astimezone(timezone.utc).replace(tzinfo=None)
             else:
-                # Aware cutoff - assume same timezone for naive item_time
+                # Aware cutoff - convert both to UTC for comparison
+                cutoff_utc = cutoff.astimezone(timezone.utc)
                 if item_time.tzinfo is None:
-                    item_time = item_time.replace(tzinfo=cutoff.tzinfo)
+                    # Assume naive item_time is UTC
+                    item_time = item_time.replace(tzinfo=timezone.utc)
+                else:
+                    item_time = item_time.astimezone(timezone.utc)
+                # Compare in UTC
+                if item_time > cutoff_utc:
+                    result.append(item)
+                continue
             if item_time > cutoff:
                 result.append(item)
         except (ValueError, TypeError, AttributeError):

@@ -35,7 +35,7 @@ SYSTEM_PROMPT = (
     "CRITICAL REQUIREMENTS:\n"
     "1. Preserve ALL LaTeX commands and ⟪MATH_*⟫ placeholders exactly - do not modify, translate, or rewrite any mathematical formulas\n"
     "2. Preserve ALL citation commands (\\cite{}, \\ref{}, \\eqref{}, etc.) exactly as they appear\n"
-    "3. **PRESERVE ALL <PARA id=\"N\">...</PARA> paragraph wrapper tags EXACTLY** - these are structural markers that identify paragraphs and MUST remain untouched with their IDs\n"
+    '3. **PRESERVE ALL <PARA id="N">...</PARA> paragraph wrapper tags EXACTLY** - these are structural markers that identify paragraphs and MUST remain untouched with their IDs\n'
     "4. Maintain academic tone and formal scientific writing style\n"
     "5. Use precise technical terminology - obey the glossary strictly\n"
     "6. Preserve section structure and paragraph organization\n"
@@ -43,7 +43,7 @@ SYSTEM_PROMPT = (
     "OUTPUT RULES:\n"
     "- Return ONLY the translated text for the given input (no explanations, no quotes, no headings you invent).\n"
     "- Keep one output paragraph per input paragraph; do not merge or split paragraphs.\n"
-    "- **Maintain exact count and IDs of <PARA id=\"N\">...</PARA> tags** - if input has N paragraph tags, output must have exactly N paragraph tags with matching IDs\n"
+    '- **Maintain exact count and IDs of <PARA id="N">...</PARA> tags** - if input has N paragraph tags, output must have exactly N paragraph tags with matching IDs\n'
     "- Do NOT add Markdown formatting unless it is present in the source.\n"
     "- Preserve original line breaks within the paragraph when meaningful; otherwise use standard English sentence spacing.\n\n"
     "FORMATTING GUIDELINES:\n"
@@ -51,7 +51,7 @@ SYSTEM_PROMPT = (
     "- Preserve equation numbers and references\n"
     "- Maintain proper academic paragraph structure\n"
     "- Use formal scientific language appropriate for research papers\n"
-    "- Never remove or modify <PARA id=\"N\">...</PARA> tags - they are structural elements that must be preserved with their IDs intact\n\n"
+    '- Never remove or modify <PARA id="N">...</PARA> tags - they are structural elements that must be preserved with their IDs intact\n\n'
     "Remember: Mathematical content, citations, and <PARA> wrapper tags must remain untouched - only translate the Chinese text inside the tags."
 )
 
@@ -185,16 +185,19 @@ class TranslationService:
             from a single thread.
         """
         self.config = config or get_config()
-        self.model = self.config.get("models", {}).get(
-            "default_slug", "openai/gpt-5.1"
-        )
+        self.model = self.config.get("models", {}).get("default_slug", "openai/gpt-5.1")
         self._active_paper_id: Optional[str] = None
         self.glossary = self.config.get("glossary", [])
         self.failure_log_dir = Path("data/monitoring/openrouter_failures")
         # Wall-clock guard per paper (seconds). None disables.
-        self.paper_wallclock_limit = float(
-            (self.config.get("translation") or {}).get("paper_wallclock_limit_seconds", 0)
-        ) or None
+        self.paper_wallclock_limit = (
+            float(
+                (self.config.get("translation") or {}).get(
+                    "paper_wallclock_limit_seconds", 0
+                )
+            )
+            or None
+        )
 
         # Circuit breaker
         translation_cfg = self.config.get("translation") or {}
@@ -316,7 +319,9 @@ class TranslationService:
         # Persist a richer artifact locally for manual debugging.
         try:
             self.failure_log_dir.mkdir(parents=True, exist_ok=True)
-            record_path = self.failure_log_dir / f"{timestamp}_{reason}_{uuid4().hex}.json"
+            record_path = (
+                self.failure_log_dir / f"{timestamp}_{reason}_{uuid4().hex}.json"
+            )
             record: Dict[str, Any] = {
                 "timestamp": timestamp,
                 **metadata,
@@ -480,15 +485,13 @@ class TranslationService:
         # Reuse shared HTTP and error handling logic
         return self._execute_openrouter_request(payload, model)
 
-    def _execute_openrouter_request(
-        self, payload: Dict[str, Any], model: str
-    ) -> str:
+    def _execute_openrouter_request(self, payload: Dict[str, Any], model: str) -> str:
         """
         Execute OpenRouter HTTP request with full error handling.
 
         This is the shared implementation for both _call_openrouter and
         _call_openrouter_synthesis, ensuring consistent error handling,
-        monitoring, and response parsing.
+        monitoring, circuit breaker protection, and response parsing.
 
         Args:
             payload: Complete OpenRouter API payload (model, messages, temperature)
@@ -501,14 +504,20 @@ class TranslationService:
             OpenRouterRetryableError: For network errors, rate limits, or malformed responses
             OpenRouterFatalError: For auth/payment errors (no retry, no fallback)
             OpenRouterError: For other non-retryable errors
+            CircuitBreakerOpen: If circuit breaker is tripped
         """
+        # Check circuit breaker before making request
+        self._check_circuit_breaker()
+
         proxies, source = get_proxies()
         try:
             kwargs = {
                 "headers": openrouter_headers(),
                 "data": json.dumps(payload),
                 "timeout": (
-                    self._connect_timeout if source != "none" else max(1.0, self._connect_timeout - 2),
+                    self._connect_timeout
+                    if source != "none"
+                    else max(1.0, self._connect_timeout - 2),
                     self._read_timeout,
                 ),
             }
@@ -528,7 +537,10 @@ class TranslationService:
                     metadata={"model": model},
                 )
             except Exception as monitor_err:
-                log(f"Debug: Failed to record network error in monitoring: {monitor_err}")
+                log(
+                    f"Debug: Failed to record network error in monitoring: {monitor_err}"
+                )
+            self._record_failure("network_error")
             raise OpenRouterRetryableError(f"Network error: {e}", code="network_error")
 
         if not resp.ok:
@@ -548,6 +560,7 @@ class TranslationService:
             except Exception as monitor_err:
                 log(f"Debug: Failed to record API error in monitoring: {monitor_err}")
             if info["retryable"]:
+                self._record_failure(code)
                 raise OpenRouterRetryableError(
                     f"{message}", code=code, fallback_ok=info["fallback_ok"]
                 )
@@ -567,7 +580,9 @@ class TranslationService:
                     )
                 except Exception as alert_err:
                     log(f"Debug: Failed to send critical alert: {alert_err}")
+                self._record_failure(code)
                 raise OpenRouterFatalError(message, code=code, fallback_ok=False)
+            self._record_failure(code)
             raise OpenRouterError(message, code=code, retryable=False, fallback_ok=True)
 
         try:
@@ -576,6 +591,7 @@ class TranslationService:
             self._log_malformed_response(
                 response=resp, model=model, reason="invalid_json", error=e
             )
+            self._record_failure("invalid_json")
             raise OpenRouterRetryableError(
                 "Malformed response from OpenRouter (invalid JSON)",
                 code="invalid_json",
@@ -591,6 +607,7 @@ class TranslationService:
                 error=e,
                 parsed=data,
             )
+            self._record_failure("invalid_payload")
             raise OpenRouterRetryableError(
                 "Malformed response from OpenRouter (missing content)",
                 code="invalid_payload",
@@ -603,11 +620,14 @@ class TranslationService:
                 reason="empty_content",
                 parsed=data,
             )
+            self._record_failure("empty_content")
             raise OpenRouterRetryableError(
                 "Malformed response from OpenRouter (empty content)",
                 code="empty_content",
             )
 
+        # Record success for circuit breaker
+        self._on_api_success()
         return content
 
     def _chunk_by_sections(
@@ -773,9 +793,7 @@ class TranslationService:
             # Build prompt
             chunk_idx = chunk.get("chunk_index", 0)
             position_hint = (
-                f"(Part {chunk_idx + 1} of {total_chunks})"
-                if total_chunks > 1
-                else ""
+                f"(Part {chunk_idx + 1} of {total_chunks})" if total_chunks > 1 else ""
             )
 
             user_prompt = f"""Translate this section of a Chinese academic paper into fluent English. {position_hint}
@@ -789,17 +807,11 @@ Remember: Produce flowing, readable academic English. Merge fragments into compl
             if dry_run:
                 translated = masked_content  # Return masked as-is for dry run
             else:
-                # Check circuit breaker
-                self._check_circuit_breaker()
-
-                try:
-                    translated = self._call_openrouter_synthesis(
-                        user_prompt, model, glossary
-                    )
-                    self._on_api_success()
-                except OpenRouterError as e:
-                    self._record_failure(getattr(e, "code", None))
-                    raise
+                # Circuit breaker check and success/failure tracking now in
+                # _execute_openrouter_request (called by _call_openrouter_synthesis)
+                translated = self._call_openrouter_synthesis(
+                    user_prompt, model, glossary
+                )
 
             # Verify math preservation
             if not verify_token_parity(mappings, translated):
@@ -876,7 +888,9 @@ Remember: Produce flowing, readable academic English. Merge fragments into compl
                                 )
                             )
                         except Exception as e:
-                            log(f"Warning: Failed to translate creator '{creator}': {e}")
+                            log(
+                                f"Warning: Failed to translate creator '{creator}': {e}"
+                            )
                             translation.creators_en.append(creator)
 
             # Translate subjects
@@ -893,7 +907,9 @@ Remember: Produce flowing, readable academic English. Merge fragments into compl
                                 )
                             )
                         except Exception as e:
-                            log(f"Warning: Failed to translate subject '{subject}': {e}")
+                            log(
+                                f"Warning: Failed to translate subject '{subject}': {e}"
+                            )
                             translation.subjects_en.append(subject)
 
             # Get PDF path for synthesis extraction
@@ -944,7 +960,11 @@ Remember: Produce flowing, readable academic English. Merge fragments into compl
             )
             if body_md:
                 # Estimate input from raw paragraphs
-                raw_paras = extraction_stats.get("merged_paragraphs", 0) if extraction_stats else 0
+                raw_paras = (
+                    extraction_stats.get("merged_paragraphs", 0)
+                    if extraction_stats
+                    else 0
+                )
                 in_toks += raw_paras * ESTIMATED_TOKENS_PER_PARAGRAPH
                 out_toks += estimate_tokens(body_md)
 
