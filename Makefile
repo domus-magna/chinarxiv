@@ -24,7 +24,7 @@ lint:
 	ruff check src tests
 
 fmt:
-	black src tests
+	ruff format src tests
 
 health:
 	$(PY) -m src.health --skip-openrouter || true

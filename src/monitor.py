@@ -11,7 +11,7 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
 import requests
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, session, redirect, url_for
 from werkzeug.security import check_password_hash
 
 from .monitoring import monitoring_service
@@ -135,13 +135,13 @@ class MonitoringDashboard:
                     )
 
                 if ok:
-                    response = Response(self.render_login_success())
-                    response.set_cookie(
-                        "auth_token",
-                        "authenticated",
-                        max_age=AUTH_SESSION_TIMEOUT_SECONDS,
+                    # Use Flask's signed session (cryptographically secure)
+                    session.permanent = True
+                    self.app.permanent_session_lifetime = timedelta(
+                        seconds=AUTH_SESSION_TIMEOUT_SECONDS
                     )
-                    return response
+                    session["authenticated"] = True
+                    return self.render_login_success()
                 else:
                     return self.render_login(error="Invalid credentials")
 
@@ -282,9 +282,8 @@ class MonitoringDashboard:
             return jsonify(results)
 
     def check_auth(self) -> bool:
-        """Check if user is authenticated."""
-        auth_token = request.cookies.get("auth_token")
-        return auth_token == "authenticated"
+        """Check if user is authenticated via signed session."""
+        return session.get("authenticated") is True
 
     def auth_required(self):
         """Return authentication required page."""
@@ -354,8 +353,8 @@ class MonitoringDashboard:
             # Get last update
             last_update = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # Site URL
-            site_url = "https://chinaxiv-english.pages.dev"
+            # Site URL - use production domain or configurable via env
+            site_url = os.environ.get("SITE_URL", "https://chinarxiv.org")
 
             # Check GitHub Actions status
             github_status = "Active"
@@ -437,7 +436,7 @@ class MonitoringDashboard:
         print(f"📊 Dashboard: http://{host}:{port}")
         print(f"🔐 Username: {MONITORING_USERNAME}")
         print(f"🔑 Password: {MONITORING_PASSWORD}")
-        print("🌐 Site: https://chinaxiv-english.pages.dev")
+        print(f"🌐 Site: {os.environ.get('SITE_URL', 'https://chinarxiv.org')}")
 
         self.app.run(host=host, port=port, debug=debug)
 
