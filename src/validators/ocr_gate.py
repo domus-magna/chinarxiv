@@ -59,8 +59,12 @@ def run_ocr_gate(report_dir: str = "reports") -> OCRGateSummary:
         most_common = float(meta.get("post_most_common_ratio") or 1.0)
         char_gain = post - pre
         ratio_gain = (post / pre) if pre > 0 else (float("inf") if post > 0 else 0.0)
-        char_gain_ok = (char_gain >= min_char_gain) or (pre > 0 and ratio_gain >= min_multiplier)
-        quality_ok = (alpha >= min_alpha_ratio) and (most_common <= max_most_common_ratio)
+        char_gain_ok = (char_gain >= min_char_gain) or (
+            pre > 0 and ratio_gain >= min_multiplier
+        )
+        quality_ok = (alpha >= min_alpha_ratio) and (
+            most_common <= max_most_common_ratio
+        )
         improved_flag = ran and char_gain_ok and quality_ok
 
         if need and not ran:

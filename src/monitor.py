@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Monitoring dashboard for ChinaRxiv.
+Monitoring dashboard for ChinaXiv Translations.
 """
 
 import os
+import secrets
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,19 +12,29 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
 import requests
-from flask import Flask, render_template_string, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, session, redirect, url_for
 from werkzeug.security import check_password_hash
 
 from .monitoring import monitoring_service
+from .logging_utils import log
+
+# Monitoring defaults
+DEFAULT_ANALYTICS_DAYS = 7
+DEFAULT_ALERT_LIMIT = 50
+DEFAULT_SEARCH_LIMIT = 100
+AUTH_SESSION_TIMEOUT_SECONDS = 3600
+HEALTHCHECK_TIMEOUT_SECONDS = 5
+# WARNING: Paper translation times vary widely (30s to 40min).
+# This is a rough estimate used only for UI progress display.
+ESTIMATED_JOB_DURATION_SECONDS = 30
 
 # Configuration
 MONITORING_USERNAME = os.getenv("MONITORING_USERNAME")
 MONITORING_PASSWORD = os.getenv("MONITORING_PASSWORD")
 MONITORING_PASSWORD_HASH = os.getenv("MONITORING_PASSWORD_HASH")
 MONITORING_PORT = int(os.getenv("MONITORING_PORT", "5000"))
-SECRET_KEY = os.getenv(
-    "SECRET_KEY", "chinarxiv-monitoring-secret-key-change-in-production"
-)
+# Generate random secret key if not provided (sessions won't persist across restarts)
+SECRET_KEY = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 
 
 @dataclass
@@ -50,10 +61,12 @@ class SystemStats:
 
 
 class MonitoringDashboard:
-    """Monitoring dashboard for ChinaRxiv."""
+    """Monitoring dashboard for ChinaXiv Translations."""
 
     def __init__(self):
-        self.app = Flask(__name__)
+        # Configure Flask with templates directory
+        template_dir = Path(__file__).parent / "templates"
+        self.app = Flask(__name__, template_folder=str(template_dir))
         self.app.secret_key = SECRET_KEY
         self.setup_routes()
 
@@ -101,9 +114,8 @@ class MonitoringDashboard:
             if not MONITORING_USERNAME or not (
                 MONITORING_PASSWORD or MONITORING_PASSWORD_HASH
             ):
-                return render_template_string(
-                    self.get_login_template(),
-                    error="Monitoring credentials not configured. Set MONITORING_USERNAME and MONITORING_PASSWORD or MONITORING_PASSWORD_HASH.",
+                return self.render_login(
+                    error="Monitoring credentials not configured. Set MONITORING_USERNAME and MONITORING_PASSWORD or MONITORING_PASSWORD_HASH."
                 )
 
             if request.method == "POST":
@@ -112,28 +124,30 @@ class MonitoringDashboard:
                 ok = False
                 if MONITORING_PASSWORD_HASH:
                     try:
-                        ok = (username == MONITORING_USERNAME) and check_password_hash(
-                            MONITORING_PASSWORD_HASH, password
-                        )
+                        # Use constant-time comparison to prevent timing attacks
+                        ok = secrets.compare_digest(
+                            username, MONITORING_USERNAME
+                        ) and check_password_hash(MONITORING_PASSWORD_HASH, password)
                     except Exception:
                         ok = False
                 else:
-                    ok = (username == MONITORING_USERNAME) and (
-                        password == MONITORING_PASSWORD
-                    )
+                    # Use constant-time comparison to prevent timing attacks
+                    ok = secrets.compare_digest(
+                        username, MONITORING_USERNAME
+                    ) and secrets.compare_digest(password, MONITORING_PASSWORD)
 
                 if ok:
-                    response = Response(
-                        render_template_string(self.get_login_success_template())
+                    # Use Flask's signed session (cryptographically secure)
+                    session.permanent = True
+                    self.app.permanent_session_lifetime = timedelta(
+                        seconds=AUTH_SESSION_TIMEOUT_SECONDS
                     )
-                    response.set_cookie("auth_token", "authenticated", max_age=3600)
-                    return response
+                    session["authenticated"] = True
+                    return self.render_login_success()
                 else:
-                    return render_template_string(
-                        self.get_login_template(), error="Invalid credentials"
-                    )
+                    return self.render_login(error="Invalid credentials")
 
-            return render_template_string(self.get_login_template())
+            return self.render_login()
 
         @self.app.route("/health")
         def health():
@@ -152,7 +166,7 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            limit = request.args.get("limit", 50, type=int)
+            limit = request.args.get("limit", DEFAULT_ALERT_LIMIT, type=int)
             level = request.args.get("level")
 
             alerts = monitoring_service.get_alerts(limit)
@@ -193,7 +207,7 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
+            days = request.args.get("days", DEFAULT_ANALYTICS_DAYS, type=int)
             stats = monitoring_service.get_analytics(days)
             return jsonify(stats)
 
@@ -203,7 +217,7 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
+            days = request.args.get("days", DEFAULT_ANALYTICS_DAYS, type=int)
             page = request.args.get("page")
             analytics = monitoring_service.get_analytics(days)
             page_views = analytics.get("page_views", [])
@@ -217,8 +231,8 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
-            limit = request.args.get("limit", 100, type=int)
+            days = request.args.get("days", DEFAULT_ANALYTICS_DAYS, type=int)
+            limit = request.args.get("limit", DEFAULT_SEARCH_LIMIT, type=int)
             analytics = monitoring_service.get_analytics(days)
             queries = analytics.get("search_queries", [])
             queries = queries[-limit:] if queries else []
@@ -230,8 +244,6 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            request.args.get("days", 7, type=int)
-            request.args.get("paper_id")
             # Downloads are not tracked in the consolidated service yet
             return jsonify([])
 
@@ -241,7 +253,7 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
+            days = request.args.get("days", DEFAULT_ANALYTICS_DAYS, type=int)
             stats = monitoring_service.get_performance(days)
             return jsonify(stats)
 
@@ -251,7 +263,7 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            days = request.args.get("days", 7, type=int)
+            days = request.args.get("days", DEFAULT_ANALYTICS_DAYS, type=int)
             # Simplified performance report
             performance = monitoring_service.get_performance(days)
             report = {
@@ -267,21 +279,17 @@ class MonitoringDashboard:
             if not self.check_auth():
                 return jsonify({"error": "Unauthorized"}), 401
 
-            data = request.get_json() or {}
-            data.get("type", "all")
-
             results = monitoring_service.optimize_site()
 
             return jsonify(results)
 
     def check_auth(self) -> bool:
-        """Check if user is authenticated."""
-        auth_token = request.cookies.get("auth_token")
-        return auth_token == "authenticated"
+        """Check if user is authenticated via signed session."""
+        return session.get("authenticated") is True
 
     def auth_required(self):
         """Return authentication required page."""
-        return render_template_string(self.get_login_template())
+        return self.render_login()
 
     def get_job_stats(self) -> JobStats:
         """Get job statistics from database."""
@@ -316,9 +324,8 @@ class MonitoringDashboard:
                 # Estimate completion time
                 estimated_completion = None
                 if pending > 0 and completed > 0:
-                    # Simple estimation based on current rate
-                    avg_time_per_job = 30  # seconds (rough estimate)
-                    remaining_seconds = pending * avg_time_per_job
+                    # Simple estimation based on rough average
+                    remaining_seconds = pending * ESTIMATED_JOB_DURATION_SECONDS
                     estimated_completion = datetime.now() + timedelta(
                         seconds=remaining_seconds
                     )
@@ -335,11 +342,8 @@ class MonitoringDashboard:
                     estimated_completion=estimated_completion,
                 )
 
-        except Exception as e:
-            print(f"Error getting job stats: {e}")
-            import traceback
-
-            traceback.print_exc()
+        except (sqlite3.Error, OSError) as e:
+            log(f"Error getting job stats: {e}")
             return JobStats(0, 0, 0, 0, 0.0)
 
     def get_system_stats(self) -> SystemStats:
@@ -351,19 +355,19 @@ class MonitoringDashboard:
             # Get last update
             last_update = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # Site URL
-            site_url = "https://chinarxiv.org"
+            # Site URL - use production domain or configurable via env
+            site_url = os.environ.get("SITE_URL", "https://chinarxiv.org")
 
             # Check GitHub Actions status
             github_status = "Active"
 
             # Check Cloudflare status
             try:
-                response = requests.get(site_url, timeout=5)
+                response = requests.get(site_url, timeout=HEALTHCHECK_TIMEOUT_SECONDS)
                 cloudflare_status = (
                     "Online" if response.status_code == 200 else "Offline"
                 )
-            except Exception:
+            except requests.RequestException:
                 cloudflare_status = "Unknown"
 
             return SystemStats(
@@ -374,8 +378,8 @@ class MonitoringDashboard:
                 cloudflare_status=cloudflare_status,
             )
 
-        except Exception as e:
-            print(f"Error getting system stats: {e}")
+        except (requests.RequestException, OSError) as e:
+            log(f"Error getting system stats: {e}")
             return SystemStats("Unknown", "Unknown", "Unknown", "Unknown", "Unknown")
 
     def get_recent_logs(self) -> List[Dict[str, Any]]:
@@ -418,296 +422,23 @@ class MonitoringDashboard:
 
     def render_dashboard(self):
         """Render the main dashboard."""
-        return render_template_string(self.get_dashboard_template())
+        return render_template("dashboard.html")
 
-    def get_dashboard_template(self) -> str:
-        """Get dashboard HTML template."""
-        return """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChinaRxiv Monitor</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
-        .header { background: #2c3e50; color: white; padding: 1rem; text-align: center; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-bottom: 2rem; }
-        .card { background: white; border-radius: 8px; padding: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .card h3 { color: #2c3e50; margin-bottom: 1rem; }
-        .stat { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
-        .stat-value { font-weight: bold; }
-        .progress-bar { width: 100%; height: 20px; background: #ecf0f1; border-radius: 10px; overflow: hidden; margin: 1rem 0; }
-        .progress-fill { height: 100%; background: #27ae60; transition: width 0.3s ease; }
-        .status { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; }
-        .status.online { background: #d5f4e6; color: #27ae60; }
-        .status.offline { background: #fadbd8; color: #e74c3c; }
-        .status.unknown { background: #f8f9fa; color: #6c757d; }
-        .logs { max-height: 400px; overflow-y: auto; }
-        .log-entry { padding: 0.5rem; border-bottom: 1px solid #ecf0f1; font-size: 0.9rem; }
-        .log-timestamp { color: #7f8c8d; font-size: 0.8rem; }
-        .refresh-btn { background: #3498db; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
-        .refresh-btn:hover { background: #2980b9; }
-        .auto-refresh { margin-left: 1rem; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>ChinaRxiv Monitor</h1>
-        <p>Real-time monitoring dashboard</p>
-    </div>
-    
-    <div class="container">
-        <div style="text-align: center; margin-bottom: 2rem;">
-            <button class="refresh-btn" onclick="refreshData()">Refresh</button>
-            <label class="auto-refresh">
-                <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()"> Auto-refresh (30s)
-            </label>
-        </div>
-        
-        <div class="grid">
-            <div class="card">
-                <h3>📊 Job Statistics</h3>
-                <div id="jobStats">
-                    <div class="stat">
-                        <span>Total Jobs:</span>
-                        <span class="stat-value" id="totalJobs">-</span>
-                    </div>
-                    <div class="stat">
-                        <span>Completed:</span>
-                        <span class="stat-value" id="completedJobs">-</span>
-                    </div>
-                    <div class="stat">
-                        <span>Pending:</span>
-                        <span class="stat-value" id="pendingJobs">-</span>
-                    </div>
-                    <div class="stat">
-                        <span>Failed:</span>
-                        <span class="stat-value" id="failedJobs">-</span>
-                    </div>
-                    <div class="stat">
-                        <span>Progress:</span>
-                        <span class="stat-value" id="progressPercent">-</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progressBar" style="width: 0%"></div>
-                    </div>
-                    <div class="stat">
-                        <span>Est. Completion:</span>
-                        <span class="stat-value" id="estimatedCompletion">-</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h3>🖥️ System Status</h3>
-                <div id="systemStats">
-                    <div class="stat">
-                        <span>Uptime:</span>
-                        <span class="stat-value" id="uptime">-</span>
-                    </div>
-                    <div class="stat">
-                        <span>Last Update:</span>
-                        <span class="stat-value" id="lastUpdate">-</span>
-                    </div>
-                    <div class="stat">
-                        <span>Site URL:</span>
-                        <span class="stat-value" id="siteUrl">-</span>
-                    </div>
-                    <div class="stat">
-                        <span>GitHub Actions:</span>
-                        <span class="status" id="githubStatus">-</span>
-                    </div>
-                    <div class="stat">
-                        <span>Cloudflare:</span>
-                        <span class="status" id="cloudflareStatus">-</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="card">
-            <h3>📝 Recent Logs</h3>
-            <div class="logs" id="logs">
-                <div class="log-entry">Loading logs...</div>
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        let autoRefreshInterval;
-        
-        function refreshData() {
-            // Fetch job stats
-            fetch('/api/stats')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('totalJobs').textContent = data.total;
-                    document.getElementById('completedJobs').textContent = data.completed;
-                    document.getElementById('pendingJobs').textContent = data.pending;
-                    document.getElementById('failedJobs').textContent = data.failed;
-                    document.getElementById('progressPercent').textContent = data.progress_percent.toFixed(1) + '%';
-                    document.getElementById('progressBar').style.width = data.progress_percent + '%';
-                    document.getElementById('estimatedCompletion').textContent = data.estimated_completion || 'Unknown';
-                })
-                .catch(error => console.error('Error fetching stats:', error));
-            
-            // Fetch system stats
-            fetch('/api/system')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('uptime').textContent = data.uptime;
-                    document.getElementById('lastUpdate').textContent = data.last_update;
-                    document.getElementById('siteUrl').textContent = data.site_url;
-                    
-                    const githubStatus = document.getElementById('githubStatus');
-                    githubStatus.textContent = data.github_actions_status;
-                    githubStatus.className = 'status ' + (data.github_actions_status === 'Active' ? 'online' : 'offline');
-                    
-                    const cloudflareStatus = document.getElementById('cloudflareStatus');
-                    cloudflareStatus.textContent = data.cloudflare_status;
-                    cloudflareStatus.className = 'status ' + (data.cloudflare_status === 'Online' ? 'online' : 'offline');
-                })
-                .catch(error => console.error('Error fetching system stats:', error));
-            
-            // Fetch logs
-            fetch('/api/logs')
-                .then(response => response.json())
-                .then(data => {
-                    const logsContainer = document.getElementById('logs');
-                    logsContainer.innerHTML = '';
-                    
-                    if (data.length === 0) {
-                        logsContainer.innerHTML = '<div class="log-entry">No logs available</div>';
-                        return;
-                    }
-                    
-                    data.forEach(log => {
-                        const logEntry = document.createElement('div');
-                        logEntry.className = 'log-entry';
-                        logEntry.innerHTML = `
-                            <div class="log-timestamp">${log.timestamp}</div>
-                            <div>${log.message}</div>
-                        `;
-                        logsContainer.appendChild(logEntry);
-                    });
-                })
-                .catch(error => console.error('Error fetching logs:', error));
-        }
-        
-        function toggleAutoRefresh() {
-            const checkbox = document.getElementById('autoRefresh');
-            if (checkbox.checked) {
-                autoRefreshInterval = setInterval(refreshData, 30000); // 30 seconds
-            } else {
-                clearInterval(autoRefreshInterval);
-            }
-        }
-        
-        // Initial load
-        refreshData();
-    </script>
-</body>
-</html>
-        """
+    def render_login(self, error: str = None):
+        """Render the login page."""
+        return render_template("login.html", error=error)
 
-    def get_login_template(self) -> str:
-        """Get login HTML template."""
-        return """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChinaRxiv Monitor - Login</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .login-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        .login-header { text-align: center; margin-bottom: 2rem; }
-        .login-header h1 { color: #2c3e50; margin-bottom: 0.5rem; }
-        .form-group { margin-bottom: 1rem; }
-        .form-group label { display: block; margin-bottom: 0.5rem; color: #2c3e50; }
-        .form-group input { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; }
-        .form-group input:focus { outline: none; border-color: #3498db; }
-        .login-btn { width: 100%; background: #3498db; color: white; border: none; padding: 0.75rem; border-radius: 4px; font-size: 1rem; cursor: pointer; }
-        .login-btn:hover { background: #2980b9; }
-        .error { color: #e74c3c; text-align: center; margin-top: 1rem; }
-    </style>
-</head>
-<body>
-    <div class="login-container">
-        <div class="login-header">
-            <h1>🔐 Login</h1>
-            <p>ChinaRxiv Monitor</p>
-        </div>
-        
-        <form method="POST">
-            <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" name="username" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            
-            <button type="submit" class="login-btn">Login</button>
-        </form>
-        
-        {% if error %}
-        <div class="error">{{ error }}</div>
-        {% endif %}
-    </div>
-</body>
-</html>
-        """
-
-    def get_login_success_template(self) -> str:
-        """Get login success template."""
-        return """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login Successful</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .success-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
-        .success-container h1 { color: #27ae60; margin-bottom: 1rem; }
-        .success-container p { color: #2c3e50; margin-bottom: 2rem; }
-        .success-container a { color: #3498db; text-decoration: none; }
-        .success-container a:hover { text-decoration: underline; }
-    </style>
-</head>
-<body>
-    <div class="success-container">
-        <h1>✅ Login Successful!</h1>
-        <p>You are now authenticated.</p>
-        <a href="/">Go to Dashboard</a>
-    </div>
-    
-    <script>
-        setTimeout(() => {
-            window.location.href = '/';
-        }, 2000);
-    </script>
-</body>
-</html>
-        """
+    def render_login_success(self):
+        """Render the login success page."""
+        return render_template("login_success.html")
 
     def run(self, host="0.0.0.0", port=MONITORING_PORT, debug=False):
         """Run the monitoring dashboard."""
-        print("Starting ChinaRxiv Monitor")
+        print("🚀 Starting ChinaXiv Translations Monitor")
         print(f"📊 Dashboard: http://{host}:{port}")
         print(f"🔐 Username: {MONITORING_USERNAME}")
         print(f"🔑 Password: {MONITORING_PASSWORD}")
-        print("Site: https://chinarxiv.org")
+        print(f"🌐 Site: {os.environ.get('SITE_URL', 'https://chinarxiv.org')}")
 
         self.app.run(host=host, port=port, debug=debug)
 

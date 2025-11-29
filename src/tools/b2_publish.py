@@ -39,18 +39,24 @@ def _env(name: str, default: str | None = None) -> str | None:
 
 
 def _run(cmd: str) -> Tuple[int, str]:
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    p = subprocess.Popen(
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
     out, _ = p.communicate()
     return p.returncode, out or ""
 
 
 def _aws_cp(local: str, remote: str, endpoint: str) -> bool:
-    code, out = _run(f"aws s3 cp {shlex.quote(local)} {shlex.quote(remote)} --endpoint-url {shlex.quote(endpoint)} --only-show-errors")
+    code, out = _run(
+        f"aws s3 cp {shlex.quote(local)} {shlex.quote(remote)} --endpoint-url {shlex.quote(endpoint)} --only-show-errors"
+    )
     return code == 0
 
 
 def _aws_cp_maybe(remote: str, local: str, endpoint: str) -> bool:
-    code, out = _run(f"aws s3 cp {shlex.quote(remote)} {shlex.quote(local)} --endpoint-url {shlex.quote(endpoint)} --only-show-errors")
+    code, out = _run(
+        f"aws s3 cp {shlex.quote(remote)} {shlex.quote(local)} --endpoint-url {shlex.quote(endpoint)} --only-show-errors"
+    )
     return code == 0
 
 
@@ -85,12 +91,16 @@ def _load_costs_for_today() -> Dict[str, Dict]:
 
 def main() -> int:
     # Validate env
-    missing = [n for n in [
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
-        "B2_S3_ENDPOINT",
-        "B2_BUCKET",
-    ] if not _env(n)]
+    missing = [
+        n
+        for n in [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "B2_S3_ENDPOINT",
+            "B2_BUCKET",
+        ]
+        if not _env(n)
+    ]
     if missing:
         _alert(f"B2 publish skipped: missing env {', '.join(missing)}")
         # Ensure alert is flushed even on failure
@@ -103,7 +113,9 @@ def main() -> int:
     dest_root = f"s3://{bucket}/{prefix}"
 
     select_key = _env("SELECT_KEY", "")
-    records_keys = [k.strip() for k in (_env("RECORDS_KEYS", "") or "").split(",") if k.strip()]
+    records_keys = [
+        k.strip() for k in (_env("RECORDS_KEYS", "") or "").split(",") if k.strip()
+    ]
     run_id = _env("GITHUB_RUN_ID", "")
     git_sha = _env("GITHUB_SHA", "")
     run_started = _env("RUN_STARTED_AT", datetime.now(timezone.utc).isoformat())
@@ -155,7 +167,9 @@ def main() -> int:
             "validated_at": datetime.now(timezone.utc).isoformat(),
         }
         tmp = Path("/tmp") / f"pointer-{pid}.json"
-        tmp.write_text(json.dumps(pointer, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.write_text(
+            json.dumps(pointer, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         _aws_cp(str(tmp), f"{dest_root}indexes/validated/by-paper/{pid}.json", endpoint)
 
         # pdf if present
@@ -173,20 +187,22 @@ def main() -> int:
         in_toks = str(c.get("in_tokens", 0))
         out_toks = str(c.get("out_tokens", 0))
         cost_usd = str(c.get("cost_estimate_usd", 0.0))
-        validated_rows.append([
-            pid,
-            ";".join(records_keys) if records_keys else "",
-            select_key,
-            validated_key,
-            pdf_key,
-            c.get("model", ""),
-            in_toks,
-            out_toks,
-            cost_usd,
-            run_id,
-            git_sha,
-            datetime.now(timezone.utc).isoformat(),
-        ])
+        validated_rows.append(
+            [
+                pid,
+                ";".join(records_keys) if records_keys else "",
+                select_key,
+                validated_key,
+                pdf_key,
+                c.get("model", ""),
+                in_toks,
+                out_toks,
+                cost_usd,
+                run_id,
+                git_sha,
+                datetime.now(timezone.utc).isoformat(),
+            ]
+        )
 
     # Upload flagged translations
     for ff in flagged_files:
@@ -198,20 +214,22 @@ def main() -> int:
             continue
         flagged_count += 1
         c = costs.get(pid, {})
-        flagged_rows.append([
-            pid,
-            ";".join(records_keys) if records_keys else "",
-            select_key,
-            "qa_flagged",
-            "",
-            c.get("model", ""),
-            str(c.get("in_tokens", 0)),
-            str(c.get("out_tokens", 0)),
-            str(c.get("cost_estimate_usd", 0.0)),
-            run_id,
-            git_sha,
-            datetime.now(timezone.utc).isoformat(),
-        ])
+        flagged_rows.append(
+            [
+                pid,
+                ";".join(records_keys) if records_keys else "",
+                select_key,
+                "qa_flagged",
+                "",
+                c.get("model", ""),
+                str(c.get("in_tokens", 0)),
+                str(c.get("out_tokens", 0)),
+                str(c.get("cost_estimate_usd", 0.0)),
+                run_id,
+                git_sha,
+                datetime.now(timezone.utc).isoformat(),
+            ]
+        )
 
     # Helper to read, append, and re-upload CSV
     def _append_csv(s3_key: str, header: List[str], rows: List[List[str]]) -> None:
@@ -286,7 +304,10 @@ def main() -> int:
         str(flagged_count),
         str(pdf_uploaded),
         # Approx total cost: sum of known items
-        str(sum(float(r[8]) for r in validated_rows) + sum(float(r[8]) for r in flagged_rows)),
+        str(
+            sum(float(r[8]) for r in validated_rows)
+            + sum(float(r[8]) for r in flagged_rows)
+        ),
     ]
     _append_csv(
         summary_key,
@@ -324,12 +345,14 @@ def main() -> int:
     }
     summary_path = Path("reports") / "b2_publish_summary.json"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(json.dumps(summary_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    summary_path.write_text(
+        json.dumps(summary_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     # Final flush of alerts if any
     # Decide exit code based on failures and toggle
     total_items = len(validated_files) + len(flagged_files)
-    fail_on_error = (_env("B2_FAIL_ON_ERROR", "true").lower() == "true")
+    fail_on_error = _env("B2_FAIL_ON_ERROR", "true").lower() == "true"
 
     # Always flush alerts before exit
     _run("python -m src.tools.b2_alerts flush")

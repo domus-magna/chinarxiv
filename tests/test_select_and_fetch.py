@@ -35,7 +35,9 @@ def test_select_and_fetch_marks_seen(tmp_path, monkeypatch):
         class Resp:
             def __init__(self):
                 self.content = b"%PDF-1.4"
-                self.text = "<html><body><a href=\"/src.tar.gz\">TeX source</a></body></html>"
+                self.text = (
+                    '<html><body><a href="/src.tar.gz">TeX source</a></body></html>'
+                )
                 self.headers = {"Content-Type": "application/pdf"}
 
         return Resp()
@@ -55,7 +57,12 @@ def test_select_and_fetch_marks_seen(tmp_path, monkeypatch):
 def test_download_skips_non_pdf(tmp_path, monkeypatch):
     # Prepare one record with a fake pdf URL
     records = [
-        {"id": "R3", "oai_identifier": "oai:x:R3", "pdf_url": "https://example.org/notpdf.pdf", "source_url": None}
+        {
+            "id": "R3",
+            "oai_identifier": "oai:x:R3",
+            "pdf_url": "https://example.org/notpdf.pdf",
+            "source_url": None,
+        }
     ]
     monkeypatch.chdir(tmp_path)
     from src import select_and_fetch as saf

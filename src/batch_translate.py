@@ -99,6 +99,7 @@ def start_workers(num_workers: int) -> None:
         if isinstance(e, CircuitBreakerOpen):
             log(f"Circuit breaker triggered: {e}")
             from .monitoring import alert_critical
+
             alert_critical(
                 "Translation Pipeline Stopped: Circuit Breaker",
                 f"Pipeline stopped after consecutive OpenRouter failures: {e}",

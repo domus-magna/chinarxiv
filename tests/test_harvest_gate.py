@@ -23,7 +23,9 @@ def test_harvest_gate_passes_with_fixture(tmp_path, monkeypatch):
     pdf_dest = tmp_path / "sample.pdf"
     shutil.copy(FIXTURE_DIR / "sample.pdf", pdf_dest)
 
-    records = json.loads((FIXTURE_DIR / "records_sample.json").read_text(encoding="utf-8"))
+    records = json.loads(
+        (FIXTURE_DIR / "records_sample.json").read_text(encoding="utf-8")
+    )
     records[0]["pdf_url"] = str(pdf_dest)
 
     records_path = tmp_path / "records.json"
@@ -45,7 +47,9 @@ def test_harvest_gate_prefers_local_pdf(tmp_path, monkeypatch):
     pdf_dest = tmp_path / "sample.pdf"
     shutil.copy(FIXTURE_DIR / "sample.pdf", pdf_dest)
 
-    records = json.loads((FIXTURE_DIR / "records_sample.json").read_text(encoding="utf-8"))
+    records = json.loads(
+        (FIXTURE_DIR / "records_sample.json").read_text(encoding="utf-8")
+    )
     records[0]["pdf_url"] = "https://chinaxiv.org/user/download.htm?uuid=missing"
     records[0]["pdf_local_path"] = str(pdf_dest)
 

@@ -44,7 +44,9 @@ def add_message(msg: str) -> None:
         except Exception:
             buf = []
     buf.append(msg)
-    BUFFER_PATH.write_text(json.dumps(buf, ensure_ascii=False, indent=2), encoding="utf-8")
+    BUFFER_PATH.write_text(
+        json.dumps(buf, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def flush_if_due() -> bool:
@@ -90,7 +92,11 @@ def flush_if_due() -> bool:
         ),
         fields=[
             {"name": "Count", "value": str(len(buf)), "inline": True},
-            {"name": "Preview", "value": (preview + extra) or "(none)", "inline": False},
+            {
+                "name": "Preview",
+                "value": (preview + extra) or "(none)",
+                "inline": False,
+            },
         ],
     )
 
@@ -124,4 +130,3 @@ def main(argv: List[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv))
-

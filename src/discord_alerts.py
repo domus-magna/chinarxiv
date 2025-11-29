@@ -37,7 +37,7 @@ class DiscordAlerts:
             )
             response.raise_for_status()
             return True
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"❌ Discord webhook failed: {e}")
             return False
 

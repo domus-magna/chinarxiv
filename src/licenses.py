@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, Optional
 
+import requests
 from bs4 import BeautifulSoup
 
 from .utils import http_get, log, get_config, ensure_dir, read_json, write_json
@@ -48,7 +50,7 @@ LICENSE_CACHE_PATH = "data/license_cache.json"
 def _load_cache() -> dict:
     try:
         return read_json(LICENSE_CACHE_PATH)
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return {}
 
 
@@ -64,7 +66,7 @@ def scrape_license_from_landing(url: str) -> Optional[str]:
         return cache[url]
     try:
         html = http_get(url).text
-    except Exception as e:
+    except requests.RequestException as e:
         log(f"license scrape failed: {e}")
         return None
     soup = BeautifulSoup(html, "html.parser")

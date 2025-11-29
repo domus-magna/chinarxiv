@@ -20,7 +20,9 @@ class RenderGateSummary:
     pass_threshold_met: bool
 
 
-def run_render_gate(site_dir: str = "site", data_dir: str = "data", out_dir: str = "reports") -> RenderGateSummary:
+def run_render_gate(
+    site_dir: str = "site", data_dir: str = "data", out_dir: str = "reports"
+) -> RenderGateSummary:
     # Count translated docs
     translated = len(glob.glob(os.path.join(data_dir, "translated", "*.json")))
 
@@ -77,9 +79,23 @@ def run_render_gate(site_dir: str = "site", data_dir: str = "data", out_dir: str
     )
     save_validation_report(out_dir, "render_report", payload, markdown, summary)
 
-    return RenderGateSummary(translated_docs=translated, indexed_docs=indexed_docs, html_items=html_items, pass_threshold_met=pass_ok)
+    return RenderGateSummary(
+        translated_docs=translated,
+        indexed_docs=indexed_docs,
+        html_items=html_items,
+        pass_threshold_met=pass_ok,
+    )
 
 
 if __name__ == "__main__":
     s = run_render_gate()
-    print(json.dumps({"translated_docs": s.translated_docs, "indexed_docs": s.indexed_docs, "html_items": s.html_items, "pass": s.pass_threshold_met}))
+    print(
+        json.dumps(
+            {
+                "translated_docs": s.translated_docs,
+                "indexed_docs": s.indexed_docs,
+                "html_items": s.html_items,
+                "pass": s.pass_threshold_met,
+            }
+        )
+    )

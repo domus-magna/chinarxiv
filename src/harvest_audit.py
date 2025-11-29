@@ -139,15 +139,23 @@ class HarvestAuditor:
         record_issues: List[str],
     ) -> bool:
         """Validate record against expected schema."""
-        required_fields = ["id", "title", "abstract", "creators", "subjects", "date", "source_url"]
-        
+        required_fields = [
+            "id",
+            "title",
+            "abstract",
+            "creators",
+            "subjects",
+            "date",
+            "source_url",
+        ]
+
         for field in required_fields:
             if field not in record or not record[field]:
                 msg = f"Missing {field} in record {record.get('id', 'unknown')}"
                 issues["schema"].append(msg)
                 record_issues.append(msg)
                 return False
-        
+
         # Validate ID format
         record_id = record["id"]
         if not re.match(r"^chinaxiv-\d{6}\.\d{5}$", record_id):
@@ -155,23 +163,23 @@ class HarvestAuditor:
             issues["schema"].append(msg)
             record_issues.append(msg)
             return False
-        
+
         # Validate creators is a list
         if not isinstance(record["creators"], list) or not record["creators"]:
             msg = f"Invalid creators format in {record_id}"
             issues["schema"].append(msg)
             record_issues.append(msg)
             return False
-        
+
         # Validate subjects is a list
         if not isinstance(record["subjects"], list) or not record["subjects"]:
             msg = f"Invalid subjects format in {record_id}"
             issues["schema"].append(msg)
             record_issues.append(msg)
             return False
-        
+
         return True
-    
+
     def _check_pdf_accessibility(self, pdf_url: str) -> bool:
         """Check if PDF URL is accessible by streaming a small portion."""
         try:
@@ -220,7 +228,7 @@ class HarvestAuditor:
         except Exception as e:
             log(f"Failed to discover PDF redirect for {record.get('id')}: {e}")
         return None
-    
+
     def _generate_summary(
         self, stats: Dict[str, int], issues: Dict[str, List[str]]
     ) -> Dict[str, Any]:
@@ -228,12 +236,10 @@ class HarvestAuditor:
         total = stats["total_records"]
         if total == 0:
             return {"status": "no_data", "message": "No records to audit"}
-        
+
         valid_pct = (stats["valid_records"] / total) * 100 if total else 0
-        pdf_failure_pct = (
-            (stats["pdf_fetch_failures"] / total) * 100 if total else 0
-        )
-        
+        pdf_failure_pct = (stats["pdf_fetch_failures"] / total) * 100 if total else 0
+
         return {
             "total_records": total,
             "valid_percentage": round(valid_pct, 2),
@@ -242,28 +248,28 @@ class HarvestAuditor:
             + len(issues.get("duplicates", [])),
             "recommendations": self._get_recommendations(stats, issues),
         }
-    
+
     def _get_recommendations(
         self, stats: Dict[str, int], issues: Dict[str, List[str]]
     ) -> List[str]:
         """Generate recommendations based on audit findings."""
         recommendations = []
-        
+
         if stats["schema_violations"] > 0:
             recommendations.append("Fix schema validation in harvest process")
-        
+
         if stats["duplicate_ids"] > 0:
             recommendations.append("Implement deduplication in harvest process")
-        
+
         if stats["pdf_fetch_failures"] > stats["total_records"] * 0.1:
             recommendations.append("Investigate PDF URL generation and accessibility")
-        
+
         if len(issues.get("pdf_failures", [])) > 0:
             recommendations.append("Add retry logic for PDF downloads")
-        
+
         if not recommendations:
             recommendations.append("Harvest pipeline appears stable")
-        
+
         return recommendations
 
     def _update_aggregates(
@@ -280,20 +286,20 @@ class HarvestAuditor:
 def audit_harvest_stability(records_path: Optional[str] = None) -> Dict[str, Any]:
     """Audit harvest stability across all record files."""
     auditor = HarvestAuditor()
-    
+
     if records_path:
         return auditor.audit_records(records_path)
-    
+
     # Audit all record files
     records_dir = Path("data/records")
     if not records_dir.exists():
         return {"status": "failed", "message": "No records directory found"}
-    
+
     all_results = {}
     for record_file in records_dir.glob("chinaxiv_*.json"):
         result = auditor.audit_records(str(record_file))
         all_results[record_file.name] = result
-    
+
     return {
         "status": "completed",
         "files_audited": len(all_results),
@@ -308,19 +314,23 @@ def run_cli():
     """CLI entry point."""
     parser = argparse.ArgumentParser(description="Audit harvest pipeline stability")
     parser.add_argument("--records", help="Specific records file to audit")
-    parser.add_argument("--output", default="reports/harvest_audit.json", help="Output file for audit report")
-    
+    parser.add_argument(
+        "--output",
+        default="reports/harvest_audit.json",
+        help="Output file for audit report",
+    )
+
     args = parser.parse_args()
-    
+
     log("Starting harvest audit...")
     result = audit_harvest_stability(args.records)
-    
+
     # Write audit report
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     write_json(args.output, result)
-    
+
     log(f"Audit complete. Report saved to {args.output}")
-    
+
     # Print summary
     if "overall_summary" in result:
         summary = result["overall_summary"]

@@ -72,7 +72,9 @@ class TestWatermarkDetection:
     def test_valid_text_passes(self):
         """Normal text should not be filtered."""
         assert is_watermark_or_garbage("This is a normal sentence.") is False
-        assert is_watermark_or_garbage("The experiment showed positive results.") is False
+        assert (
+            is_watermark_or_garbage("The experiment showed positive results.") is False
+        )
         assert is_watermark_or_garbage("这是一段正常的中文文本。") is False
 
     def test_spaced_watermark_pattern(self):
@@ -102,7 +104,7 @@ class TestWatermarkDetection:
     def test_boundary_cases(self):
         """Boundary cases around 5 char threshold."""
         assert is_watermark_or_garbage("abcde") is False  # Exactly 5 chars
-        assert is_watermark_or_garbage("abcd") is True   # 4 chars, too short
+        assert is_watermark_or_garbage("abcd") is True  # 4 chars, too short
 
 
 # =============================================================================
@@ -117,7 +119,9 @@ class TestSectionBoundaryDetection:
         """Numbered English section headings."""
         assert detect_section_boundary("1 Introduction") == "1 Introduction"
         assert detect_section_boundary("2.1 Methods") == "2.1 Methods"
-        assert detect_section_boundary("3.2.1 Data Collection") == "3.2.1 Data Collection"
+        assert (
+            detect_section_boundary("3.2.1 Data Collection") == "3.2.1 Data Collection"
+        )
 
     def test_numbered_sections_chinese(self):
         """Numbered Chinese section headings."""
@@ -193,7 +197,7 @@ class TestParagraphMerging:
         lines = [
             "This is the first part of",
             "a sentence that spans multiple",
-            "lines in the PDF."
+            "lines in the PDF.",
         ]
         result = merge_pdf_lines_to_paragraphs(lines, min_para_length=10)
         assert len(result) == 1
@@ -204,7 +208,7 @@ class TestParagraphMerging:
         """Sentence ending followed by uppercase starts new paragraph."""
         lines = [
             "This is the first paragraph with enough content.",
-            "This starts a new paragraph."
+            "This starts a new paragraph.",
         ]
         result = merge_pdf_lines_to_paragraphs(lines, min_para_length=20)
         assert len(result) == 2
@@ -216,7 +220,7 @@ class TestParagraphMerging:
             "1 Methods",
             "We used the following approach.",
             "2 Results",
-            "The results show improvement."
+            "The results show improvement.",
         ]
         result = merge_pdf_lines_to_paragraphs(lines, min_para_length=10)
 
@@ -242,21 +246,13 @@ class TestParagraphMerging:
 
     def test_blank_lines_ignored(self):
         """Blank lines should be skipped."""
-        lines = [
-            "First sentence.",
-            "",
-            "   ",
-            "Second sentence."
-        ]
+        lines = ["First sentence.", "", "   ", "Second sentence."]
         result = merge_pdf_lines_to_paragraphs(lines, min_para_length=10)
         assert len(result) >= 1
 
     def test_chinese_paragraph_detection(self):
         """Chinese text paragraphs should work correctly."""
-        lines = [
-            "这是第一段的开始内容足够长。",
-            "这是第二段的内容也很长。"
-        ]
+        lines = ["这是第一段的开始内容足够长。", "这是第二段的内容也很长。"]
         result = merge_pdf_lines_to_paragraphs(lines, min_para_length=5)
         assert len(result) >= 1
 
@@ -291,28 +287,21 @@ class TestEdgeCases:
         """Special characters should not break detection."""
         lines = [
             "The equation $x = y$ is important.",
-            "Here is another equation: \\frac{a}{b}."
+            "Here is another equation: \\frac{a}{b}.",
         ]
         result = merge_pdf_lines_to_paragraphs(lines, min_para_length=20)
         assert any("equation" in p for p in result)
 
     def test_consecutive_sections(self):
         """Consecutive section headers should work."""
-        lines = [
-            "1 Introduction",
-            "2 Background",
-            "Some content here."
-        ]
+        lines = ["1 Introduction", "2 Background", "Some content here."]
         result = merge_pdf_lines_to_paragraphs(lines, min_para_length=10)
         assert "1 Introduction" in result
         assert "2 Background" in result
 
     def test_section_at_end(self):
         """Section header at document end should work."""
-        lines = [
-            "Some content here.",
-            "References"
-        ]
+        lines = ["Some content here.", "References"]
         result = merge_pdf_lines_to_paragraphs(lines, min_para_length=10)
         assert "References" in result
 
@@ -441,7 +430,9 @@ The actual introduction starts here.
         """Extraction failure should return None gracefully."""
         from unittest.mock import patch
 
-        with patch("pdfminer.high_level.extract_text", side_effect=Exception("PDF error")):
+        with patch(
+            "pdfminer.high_level.extract_text", side_effect=Exception("PDF error")
+        ):
             pdf_path = tmp_path / "test.pdf"
             pdf_path.write_bytes(b"%PDF-1.4")
 
@@ -498,4 +489,3 @@ class TestPipelineQAIntegration:
         assert hasattr(result, "status")
         assert hasattr(result, "score")
         assert result.status in [QAStatus.PASS, QAStatus.FLAG_FORMATTING]
-

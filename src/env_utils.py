@@ -24,8 +24,9 @@ def detect_env_mismatches(
     mismatches = {}
 
     # Load .env file into a temporary dict
+    # Use try/except instead of exists() check to avoid TOCTOU race condition
     env_file_vars = {}
-    if os.path.exists(env_file):
+    try:
         with open(env_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -37,6 +38,10 @@ def detect_env_mismatches(
                 k = k.strip()
                 v = v.strip().strip('"').strip("'")
                 env_file_vars[k] = v
+    except FileNotFoundError:
+        pass  # File doesn't exist, that's OK
+    except PermissionError as e:
+        log(f"Cannot read {env_file}: {e}")
 
     for key in keys:
         shell_value = os.environ.get(key)
@@ -202,6 +207,6 @@ def validate_api_key(
         resp = requests.get(test_url, headers=headers, timeout=10)
         return resp.status_code == 200
 
-    except Exception as e:
+    except (requests.RequestException, RuntimeError) as e:
         log(f"API key validation failed: {e}")
         return False

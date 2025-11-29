@@ -93,7 +93,10 @@ def populate_ocr_report(
 
     if processed == 0:
         if attempts == 0:
-            print("prepare_ocr_report: no eligible records found to process.", file=sys.stderr)
+            print(
+                "prepare_ocr_report: no eligible records found to process.",
+                file=sys.stderr,
+            )
         else:
             msg = "prepare_ocr_report: OCR telemetry generation failed"
             details = []
@@ -114,10 +117,24 @@ def populate_ocr_report(
 
 
 def main(args: Optional[Iterable[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Populate OCR report before running gate validation.")
-    parser.add_argument("--records", type=Path, help="Specific records JSON file to process.")
-    parser.add_argument("--limit", type=int, default=5, help="Maximum number of records to process (0 = all).")
-    parser.add_argument("--pdf-dir", type=Path, default=Path("data/pdfs"), help="Directory where PDFs are stored.")
+    parser = argparse.ArgumentParser(
+        description="Populate OCR report before running gate validation."
+    )
+    parser.add_argument(
+        "--records", type=Path, help="Specific records JSON file to process."
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        help="Maximum number of records to process (0 = all).",
+    )
+    parser.add_argument(
+        "--pdf-dir",
+        type=Path,
+        default=Path("data/pdfs"),
+        help="Directory where PDFs are stored.",
+    )
     parser.add_argument(
         "--report",
         type=Path,

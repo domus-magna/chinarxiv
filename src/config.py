@@ -40,7 +40,7 @@ def get_config(path: str = os.path.join("src", "config.yaml")) -> dict:
     except FileNotFoundError:
         return {}
 
-    if _CONFIG_CACHE is not None and _CONFIG_MTIME == mtime:
+    if _CONFIG_CACHE is not None and mtime == _CONFIG_MTIME:
         return _CONFIG_CACHE
 
     cfg = load_yaml(path)

@@ -39,7 +39,9 @@ class CloudJobQueue:
 
         # Initialize queue file if it doesn't exist
         if not self.queue_file.exists():
-            self._write_queue({"jobs": [], "metadata": {"created_at": datetime.now().isoformat()}})
+            self._write_queue(
+                {"jobs": [], "metadata": {"created_at": datetime.now().isoformat()}}
+            )
 
     def _read_queue(self) -> Dict:
         """Read queue with file locking."""
@@ -120,10 +122,7 @@ class CloudJobQueue:
             if len(claimed) >= batch_size:
                 break
 
-            if (
-                job["status"] == JobStatus.PENDING
-                and job["attempts"] < max_attempts
-            ):
+            if job["status"] == JobStatus.PENDING and job["attempts"] < max_attempts:
                 job["status"] = JobStatus.IN_PROGRESS
                 job["worker_id"] = worker_id
                 job["started_at"] = datetime.now().isoformat()

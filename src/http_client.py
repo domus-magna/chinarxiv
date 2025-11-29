@@ -198,9 +198,7 @@ def parse_openrouter_error(resp: requests.Response) -> Dict[str, Any]:
     retryable = False
     fallback_ok = True
 
-    if status == 429:
-        retryable = True
-    elif status >= 500:
+    if status == 429 or status >= 500:
         retryable = True
     elif status == 401:
         # Auth-related; usually not fixed by retry or model fallback
@@ -208,9 +206,7 @@ def parse_openrouter_error(resp: requests.Response) -> Dict[str, Any]:
             code in {"invalid_api_key", "user_not_found"}
             or "user not found" in msg_lc
             or ("invalid" in msg_lc and "key" in msg_lc)
-        ):
-            fallback_ok = False
-        elif any(w in msg_lc for w in ("insufficient", "balance", "credit")):
+        ) or any(w in msg_lc for w in ("insufficient", "balance", "credit")):
             fallback_ok = False
     elif status == 402:
         # Payment required / insufficient funds

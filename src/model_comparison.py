@@ -100,7 +100,9 @@ def run_comparison(
     if not extraction:
         raise ValueError("Failed to extract content from PDF")
 
-    print(f"Extracted {extraction['stats']['merged_paragraphs']} paragraphs in {extraction['stats']['detected_sections']} sections")
+    print(
+        f"Extracted {extraction['stats']['merged_paragraphs']} paragraphs in {extraction['stats']['detected_sections']} sections"
+    )
 
     # Get paper metadata
     rec = _find_paper_record(paper_id)
@@ -132,9 +134,7 @@ def run_comparison(
             service = TranslationService()
 
             # Translate using synthesis mode with specific model
-            translation = _translate_with_model(
-                service, rec, extraction, model_slug
-            )
+            translation = _translate_with_model(service, rec, extraction, model_slug)
 
             elapsed = time.time() - start_time
 
@@ -144,15 +144,12 @@ def run_comparison(
             input_tokens = len(str(extraction)) // 4
             output_tokens = len(body_text) // 4
 
-            cost = (
-                (input_tokens / 1_000_000) * model_info["input_per_m"] +
-                (output_tokens / 1_000_000) * model_info["output_per_m"]
-            )
+            cost = (input_tokens / 1_000_000) * model_info["input_per_m"] + (
+                output_tokens / 1_000_000
+            ) * model_info["output_per_m"]
 
             # Save individual result
-            result_path = os.path.join(
-                output_dir, f"{paper_id}_{model_key}.json"
-            )
+            result_path = os.path.join(output_dir, f"{paper_id}_{model_key}.json")
             write_json(result_path, translation)
 
             results["models"][model_key] = {
@@ -248,7 +245,10 @@ def _translate_with_model(
         "model": model_slug,
         "messages": [
             {"role": "system", "content": SYNTHESIS_SYSTEM_PROMPT + glossary_text},
-            {"role": "user", "content": f"Translate this Chinese academic paper to English:\n\n{masked}"},
+            {
+                "role": "user",
+                "content": f"Translate this Chinese academic paper to English:\n\n{masked}",
+            },
         ],
         "temperature": 0.3,
     }
@@ -330,14 +330,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compare translation models")
     parser.add_argument("paper_id", help="Paper ID to test")
     parser.add_argument(
-        "--models",
-        nargs="+",
-        help="Specific models to test (default: all)"
+        "--models", nargs="+", help="Specific models to test (default: all)"
     )
     parser.add_argument(
-        "--output-dir",
-        default="data/comparison",
-        help="Output directory for results"
+        "--output-dir", default="data/comparison", help="Output directory for results"
     )
 
     args = parser.parse_args()

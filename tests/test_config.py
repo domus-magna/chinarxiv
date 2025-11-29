@@ -22,4 +22,3 @@ def test_load_dotenv_override(tmp_path, monkeypatch):
     load_dotenv(str(env_path), override=True)
     assert os.getenv("FOO") == "new"
     assert os.getenv("BAZ") == "two"
-

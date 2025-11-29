@@ -28,7 +28,11 @@ class _FakeGHClient:
 
     def list_workflows(self):
         return [
-            {"id": 123, "name": "rebuild-from-b2", "path": ".github/workflows/rebuild-from-b2.yml"}
+            {
+                "id": 123,
+                "name": "rebuild-from-b2",
+                "path": ".github/workflows/rebuild-from-b2.yml",
+            }
         ]
 
     def dispatch_workflow(self, workflow_id, ref: str, inputs=None):
@@ -38,7 +42,9 @@ class _FakeGHClient:
 @pytest.fixture(autouse=True)
 def _set_env(monkeypatch):
     # Configure hashed password
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", generate_password_hash("pw", method="pbkdf2:sha256"))
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH", generate_password_hash("pw", method="pbkdf2:sha256")
+    )
     # Provide GH envs but we will mock GH client
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("GH_REPO", "owner/repo")

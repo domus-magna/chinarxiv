@@ -40,7 +40,9 @@ def run_cli() -> None:
     }
     if os.path.exists(bypass_file):
         if use_bypass:
-            log("Using bypassed translations for search index (USE_TRANSLATED_BYPASS=1)")
+            log(
+                "Using bypassed translations for search index (USE_TRANSLATED_BYPASS=1)"
+            )
             items = read_json(bypass_file)
             idx = build_index(items)
             out_path = os.path.join("site", "search-index.json")
@@ -48,7 +50,7 @@ def run_cli() -> None:
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(idx, f, ensure_ascii=False, indent=2)
             log(f"Wrote search index with {len(idx)} entries → {out_path}")
-            
+
             # Compress index
             with open(out_path, "rb") as f_in:
                 with _gzip.open(out_path + ".gz", "wb") as f_out:
