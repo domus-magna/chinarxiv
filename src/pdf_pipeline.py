@@ -113,11 +113,7 @@ def download_pdf(
                 url, output_path, referer=referer, session_id=session_id
             ):
                 return True
-            if _headless_pdf_fetch(
-                url, output_path, referer=referer, session_id=session_id
-            ):
-                return True
-            return False
+            return bool(_headless_pdf_fetch(url, output_path, referer=referer, session_id=session_id))
 
         # Check file size (minimum 1KB)
         content_length = len(resp.content)
@@ -147,11 +143,7 @@ def download_pdf(
             url, output_path, referer=referer, session_id=session_id
         ):
             return True
-        if _headless_pdf_fetch(
-            url, output_path, referer=referer, session_id=session_id
-        ):
-            return True
-        return False
+        return bool(_headless_pdf_fetch(url, output_path, referer=referer, session_id=session_id))
 
 
 def _headless_pdf_fetch(
@@ -369,10 +361,8 @@ def _write_ocr_record(report_dir: str, paper_id: str, record: Dict[str, Any]) ->
         os.fsync(fh.fileno())
     finally:
         if fcntl:
-            try:
+            with suppress(OSError):
                 fcntl.flock(fh, fcntl.LOCK_UN)
-            except OSError:
-                pass
         fh.close()
 
 

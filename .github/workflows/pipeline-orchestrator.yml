@@ -1,5 +1,4 @@
 name: Pipeline Orchestrator
-# NOTE: Experimental manual trigger while we evaluate GitHub workflow_run orchestration.
 
 on:
   workflow_dispatch:

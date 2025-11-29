@@ -219,7 +219,7 @@ def main():
     print("   python -m src.pipeline --cloud-mode --limit 10 --with-qa")
     print()
     print("3. Start the orchestrator workflow:")
-    print("   gh workflow run translate_orchestrator.yml")
+    print("   gh workflow run batch-queue-orchestrator.yml")
     print()
 
 

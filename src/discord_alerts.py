@@ -277,10 +277,7 @@ if __name__ == "__main__":
     # Test the Discord webhook
     import sys
 
-    if len(sys.argv) > 1:
-        webhook_url = sys.argv[1]
-    else:
-        webhook_url = None
+    webhook_url = sys.argv[1] if len(sys.argv) > 1 else None
 
     print("Testing Discord webhook...")
     success = test_discord_webhook(webhook_url)

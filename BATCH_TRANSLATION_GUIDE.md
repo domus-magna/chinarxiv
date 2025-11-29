@@ -37,7 +37,7 @@ The batch translation system processes papers in configurable batches via GitHub
                  │
 ┌────────────────▼────────────────────────────────┐
 │ 3. Orchestrator (Optional)                      │
-│    .github/workflows/translate_orchestrator.yml │
+│    .github/workflows/batch-queue-orchestrator.yml │
 │    • Runs multiple batches sequentially         │
 │    • Monitors queue progress                    │
 │    • Triggers site rebuild when complete        │
@@ -257,10 +257,10 @@ src/
 └── pipeline.py              # Translation pipeline
 
 .github/workflows/
-├── translate_batch.yml      # Batch worker
-├── translate_orchestrator.yml  # Orchestrator
-├── qa_report.yml            # QA reporting
-└── build.yml                # Site rebuild
+├── batch_translate.yml           # Batch worker
+├── batch-queue-orchestrator.yml  # Orchestrator
+├── qa_report.yml                 # QA reporting
+└── build.yml                     # Site rebuild
 
 scripts/
 └── init_cloud_queue.py      # Queue initialization

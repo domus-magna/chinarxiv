@@ -87,7 +87,7 @@ class Paper:
             self.files
             and any(
                 filename.endswith((".tex", ".tar.gz", ".zip"))
-                for filename in self.files.keys()
+                for filename in self.files
             )
         )
 

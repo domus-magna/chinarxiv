@@ -16,6 +16,7 @@ from ..config import get_config, get_proxies
 from ..http_client import openrouter_headers, parse_openrouter_error
 from ..monitoring import monitoring_service, alert_critical
 from ..tex_guard import mask_math, unmask_math, verify_token_parity
+import contextlib
 
 # Removed heuristic formatting imports - LLM formatting only
 
@@ -170,7 +171,7 @@ class FormattingService:
                 code = info["code"]
                 message = info["message"] or f"OpenRouter error {status}"
                 # Record error for budget tracking
-                try:
+                with contextlib.suppress(Exception):
                     monitoring_service.record_error(
                         service="openrouter",
                         message=message,
@@ -178,12 +179,10 @@ class FormattingService:
                         code=code or None,
                         metadata={"component": "formatting", "model": self.model},
                     )
-                except Exception:
-                    pass
                 # For formatting, we don't retry here; surface a clear message
                 if status == 401 and not info["fallback_ok"]:
                     # Immediate critical alert for fatal
-                    try:
+                    with contextlib.suppress(Exception):
                         alert_critical(
                             "OpenRouter Fatal Error (Formatting)",
                             message,
@@ -194,8 +193,6 @@ class FormattingService:
                                 "model": self.model,
                             },
                         )
-                    except Exception:
-                        pass
                     raise RuntimeError(
                         "OpenRouter API key is invalid or account has insufficient funds. Please verify OPENROUTER_API_KEY and credits."
                     )
@@ -209,7 +206,7 @@ class FormattingService:
             data = resp.json()
             content = data["choices"][0]["message"]["content"].strip()
         except requests.exceptions.RequestException as e:
-            try:
+            with contextlib.suppress(Exception):
                 monitoring_service.record_error(
                     service="openrouter",
                     message=str(e),
@@ -217,8 +214,6 @@ class FormattingService:
                     code="network_error",
                     metadata={"component": "formatting", "model": self.model},
                 )
-            except Exception:
-                pass
             raise RuntimeError(f"Network error calling OpenRouter API: {e}")
         except Exception as e:
             raise RuntimeError(f"Formatter API failed: {e}")

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from .utils import log, getenv_bool
 from .data_utils import filter_by_timestamp
+import contextlib
 
 
 @dataclass
@@ -263,10 +264,8 @@ class MonitoringService:
             self.error_counters["by_code"] = by_code
 
         # Save snapshot periodically (best-effort)
-        try:
+        with contextlib.suppress(Exception):
             self._save_data()
-        except Exception:
-            pass
 
         # Check budgets and alert if exceeded (debounced)
         if self.enable_budget_alerts:

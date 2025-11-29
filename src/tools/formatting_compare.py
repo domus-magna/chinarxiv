@@ -48,11 +48,10 @@ def pick_candidates(count: int) -> List[str]:
             try:
                 with open(p, "r", encoding="utf-8") as f:
                     d = json.load(f)
-                if d.get("body_en"):
-                    if d["id"] not in selected:
-                        selected.append(d["id"])
-                        if len(selected) >= count:
-                            break
+                if d.get("body_en") and d["id"] not in selected:
+                    selected.append(d["id"])
+                    if len(selected) >= count:
+                        break
             except Exception:
                 continue
     return selected

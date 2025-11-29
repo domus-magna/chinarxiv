@@ -202,10 +202,7 @@ def run_cli() -> None:
             return
 
         # Apply limit if set (>0)
-        if args.limit and args.limit > 0:
-            worklist = selected[: args.limit]
-        else:
-            worklist = selected
+        worklist = selected[:args.limit] if args.limit and args.limit > 0 else selected
 
     summary["attempted"] = len(worklist)
 

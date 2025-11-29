@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
 import requests
-from flask import Flask, render_template, request, jsonify, Response, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session
 from werkzeug.security import check_password_hash
 
 from .monitoring import monitoring_service
