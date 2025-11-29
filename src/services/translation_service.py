@@ -165,7 +165,7 @@ class MathPreservationError(Exception):
 
 
 # Re-export for backward compatibility
-from .circuit_breaker import CircuitBreaker  # noqa: E402
+from .circuit_breaker import CircuitBreaker, CircuitBreakerOpen  # noqa: E402, F401
 
 
 class TranslationService:
