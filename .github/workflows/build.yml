@@ -88,6 +88,9 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
           BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
+          # Figure translation (Gemini + Moondream)
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
           # Backblaze B2 (S3-compatible)
           BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
           BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
@@ -191,9 +194,9 @@ jobs:
               fi
             fi
 
-            # Translate
+            # Translate (text + figures)
             echo "🌐 Running translation pipeline..."
-            python -m src.pipeline --skip-selection --workers 20 --with-qa
+            python -m src.pipeline --skip-selection --workers 20 --with-qa --with-figures
 
             SUMMARY_FILE="reports/pipeline_summary.json"
             if [ ! -f "$SUMMARY_FILE" ]; then

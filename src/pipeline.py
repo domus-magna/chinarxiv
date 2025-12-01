@@ -76,19 +76,39 @@ def run_cli() -> None:
         default="local-worker",
         help="Worker ID for cloud mode (default: local-worker)",
     )
+    parser.add_argument(
+        "--with-figures",
+        action="store_true",
+        help="Enable figure translation after text translation",
+    )
     args = parser.parse_args()
+
+    # Validate figure secrets if --with-figures is enabled
+    if args.with_figures:
+        missing_secrets = []
+        if not os.environ.get("GEMINI_API_KEY"):
+            missing_secrets.append("GEMINI_API_KEY")
+        if not os.environ.get("MOONDREAM_API_KEY"):
+            missing_secrets.append("MOONDREAM_API_KEY")
+        if missing_secrets:
+            log(f"ERROR: --with-figures requires these environment variables: {', '.join(missing_secrets)}")
+            log("Set these secrets in GitHub Actions or your local environment.")
+            raise SystemExit(f"Missing required secrets for figure translation: {', '.join(missing_secrets)}")
 
     summary = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "dry_run": args.dry_run,
         "cloud_mode": args.cloud_mode,
         "with_qa": args.with_qa,
+        "with_figures": args.with_figures,
         "selection_status": "skipped" if args.skip_selection else "pending",
         "attempted": 0,
         "successes": 0,
         "failures": 0,
         "qa_passed": 0,
         "qa_flagged": 0,
+        "figures_total": 0,
+        "figures_translated": 0,
     }
 
     # Selection step (unless skipped and selected.json already exists)
@@ -291,6 +311,43 @@ def run_cli() -> None:
         log(f"  Passed: {qa_passed_count}")
         log(f"  Flagged: {qa_flagged_count}")
         log(f"  Pass rate: {pass_rate:.1f}%")
+
+    # Figure translation step (after text translation)
+    if args.with_figures and not args.dry_run and successes > 0:
+        log("\nFigure translation step…")
+        from .figure_pipeline import FigurePipeline, PipelineConfig
+
+        figure_config = PipelineConfig(
+            gemini_api_key=os.environ.get("GEMINI_API_KEY"),
+            moondream_api_key=os.environ.get("MOONDREAM_API_KEY"),
+            dry_run=False,
+        )
+        figure_pipeline = FigurePipeline(figure_config)
+
+        # Get paper IDs that were successfully translated
+        paper_ids = [p["id"] for p in worklist if p.get("id")]
+        log(f"Processing figures for {len(paper_ids)} papers...")
+
+        try:
+            figure_results = figure_pipeline.process_batch(paper_ids, workers=4)
+
+            # Aggregate stats
+            total_figures = sum(r.total_figures for r in figure_results)
+            translated_figures = sum(r.translated for r in figure_results)
+            failed_figures = sum(r.failed for r in figure_results)
+
+            summary["figures_total"] = total_figures
+            summary["figures_translated"] = translated_figures
+
+            log("\nFigure Summary:")
+            log(f"  Total figures: {total_figures}")
+            log(f"  Translated: {translated_figures}")
+            log(f"  Failed: {failed_figures}")
+            if total_figures > 0:
+                log(f"  Success rate: {translated_figures / total_figures * 100:.1f}%")
+        except Exception as e:
+            log(f"Figure translation failed: {e}")
+            summary["figures_error"] = str(e)
 
     # Render + index + pdf (skip if cloud mode - will be done after all batches)
     if not args.cloud_mode:
