@@ -184,6 +184,24 @@ jobs:
               fi
             fi
 
+            # MANDATORY: Download PDFs before translation
+            echo "📥 Downloading PDFs for all selected papers..."
+            python scripts/download_missing_pdfs.py || {
+              echo "⚠️ Some PDF downloads failed, continuing with available PDFs"
+            }
+
+            # Upload PDFs to B2 BEFORE translation (ensures persistence)
+            if [ -d data/pdfs ] && ls data/pdfs/*.pdf 1>/dev/null 2>&1; then
+              echo "📤 Uploading PDFs to B2 before translation..."
+              aws s3 sync data/pdfs "${DEST}pdfs/" \
+                --exclude "*" \
+                --include "chinaxiv-*.pdf" \
+                --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
+                --only-show-errors
+              PDF_COUNT=$(ls -1 data/pdfs/*.pdf 2>/dev/null | wc -l | tr -d ' ')
+              echo "✅ ${PDF_COUNT} PDFs synced to B2"
+            fi
+
             # Translate (text + figures for non-PR builds)
             echo "🌐 Running translation pipeline..."
             FIGURE_FLAG=""

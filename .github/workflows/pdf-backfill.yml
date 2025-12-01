@@ -1,0 +1,283 @@
+name: pdf-backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month to download PDFs for (YYYYMM, or "all")'
+        required: true
+        default: 'all'
+      limit:
+        description: 'Max PDFs to download (0 = no limit)'
+        required: false
+        default: '0'
+
+jobs:
+  pdf-backfill:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Capture run metadata
+        id: meta
+        run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      - name: Set Backblaze region (job-wide)
+        run: echo "AWS_DEFAULT_REGION=us-west-004" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install awscli
+
+      - name: "Preflight: Validate B2 credentials"
+        env:
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+        run: |
+          set -e
+          echo "🔎 Preflight: Validating B2 credentials..."
+          if [ -z "${BACKBLAZE_KEY_ID}" ] || [ -z "${BACKBLAZE_APPLICATION_KEY}" ]; then
+            echo "❌ BACKBLAZE_KEY_ID or BACKBLAZE_APPLICATION_KEY not set"
+            exit 1
+          fi
+          if [ -z "${BACKBLAZE_S3_ENDPOINT}" ] || [ -z "${BACKBLAZE_BUCKET}" ]; then
+            echo "❌ BACKBLAZE_S3_ENDPOINT or BACKBLAZE_BUCKET not set"
+            exit 1
+          fi
+          echo "✅ B2 credentials present"
+
+      - name: Download records from B2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
+          mkdir -p data/records
+
+          echo "📋 Downloading records from B2..."
+          if [ "${{ inputs.month }}" = "all" ]; then
+            aws s3 sync "${DEST}records/" data/records/ \
+              --exclude "*" \
+              --include "chinaxiv_*.json" \
+              --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
+              --only-show-errors
+          else
+            aws s3 cp "${DEST}records/chinaxiv_${{ inputs.month }}.json" \
+              data/records/chinaxiv_${{ inputs.month }}.json \
+              --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
+              --only-show-errors || {
+                echo "⚠️ Records not found in B2, will harvest..."
+              }
+          fi
+
+          RECORD_COUNT=$(ls -1 data/records/chinaxiv_*.json 2>/dev/null | wc -l | tr -d ' ')
+          echo "Found ${RECORD_COUNT} record files"
+          echo "RECORD_COUNT=${RECORD_COUNT}" >> $GITHUB_ENV
+
+      - name: Harvest records if missing
+        if: env.RECORD_COUNT == '0' || (inputs.month != 'all' && !env.RECORD_FOUND)
+        env:
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          BRIGHTDATA_UNLOCKER_PASSWORD: ${{ secrets.BRIGHTDATA_UNLOCKER_PASSWORD }}
+        run: |
+          set -e
+          if [ "${{ inputs.month }}" != "all" ]; then
+            REC="data/records/chinaxiv_${{ inputs.month }}.json"
+            if [ ! -f "$REC" ]; then
+              echo "📥 Harvesting records for ${{ inputs.month }}..."
+              python -m src.harvest_chinaxiv_optimized --month "${{ inputs.month }}" || {
+                echo "⚠️ Harvest failed, trying to continue with existing data"
+              }
+            fi
+          else
+            echo "ℹ️ Month=all with no records - nothing to harvest"
+          fi
+
+      - name: Download existing PDFs from B2 (skip already have)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
+          mkdir -p data/pdfs
+
+          echo "⬇️ Downloading existing PDFs from B2..."
+          if [ "${{ inputs.month }}" = "all" ]; then
+            aws s3 sync "${DEST}pdfs/" data/pdfs/ \
+              --exclude "*" \
+              --include "chinaxiv-*.pdf" \
+              --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
+              --only-show-errors || true
+          else
+            aws s3 sync "${DEST}pdfs/" data/pdfs/ \
+              --exclude "*" \
+              --include "chinaxiv-${{ inputs.month }}*.pdf" \
+              --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
+              --only-show-errors || true
+          fi
+
+          CACHED=$(ls -1 data/pdfs/*.pdf 2>/dev/null | wc -l | tr -d ' ')
+          echo "✅ Found ${CACHED} cached PDFs in B2"
+          echo "CACHED_PDF_COUNT=${CACHED}" >> $GITHUB_ENV
+
+      - name: Download missing PDFs from ChinaXiv
+        env:
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          BRIGHTDATA_UNLOCKER_PASSWORD: ${{ secrets.BRIGHTDATA_UNLOCKER_PASSWORD }}
+        run: |
+          set -e
+          echo "📥 Downloading missing PDFs from ChinaXiv..."
+
+          LIMIT_ARG=""
+          if [ "${{ inputs.limit }}" != "0" ]; then
+            LIMIT_ARG="--limit ${{ inputs.limit }}"
+          fi
+
+          if [ "${{ inputs.month }}" = "all" ]; then
+            python scripts/download_missing_pdfs.py $LIMIT_ARG
+          else
+            python scripts/download_missing_pdfs.py --months "${{ inputs.month }}" $LIMIT_ARG
+          fi
+
+          TOTAL=$(ls -1 data/pdfs/*.pdf 2>/dev/null | wc -l | tr -d ' ')
+          NEW=$((TOTAL - ${CACHED_PDF_COUNT:-0}))
+          echo "Total PDFs: ${TOTAL} (${NEW} newly downloaded)"
+          echo "TOTAL_PDF_COUNT=${TOTAL}" >> $GITHUB_ENV
+          echo "NEW_PDF_COUNT=${NEW}" >> $GITHUB_ENV
+
+      - name: Upload ALL PDFs to B2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
+
+          echo "📤 Uploading PDFs to B2..."
+          if [ "${{ inputs.month }}" = "all" ]; then
+            aws s3 sync data/pdfs/ "${DEST}pdfs/" \
+              --exclude "*" \
+              --include "chinaxiv-*.pdf" \
+              --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
+              --only-show-errors
+          else
+            aws s3 sync data/pdfs/ "${DEST}pdfs/" \
+              --exclude "*" \
+              --include "chinaxiv-${{ inputs.month }}*.pdf" \
+              --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
+              --only-show-errors
+          fi
+          echo "✅ PDFs synced to B2"
+
+      - name: Upload records to B2 (if harvested)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
+
+          if [ -d data/records ] && ls data/records/chinaxiv_*.json 1>/dev/null 2>&1; then
+            echo "📤 Uploading records to B2..."
+            aws s3 sync data/records/ "${DEST}records/" \
+              --exclude "*" \
+              --include "chinaxiv_*.json" \
+              --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
+              --only-show-errors
+            echo "✅ Records synced to B2"
+          fi
+
+      - name: Verify and report
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
+
+          echo ""
+          echo "=== PDF BACKFILL SUMMARY ==="
+          echo "Month: ${{ inputs.month }}"
+          echo "Started at: ${{ steps.meta.outputs.started_at }}"
+          echo ""
+          echo "Local results:"
+          echo "  Previously cached: ${CACHED_PDF_COUNT:-0}"
+          echo "  Newly downloaded: ${NEW_PDF_COUNT:-0}"
+          echo "  Total local: ${TOTAL_PDF_COUNT:-0}"
+          echo ""
+
+          # Count PDFs in B2 for verification
+          echo "Verifying B2 state..."
+          if [ "${{ inputs.month }}" = "all" ]; then
+            B2_PDF_COUNT=$(aws s3 ls "${DEST}pdfs/" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" | grep -c "chinaxiv-.*\.pdf" || echo "0")
+          else
+            B2_PDF_COUNT=$(aws s3 ls "${DEST}pdfs/chinaxiv-${{ inputs.month }}" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" | grep -c "\.pdf" || echo "0")
+          fi
+          echo "  PDFs in B2: ${B2_PDF_COUNT}"
+          echo ""
+
+          # Compare with translation count
+          if [ "${{ inputs.month }}" = "all" ]; then
+            TRANS_COUNT=$(aws s3 ls "${DEST}validated/translations/" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" | grep -c "chinaxiv-.*\.json" || echo "0")
+          else
+            TRANS_COUNT=$(aws s3 ls "${DEST}validated/translations/chinaxiv-${{ inputs.month }}" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" | grep -c "\.json" || echo "0")
+          fi
+          echo "  Translations in B2: ${TRANS_COUNT}"
+
+          if [ "${B2_PDF_COUNT}" -lt "${TRANS_COUNT}" ]; then
+            GAP=$((TRANS_COUNT - B2_PDF_COUNT))
+            echo ""
+            echo "⚠️ WARNING: Still missing ${GAP} PDFs"
+            echo "Some papers may have failed PDF downloads"
+          else
+            echo ""
+            echo "✅ PDF coverage complete (PDFs >= translations)"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-backfill-${{ inputs.month }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            data/pdfs/*.pdf

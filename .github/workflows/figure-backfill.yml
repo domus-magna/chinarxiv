@@ -187,6 +187,40 @@ jobs:
           echo "Total PDFs available: ${PDF_COUNT}"
           echo "PDF_COUNT=${PDF_COUNT}" >> $GITHUB_ENV
 
+      - name: Verify PDF availability
+        if: env.SKIP_FIGURES != 'true'
+        run: |
+          set -e
+          PAPER_COUNT=$(wc -l < /tmp/paper_ids.txt 2>/dev/null | tr -d ' ' || echo "0")
+          PDF_COUNT=${PDF_COUNT:-0}
+
+          echo "Papers to process: ${PAPER_COUNT}"
+          echo "PDFs available: ${PDF_COUNT}"
+
+          if [ "${PDF_COUNT}" -eq 0 ]; then
+            echo "❌ FATAL: No PDFs available for figure translation"
+            echo "Run 'gh workflow run pdf-backfill.yml -f month=${{ inputs.month }}' first"
+            exit 1
+          fi
+
+          # Count how many papers have matching PDFs
+          MATCHED=0
+          while read -r paper_id; do
+            if [ -f "data/pdfs/${paper_id}.pdf" ]; then
+              MATCHED=$((MATCHED + 1))
+            fi
+          done < /tmp/paper_ids.txt
+
+          echo "Papers with PDFs: ${MATCHED}/${PAPER_COUNT}"
+
+          if [ "${MATCHED}" -eq 0 ]; then
+            echo "❌ FATAL: No papers have matching PDFs"
+            echo "Run 'gh workflow run pdf-backfill.yml -f month=${{ inputs.month }}' first"
+            exit 1
+          fi
+
+          echo "PAPERS_WITH_PDFS=${MATCHED}" >> $GITHUB_ENV
+
       - name: Upload PDFs to B2 (for future runs)
         if: env.SKIP_FIGURES != 'true'
         env:

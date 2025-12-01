@@ -130,6 +130,26 @@ jobs:
             exit 1
           fi
           
+          # MANDATORY: Download PDFs before translation
+          echo "📥 Downloading PDFs for month ${{ inputs.month }}..."
+          python scripts/download_missing_pdfs.py --months "${{ inputs.month }}" || {
+            echo "⚠️ Some PDF downloads failed, continuing with available PDFs"
+          }
+
+          # Upload PDFs to B2 BEFORE translation (ensures persistence)
+          if [ -d data/pdfs ] && ls data/pdfs/chinaxiv-${{ inputs.month }}*.pdf 1>/dev/null 2>&1; then
+            echo "📤 Uploading PDFs to B2 before translation..."
+            aws s3 sync data/pdfs "${DEST}pdfs/" \
+              --exclude "*" \
+              --include "chinaxiv-${{ inputs.month }}*.pdf" \
+              --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
+              --only-show-errors
+            PDF_COUNT=$(ls -1 data/pdfs/chinaxiv-${{ inputs.month }}*.pdf 2>/dev/null | wc -l | tr -d ' ')
+            echo "✅ ${PDF_COUNT} PDFs synced to B2"
+          else
+            echo "⚠️ No PDFs found for month ${{ inputs.month }}"
+          fi
+
           echo "🌐 Translating (workers=${{ inputs.workers }})..."
           python -m src.pipeline --skip-selection --workers "${{ inputs.workers }}" --with-qa || {
             echo "❌ Pipeline failed"
