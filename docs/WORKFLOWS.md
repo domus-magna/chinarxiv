@@ -1,396 +1,178 @@
 # GitHub Actions Workflows
 
-This document describes all GitHub Actions workflows used in the ChinaXiv Translations project.
+This guide describes all 23 workflows in the repo, grouped by purpose with quick expectations, required secrets, and example invocations. Defaults favor the simplest reliable path: B2 is always the source of truth, PDFs are mandatory before translation, and figure translation runs where enabled.
 
-## Quick Reference
+## Required Secrets (by usage)
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `daily-pipeline.yml` | Daily 3 AM UTC + manual | Main production pipeline |
-| `backfill.yml` | Manual | Single-month backfill |
-| `pdf-backfill.yml` | Manual | Download missing PDFs to B2 |
-| `figure-backfill.yml` | Manual | Translate figures for CS/AI papers |
-| `ci.yml` | Push/PR | Lint and test |
+- **Translation**: `OPENROUTER_API_KEY`
+- **Figures**: `GEMINI_API_KEY`, `MOONDREAM_API_KEY`
+- **Storage (B2)**: `BACKBLAZE_KEY_ID`, `BACKBLAZE_APPLICATION_KEY`, `BACKBLAZE_S3_ENDPOINT`, `BACKBLAZE_BUCKET`, optional `BACKBLAZE_PREFIX`
+- **Harvesting / PDF fetch**: `BRIGHTDATA_API_KEY`, `BRIGHTDATA_ZONE`, optional `BRIGHTDATA_UNLOCKER_ZONE`, `BRIGHTDATA_UNLOCKER_PASSWORD`
+- **Deploy / alerts**: `CF_API_TOKEN` (Cloudflare Pages), `DISCORD_WEBHOOK_URL`
+- **ChatOps / review**: `CLAUDE_CODE_OAUTH_TOKEN` (for `claude*.yml`)
 
----
+## Production Pipelines
 
-## Primary Production Pipelines
+### Daily Pipeline (`.github/workflows/daily-pipeline.yml`)
+- **Trigger**: 03:00 UTC schedule + manual; `skip_harvest` input to run render-only.
+- **Purpose**: End-to-end prod run (harvest current+previous month, select, download PDFs, translate text+figures on non-PR, publish to B2, hydrate from B2, render/search/PDF, deploy to Cloudflare).
+- **What to expect**: 25–45 minutes. Fails early if B2 or OpenRouter keys are missing. PRs skip secrets, figures, and B2 persistence.
+- **Inputs**: `skip_harvest` (bool).
+- **Example**: `gh workflow run daily-pipeline.yml -f skip_harvest=false`.
 
-### Daily Pipeline
-- **File**: `.github/workflows/daily-pipeline.yml`
-- **Schedule**: Daily at 3 AM UTC + manual dispatch
-- **Purpose**: Main production pipeline that harvests new papers, translates them, renders the site, and deploys to Cloudflare Pages.
+### Month Backfill (`.github/workflows/backfill.yml`)
+- **Trigger**: Manual.
+- **Purpose**: Full harvest→select→PDF download→translate→publish→render for one `YYYYMM`.
+- **What to expect**: 30–90 minutes depending on month size. Requires BrightData + B2 secrets. Deploy toggled by `deploy`.
+- **Inputs**: `month` (required), `workers` (default 20), `deploy` (default true), `no_latest` (skip latest pointer).
+- **Example**: `gh workflow run backfill.yml -f month=202510 -f workers=30 -f deploy=true`.
 
-**What to expect**: Runs for 15-30 minutes. Harvests current and previous month, selects new papers, downloads PDFs, translates text (with figures on non-PR builds), publishes to B2, hydrates from B2, renders site, and deploys.
-
-**Inputs**:
-- `skip_harvest` (bool): Skip harvest and translation, rebuild site only
-
----
-
-### Backfill (Single Month)
-- **File**: `.github/workflows/backfill.yml`
-- **Trigger**: Manual dispatch
-- **Purpose**: End-to-end backfill for a single month: harvest → download PDFs → select → translate → render → optional deploy.
-
-**What to expect**: Runs for 20-60 minutes depending on paper count. Useful for filling gaps in coverage or reprocessing a specific month.
-
-**Inputs**:
-- `month` (required): Month to backfill (YYYYMM format)
-- `workers` (default: 20): Parallel translation workers
-- `deploy` (default: true): Deploy site after backfill
-- `no_latest` (default: false): Don't update selections/latest.json
-
----
-
-### Batch Translation Worker
-- **File**: `.github/workflows/batch_translate.yml`
-- **Trigger**: Manual dispatch
-- **Purpose**: Cloud-native batch translation that pulls from a queue and processes papers with high parallelism (up to 80 workers).
-
-**What to expect**: Long-running job (hours) that processes large queues. Uses B2 for persistence and supports QA filtering.
-
-**Inputs**:
-- `batch_size` (default: 50): Papers per batch
-- `workers` (default: 40): Parallel workers
-- `min_workers`, `max_workers`: Worker range for adaptive scaling
-
----
-
-### CI (Continuous Integration)
-- **File**: `.github/workflows/ci.yml`
-- **Trigger**: Push to main, all PRs
-- **Purpose**: Standard CI gate that runs linting (ruff) and tests (pytest) on every push and PR.
-
-**What to expect**: Runs in 2-5 minutes. Must pass before merging to main.
-
----
+### Rebuild from B2 (`.github/workflows/rebuild-from-b2.yml`)
+- **Trigger**: Manual (optional schedule commented out).
+- **Purpose**: Hydrate validated translations from B2, render/search/PDF, deploy; no harvest/translate.
+- **What to expect**: ~10–20 minutes; fails if B2 has zero translations.
+- **Example**: `gh workflow run rebuild-from-b2.yml`.
 
 ## Figure & PDF Workflows
 
-### PDF Backfill
-- **File**: `.github/workflows/pdf-backfill.yml`
-- **Trigger**: Manual dispatch
-- **Purpose**: Download missing PDFs from ChinaXiv and persist to B2. Required before figure translation.
+### PDF Backfill (`.github/workflows/pdf-backfill.yml`)
+- **Trigger**: Manual.
+- **Purpose**: Download missing PDFs (single month or all) and push to B2.
+- **What to expect**: Time scales with gaps; harvests records if missing. Requires BrightData + B2 secrets.
+- **Inputs**: `month` (`YYYYMM` or `all`), `limit` (0 = no limit).
+- **Example**: `gh workflow run pdf-backfill.yml -f month=all`.
 
-**What to expect**: Duration depends on number of missing PDFs. Downloads from ChinaXiv via BrightData proxy, uploads to B2. Run this before figure-backfill if PDFs are missing.
+### Figure Backfill (`.github/workflows/figure-backfill.yml`)
+- **Trigger**: Manual.
+- **Purpose**: Translate figures for validated papers (defaults to CS/AI filter).
+- **Prerequisite**: PDFs must already exist in B2. Run `pdf-backfill.yml` first if PDFs are missing.
+- **What to expect**: 30–90 minutes per month. Papers without PDFs in B2 are skipped (not failed). Requires Gemini + Moondream + B2.
+- **Inputs**: `month` (required), `workers` (default 8), `figure_concurrent` (default 8), `limit` (0 = all), `cs_ai_only` (default true).
+- **Example**:
+  ```bash
+  # Step 1: Ensure PDFs are in B2
+  gh workflow run pdf-backfill.yml -f month=202510
+  # Step 2: Translate figures
+  gh workflow run figure-backfill.yml -f month=202510 -f limit=10 -f cs_ai_only=true
+  ```
 
-**Inputs**:
-- `month` (required): Month to process (YYYYMM) or "all" for all months
-- `limit` (default: 0): Max PDFs to download (0 = no limit)
+## Orchestration & Queue Management
 
----
+### Pipeline Orchestrator (`.github/workflows/pipeline-orchestrator.yml`)
+- **Trigger**: Manual.
+- **Purpose**: Drives gates in order (preflight → harvest → ocr → translate → qa → render) using reusable gate runner.
+- **What to expect**: Runs stages serially; failure stops the chain and optionally notifies Discord.
+- **Inputs**: `stages` comma list, `batch_size`, `workers`, `matrix_size`.
+- **Example**: `gh workflow run pipeline-orchestrator.yml -f stages=preflight,harvest,translate`.
 
-### Figure Backfill
-- **File**: `.github/workflows/figure-backfill.yml`
-- **Trigger**: Manual dispatch, workflow_call (from figure-gate or orchestrator)
-- **Purpose**: Translate figures in PDFs using Gemini for translation and Moondream for QA validation.
+### Month Range Backfill (`.github/workflows/month-range-backfill.yml`)
+- **Trigger**: Manual.
+- **Purpose**: Dispatches `backfill.yml` for a range of months.
+- **What to expect**: Fire-and-forget API dispatches; concurrency set by `parallel`.
+- **Inputs**: `start`, `end`, `parallel` (default 3), `workers`, `deploy`.
+- **Example**: `gh workflow run month-range-backfill.yml -f start=202401 -f end=202406 -f parallel=2`.
 
-**What to expect**: Runs 30-90 minutes per month. Extracts figures from PDFs, translates Chinese text to English using Gemini, validates with Moondream, uploads to B2. By default filters to CS/AI papers only. Uses parallel workers with real-time progress reporting to B2.
+### Batch Queue Orchestrator (`.github/workflows/batch-queue-orchestrator.yml`)
+- **Trigger**: Manual.
+- **Purpose**: Loops batch translations until the queue empties (or batch limit reached) and then triggers QA report + legacy `build.yml` rebuild.
+- **What to expect**: Long-lived control loop; assumes `batch_translate.yml` exists and may no-op on the legacy `build.yml` trigger.
+- **Inputs**: `total_batches` (0 = until empty), `batch_size`, `workers`, `runner_type`, `delay_between_batches`.
+- **Example**: `gh workflow run batch-queue-orchestrator.yml -f total_batches=0 -f batch_size=300 -f workers=60`.
 
-**Inputs**:
-- `month` (required): Month to process (YYYYMM)
-- `workers` (default: 8): Parallel paper workers
-- `figure_concurrent` (default: 8): Concurrent figures per paper
-- `limit` (default: 0): Max papers (0 = all)
-- `cs_ai_only` (default: true): Filter to CS/AI papers only
+### Batch Translation Worker (`.github/workflows/batch_translate.yml`)
+- **Trigger**: Manual.
+- **Purpose**: High-throughput translation worker for queued jobs with QA.
+- **What to expect**: Up to 6 hours; installs OCR stack; persists validated/flagged outputs to B2 and commits queue state.
+- **Inputs**: `batch_size` (default 500), `workers` (default 80), `runner_type` (default `ubuntu-latest-8-cores`).
+- **Example**: `gh workflow run batch_translate.yml -f batch_size=200 -f workers=40`.
 
----
-
-### Figure Gate
-- **File**: `.github/workflows/figure-gate.yml`
-- **Trigger**: Manual dispatch, workflow_call (from orchestrator)
-- **Purpose**: Validation wrapper for figure-backfill that ensures proper input validation before processing.
-
-**What to expect**: Quick validation step then calls figure-backfill. Used by pipeline-orchestrator to ensure month format is valid.
-
-**Inputs**: Same as figure-backfill (month, workers, figure_concurrent, limit, cs_ai_only)
-
----
-
-## Orchestration & Recovery
-
-### Month Range Backfill
-- **File**: `.github/workflows/month-range-backfill.yml`
-- **Trigger**: Manual dispatch
-- **Purpose**: Orchestrates multiple `backfill.yml` runs for a range of months. Useful for bulk historical backfill.
-
-**Inputs**:
-- `start_month`, `end_month`: Range in YYYYMM format
-
----
-
-### Batch Queue Orchestrator
-- **File**: `.github/workflows/batch-queue-orchestrator.yml`
-- **Trigger**: Manual dispatch
-- **Purpose**: Runs sequential batch translation jobs until the queue is empty.
-
-**What to expect**: Long-running orchestration that keeps spawning batch jobs. Good for exhausting a large backlog.
-
----
-
-### Pipeline Orchestrator
-- **File**: `.github/workflows/pipeline-orchestrator.yml`
-- **Trigger**: Manual dispatch
-- **Purpose**: Multi-stage pipeline orchestration with configurable stages (preflight → harvest → ocr → translate → figures → qa → render).
-
-**What to expect**: Complex multi-stage workflow with Discord notifications between stages. Includes figures stage (calls figure-gate.yml) for figure translation when month is provided. The figures stage writes real-time progress to B2 status manifests (other stages to be instrumented in future). Use for controlled, monitored backfill.
-
-**Stages**:
-- `preflight`: Environment validation
-- `harvest`: Download paper metadata and PDFs
-- `ocr`: Process PDFs for text extraction
-- `translate`: Translate text with DeepSeek via OpenRouter
-- `figures`: Translate figures with Gemini (requires month input)
-- `qa`: Quality assurance validation
-- `render`: Build and deploy static site
-
----
-
-### Rebuild from B2
-- **File**: `.github/workflows/rebuild-from-b2.yml`
-- **Trigger**: Manual dispatch
-- **Purpose**: Minimal rebuild that hydrates translations from B2, renders the site, and deploys. No harvest or translation.
-
-**What to expect**: Fast rebuild (10-15 min). Use when B2 has correct data but site needs redeployment.
-
----
+### Queue Maintenance (`.github/workflows/queue-maintenance.yml`)
+- **Trigger**: 04:00 UTC daily + manual.
+- **Purpose**: Compacts `data/cloud_jobs*.json` and pushes updates.
+- **What to expect**: Fast (minutes); writes to repo.
+- **Example**: `gh workflow run queue-maintenance.yml`.
 
 ## Validation Gates
 
-These workflows use a reusable template (`validation-gate.yml`) to run validation commands for specific pipeline stages.
+### Gate Template (`.github/workflows/validation-gate.yml`)
+- **Trigger**: `workflow_call` only.
+- **Purpose**: Shared runner for gate commands with optional pre/post hooks and artifact upload.
+- **What to expect**: 60-minute default timeout; installs OCR deps each run.
 
-### Validation Gate (Template)
-- **File**: `.github/workflows/validation-gate.yml`
-- **Trigger**: Called by other workflows (`workflow_call`)
-- **Purpose**: Reusable template for running validation commands.
+### Preflight (`.github/workflows/preflight.yml`)
+- **Trigger**: Manual.
+- **Purpose**: Runs `env_diagnose --preflight` to verify secrets/binaries.
+- **What to expect**: ~5 minutes; artifacts are optional.
 
-### Individual Gates
-- **`harvest-gate.yml`**: Validates harvest functionality
-- **`translation-gate.yml`**: Validates translation functionality (supports matrix jobs)
-- **`ocr-gate.yml`**: Validates OCR functionality
-- **`render-gate.yml`**: Validates rendering/search/PDF generation
+### Harvest Gate (`.github/workflows/harvest-gate.yml`)
+- **Trigger**: Manual or via orchestrator.
+- **Purpose**: Seeds fixtures, runs harvest validator, posts Discord summary.
+- **What to expect**: ~10–15 minutes; fails if harvest validator reports issues.
+- **Inputs**: Optional `records_path`.
 
-**What to expect**: Quick validation runs (5-15 min) that test specific pipeline stages in isolation.
+### OCR Gate (`.github/workflows/ocr-gate.yml`)
+- **Trigger**: Manual or via orchestrator.
+- **Purpose**: Seeds fixtures, prepares OCR report, runs OCR validator.
+- **What to expect**: ~10–20 minutes; errors if OCR prep finds no data.
 
----
+### Translation Gate (`.github/workflows/translation-gate.yml`)
+- **Trigger**: Manual or via orchestrator (matrix-capable).
+- **Purpose**: Runs translation validator with optional matrix fan-out.
+- **What to expect**: Up to 3 hours (per job) depending on matrix size.
+- **Inputs**: `batch_size`, `workers`, `matrix_index` (used when matrixed).
 
-## Testing & Monitoring
+### Render Gate (`.github/workflows/render-gate.yml`)
+- **Trigger**: Manual or via orchestrator.
+- **Purpose**: Hydrates from B2 if available, renders site/search/PDFs, then runs render validator.
+- **What to expect**: ~15–25 minutes; B2 optional but preferred.
 
-### Smoke Translate
-- **File**: `.github/workflows/smoke-translate.yml`
-- **Trigger**: Manual dispatch
-- **Purpose**: Quick smoke test with limited papers (default: 20) to verify translation pipeline works.
+## Testing, QA, and Sampling
 
-**Inputs**:
-- `limit` (default: 20): Number of papers to translate
-- `workers` (default: 5): Parallel workers
-- `month`: Optional specific month
+### Translation Canary (`.github/workflows/translation-canary.yml`)
+- **Trigger**: 06:00 UTC daily + manual.
+- **Purpose**: Translates fixed sample IDs and enforces QA pass.
+- **What to expect**: ~15–30 minutes; fails on any QA regression.
 
----
+### Smoke Translate (`.github/workflows/smoke-translate.yml`)
+- **Trigger**: Manual.
+- **Purpose**: Small-batch translation smoke with optional deploy.
+- **What to expect**: ~15–30 minutes for default limit; can harvest a month if needed.
+- **Inputs**: `limit` (default 20), `workers`, `month`, `deploy`.
 
-### Translation Canary
-- **File**: `.github/workflows/translation-canary.yml`
-- **Schedule**: Daily at 6 AM UTC + manual dispatch
-- **Purpose**: Daily health check that translates a small set of hardcoded paper IDs to verify the pipeline is working.
+### Integration Translate (`.github/workflows/integration-translate.yml`)
+- **Trigger**: Manual.
+- **Purpose**: Targeted translation for specific `run_id` and optional IDs; writes artifacts only.
+- **What to expect**: Up to 6 hours depending on selection size; no deploy.
+- **Inputs**: `run_id` (required), `record_ids`, `limit`, `workers`.
 
-**What to expect**: Quick (5-10 min) daily check. Alerts if translation fails.
+### QA Report (`.github/workflows/qa_report.yml`)
+- **Trigger**: 12:00 UTC daily + manual.
+- **Purpose**: Generates pass/flag counts, creates issue if pass rate <90%, uploads markdown report.
+- **What to expect**: ~5–10 minutes; requires repo write/issue perms.
 
----
+## Developer & ChatOps
 
-### Preflight
-- **File**: `.github/workflows/preflight.yml`
-- **Trigger**: Manual dispatch
-- **Purpose**: Environment validation using `env_diagnose` to check API keys and configuration.
+### CI (`.github/workflows/ci.yml`)
+- **Trigger**: Push to `main` and all PRs.
+- **Purpose**: Ruff + pytest.
+- **What to expect**: ~3–6 minutes; blocking on main/PR.
 
----
+### Claude ChatOps (`.github/workflows/claude.yml`)
+- **Trigger**: `@claude` mentions on issues/PR comments/reviews.
+- **Purpose**: Runs Anthropics’ Claude Code action with read perms and CI visibility.
+- **What to expect**: Minutes; depends on Claude API availability.
 
-### Integration Translate
-- **File**: `.github/workflows/integration-translate.yml`
-- **Trigger**: Manual dispatch
-- **Purpose**: Translation of specific papers via `run_id` and optional `record_ids`. Useful for targeted testing.
+### Claude Code Review (`.github/workflows/claude-code-review.yml`)
+- **Trigger**: PR open/update.
+- **Purpose**: Automated review via Claude Code action.
+- **What to expect**: ~5–10 minutes; requires `CLAUDE_CODE_OAUTH_TOKEN`.
 
----
+## Common Commands (quick reference)
 
-### QA Report
-- **File**: `.github/workflows/qa_report.yml`
-- **Schedule**: Daily at 12 PM UTC + manual dispatch
-- **Purpose**: Generates QA statistics and creates a GitHub issue if pass rate is low.
-
-**What to expect**: Quick report generation. Creates issues automatically when quality drops.
-
----
-
-### Queue Maintenance
-- **File**: `.github/workflows/queue-maintenance.yml`
-- **Schedule**: Daily at 4 AM UTC + manual dispatch
-- **Purpose**: Compacts the cloud job queue, retaining only the last 100 completed jobs.
-
----
-
-## Developer Assistance
-
-### Claude (Issue/PR Interaction)
-- **File**: `.github/workflows/claude.yml`
-- **Trigger**: @claude mentions in issues/comments
-- **Purpose**: Responds to @claude mentions in issues and PR comments for developer assistance.
-
----
-
-### Claude Code Review
-- **File**: `.github/workflows/claude-code-review.yml`
-- **Trigger**: PR open/sync, @claude mentions in reviews
-- **Purpose**: Automated code review via Claude Code on pull requests.
-
----
-
-## Required Secrets
-
-### Translation
-| Secret | Purpose |
-|--------|---------|
-| `OPENROUTER_API_KEY` | Text translation via DeepSeek |
-
-### Figure Translation
-| Secret | Purpose |
-|--------|---------|
-| `GEMINI_API_KEY` | Figure translation via Google Gemini |
-| `MOONDREAM_API_KEY` | Figure QA validation |
-
-### Storage (B2)
-| Secret | Purpose |
-|--------|---------|
-| `BACKBLAZE_KEY_ID` | B2 authentication |
-| `BACKBLAZE_APPLICATION_KEY` | B2 authentication |
-| `BACKBLAZE_S3_ENDPOINT` | B2 S3 endpoint (e.g., `https://s3.us-west-004.backblazeb2.com`) |
-| `BACKBLAZE_BUCKET` | B2 bucket name |
-| `BACKBLAZE_PREFIX` | Optional path prefix |
-
-### Harvesting
-| Secret | Purpose |
-|--------|---------|
-| `BRIGHTDATA_API_KEY` | BrightData proxy for ChinaXiv |
-| `BRIGHTDATA_ZONE` | BrightData zone |
-| `BRIGHTDATA_UNLOCKER_ZONE` | BrightData unlocker zone (PDF downloads) |
-| `BRIGHTDATA_UNLOCKER_PASSWORD` | BrightData unlocker password |
-
-### Deployment
-| Secret | Purpose |
-|--------|---------|
-| `CF_API_TOKEN` | Cloudflare Pages deployment |
-| `DISCORD_WEBHOOK_URL` | Notifications (optional) |
-
----
-
-## Usage Examples
-
-### Run Daily Pipeline Manually
-```bash
-gh workflow run daily-pipeline.yml
-```
-
-### Backfill a Specific Month
-```bash
-gh workflow run backfill.yml -f month=202410
-```
-
-### Download Missing PDFs
-```bash
-# All months
-gh workflow run pdf-backfill.yml -f month=all
-
-# Specific month
-gh workflow run pdf-backfill.yml -f month=202410
-```
-
-### Translate Figures (CS/AI papers)
-```bash
-# Pilot test with 10 papers
-gh workflow run figure-backfill.yml -f month=202410 -f limit=10
-
-# Full month
-gh workflow run figure-backfill.yml -f month=202410 -f limit=0
-```
-
-### Check Workflow Status
-```bash
-gh run list --workflow=daily-pipeline.yml --limit 5
-gh run view <run_id>
-gh run view <run_id> --log
-```
-
----
-
-## Pipeline Observability
-
-### Real-Time Status Manifests
-
-The figure-backfill stage writes status manifests to B2 for real-time progress visibility. Other stages (harvest, translate, QA, render) will be instrumented in future updates.
-
-| File | Purpose | Update Frequency |
-|------|---------|------------------|
-| `status/pipeline-status.json` | Current pipeline progress | Every 25 papers or 30 seconds |
-| `status/inventory.json` | B2 content totals | On stage completion |
-
-**Status JSON format** (`pipeline-status.json`):
-```json
-{
-  "stage": "figures",
-  "month": "202410",
-  "run_id": 12345678,
-  "run_url": "https://github.com/.../runs/12345678",
-  "started_at": "2025-01-01T10:00:00Z",
-  "updated_at": "2025-01-01T10:15:00Z",
-  "status": "in_progress",
-  "counts": {
-    "total": 244,
-    "completed": 100,
-    "failed": 2
-  }
-}
-```
-
-### Monitor Dashboard
-
-The public monitor dashboard (`/monitor.html`) displays:
-- Real-time progress bar and job statistics
-- GitHub Actions run link (when repo is public)
-- Estimated completion time
-- Recent activity from inventory
-
-**Implementation**:
-- `src/status_writer.py`: Thread-safe status writer with batching
-- `assets/monitor.js`: Dashboard JavaScript (fetches from B2)
-- `src/templates/monitor.html`: Dashboard template (config injected by render.py)
-
-### Inventory Tracking
-
-The inventory manifest tracks cumulative totals per-month:
-
-```json
-{
-  "updated_at": "2025-01-01T12:00:00Z",
-  "validated": 3872,
-  "figures": 15420,
-  "by_month": {
-    "202410": {
-      "validated": 244,
-      "figures": 980,
-      "last_figures_run": 12345678
-    }
-  }
-}
-```
-
-**Idempotent updates**: Re-running a month overwrites (not adds) the per-month counts, preventing double-counting.
-
----
-
-## Monitoring
-
-- **GitHub Actions tab**: View workflow runs and logs
-- **Monitor dashboard**: `/monitor.html` for real-time pipeline progress
-- **Discord**: Automated notifications for failures and alerts
-- **Cloudflare Pages dashboard**: Deployment status
-- **Daily canary**: `translation-canary.yml` runs at 6 AM UTC
-- **QA reports**: `qa_report.yml` runs at 12 PM UTC, creates issues for low pass rates
+- Run tonight’s prod pipeline now: `gh workflow run daily-pipeline.yml`
+- Backfill one month end-to-end: `gh workflow run backfill.yml -f month=YYYYMM`
+- Rebuild site from validated translations in B2: `gh workflow run rebuild-from-b2.yml`
+- Fill missing PDFs everywhere: `gh workflow run pdf-backfill.yml -f month=all`
+- Translate figures for a month (CS/AI only): `gh workflow run figure-backfill.yml -f month=YYYYMM`
+- Drain translation queue with batches: `gh workflow run batch-queue-orchestrator.yml -f total_batches=0`
+- Quick health check: `gh workflow run translation-canary.yml`
