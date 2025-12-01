@@ -13,8 +13,8 @@ All processing runs in GitHub Actions - nothing runs locally.
 """
 from __future__ import annotations
 
-import asyncio
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 
@@ -246,6 +246,11 @@ class FigurePipeline:
             List of FigureProcessingResult objects
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        from .rate_limiter import get_rate_limiter
+
+        # FIX M: Reset rate limiter at start of each batch to clear stale state
+        rate_limiter = get_rate_limiter()
+        rate_limiter.reset()
 
         # Create per-task pipeline instances to avoid shared state issues
         # (translator mutates _current_model, clients may not be thread-safe)
@@ -311,35 +316,51 @@ class FigurePipeline:
         rate_limiter = get_rate_limiter()
 
         def translate_one(fig: Figure) -> tuple:
-            """Translate a single figure, returning (figure, path, error)."""
-            try:
-                if not fig.original_path:
-                    return (fig, None, "No original_path set")
+            """Translate a single figure, returning (figure, path, error).
 
-                translated_path = self.translator.translate(
-                    image_path=fig.original_path,
-                    figure_number=fig.figure_number,
-                    paper_id=paper_id,
-                    qa_check=check_has_chinese,
-                )
+            Uses global semaphore for concurrency control and retries on 429s.
+            """
+            max_retries = 3
 
-                # Record success for adaptive rate limiting
-                rate_limiter.on_success()
+            if not fig.original_path:
+                return (fig, None, "No original_path set")
 
-                return (fig, translated_path, None)
-            except Exception as e:
-                error_str = str(e)
+            for attempt in range(max_retries):
+                try:
+                    # Acquire global semaphore to enforce cross-paper concurrency cap
+                    with rate_limiter.acquire():
+                        translated_path = self.translator.translate(
+                            image_path=fig.original_path,
+                            figure_number=fig.figure_number,
+                            paper_id=paper_id,
+                            qa_check=check_has_chinese,
+                        )
 
-                # Check if this is a rate limit error (429)
-                if is_rate_limit_error(None, error_str):
-                    delay = rate_limiter.on_rate_limit(error_str)
-                    log(f"Rate limit hit, sleeping {delay}s before retry...")
-                    time.sleep(delay)
-                    # Note: The translator already has retry logic, so we just
-                    # record the backoff here. Future calls will use lower concurrency.
+                    # FIX P1-1: Only call on_success if translation actually succeeded
+                    if translated_path:
+                        rate_limiter.on_success()
+                        return (fig, translated_path, None)
+                    else:
+                        # Translator returned None = translation failed (exhausted internal retries)
+                        return (fig, None, "Translation returned None after retries")
 
-                log(f"Error translating figure {fig.figure_number}: {e}")
-                return (fig, None, error_str)
+                except Exception as e:
+                    error_str = str(e)
+
+                    # FIX P1-3: Check if this is a rate limit error (429) and retry
+                    if is_rate_limit_error(None, error_str) and attempt < max_retries - 1:
+                        delay = rate_limiter.on_rate_limit(error_str)
+                        log(f"Rate limit hit for figure {fig.figure_number}, "
+                            f"retry {attempt + 1}/{max_retries} after {delay}s...")
+                        time.sleep(delay)
+                        continue  # Retry
+
+                    # Non-retryable error or exhausted retries
+                    log(f"Error translating figure {fig.figure_number}: {e}")
+                    return (fig, None, error_str)
+
+            # Should not reach here, but just in case
+            return (fig, None, "Max retries exceeded")
 
         results = []
 

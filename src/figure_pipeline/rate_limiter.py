@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -76,6 +77,28 @@ class AdaptiveRateLimiter:
         # Stats for monitoring
         self._total_successes: int = 0
         self._total_rate_limits: int = 0
+
+        # Global semaphore for hard cap on concurrent requests across all papers
+        # This prevents 8 papers × 8 figures = 64 concurrent from spiking
+        self._global_semaphore = threading.Semaphore(self.config.max_concurrent)
+
+    @contextmanager
+    def acquire(self):
+        """
+        Context manager to acquire a translation slot.
+
+        Use this to enforce the global concurrency cap across all papers.
+        The semaphore blocks if max_concurrent translations are already running.
+
+        Usage:
+            with rate_limiter.acquire():
+                translated_path = translator.translate(...)
+        """
+        self._global_semaphore.acquire()
+        try:
+            yield
+        finally:
+            self._global_semaphore.release()
 
     def get_concurrent(self) -> int:
         """
@@ -170,6 +193,8 @@ class AdaptiveRateLimiter:
             self._last_rate_limit = 0.0
             self._total_successes = 0
             self._total_rate_limits = 0
+            # Re-create semaphore to ensure clean state
+            self._global_semaphore = threading.Semaphore(self.config.max_concurrent)
             print(f"[rate_limiter] Reset to {self._current:.0f} concurrent")
 
 
