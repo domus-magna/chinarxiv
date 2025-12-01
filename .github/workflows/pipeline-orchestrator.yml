@@ -162,18 +162,21 @@ jobs:
         if: success() && contains(steps.parse-stages.outputs.stages, 'figures')
         run: echo "LAST_STAGE=figures" >> $GITHUB_ENV
 
-      - name: Validate month for figures
+      - name: Check month for figures
+        id: check-month
         if: success() && contains(steps.parse-stages.outputs.stages, 'figures')
         run: |
           if [ -z "${{ env.MONTH }}" ]; then
-            echo "❌ Month is required when figures stage is included"
-            echo "   Provide month input in YYYYMM format (e.g., 202402)"
-            exit 1
+            echo "⏭️ Skipping figures stage: month input not provided"
+            echo "   To run figures, provide month input in YYYYMM format (e.g., 202402)"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Month for figure processing: ${{ env.MONTH }}"
+            echo "skip=false" >> $GITHUB_OUTPUT
           fi
-          echo "✅ Month for figure processing: ${{ env.MONTH }}"
 
       - name: Run figure gate
-        if: success() && contains(steps.parse-stages.outputs.stages, 'figures')
+        if: success() && contains(steps.parse-stages.outputs.stages, 'figures') && steps.check-month.outputs.skip != 'true'
         uses: ./.github/actions/run-gate
         with:
           workflow: figure-gate.yml
@@ -183,8 +186,12 @@ jobs:
             {"month":"${{ env.MONTH }}","workers":"${{ env.WORKERS }}","figure_concurrent":"8","cs_ai_only":"true"}
 
       - name: Record figures completion
-        if: success() && contains(steps.parse-stages.outputs.stages, 'figures')
+        if: success() && contains(steps.parse-stages.outputs.stages, 'figures') && steps.check-month.outputs.skip != 'true'
         run: echo "COMPLETED_STAGES=${COMPLETED_STAGES}figures " >> $GITHUB_ENV
+
+      - name: Record figures skipped
+        if: success() && contains(steps.parse-stages.outputs.stages, 'figures') && steps.check-month.outputs.skip == 'true'
+        run: echo "COMPLETED_STAGES=${COMPLETED_STAGES}figures(skipped) " >> $GITHUB_ENV
 
       - name: Mark stage render
         if: contains(steps.parse-stages.outputs.stages, 'render')
