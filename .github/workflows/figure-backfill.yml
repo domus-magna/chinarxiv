@@ -299,11 +299,17 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
           FIGURE_CONCURRENT: ${{ inputs.figure_concurrent }}
-          # B2 credentials for figure upload
+          # B2 credentials for figure upload and status writing
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
           BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
           BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
           BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
           BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+          # GitHub run info for status writer
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -e
 
@@ -312,7 +318,7 @@ jobs:
           echo "Figure concurrent: ${{ inputs.figure_concurrent }}"
           echo "Limit: ${{ inputs.limit }}"
 
-          # Run the figure pipeline
+          # Run the figure pipeline with status writing
           python -c "
           import os
           import sys
@@ -321,10 +327,12 @@ jobs:
           sys.path.insert(0, str(Path.cwd()))
 
           from src.figure_pipeline import FigurePipeline, PipelineConfig
+          from src import status_writer
 
           # Get paper IDs from filtered file (or all translations if not filtered)
           limit = int('${{ inputs.limit }}') or None
           workers = int('${{ inputs.workers }}')
+          month = '${{ inputs.month }}'
 
           paper_ids = []
 
@@ -348,6 +356,9 @@ jobs:
               print('No papers to process')
               sys.exit(0)
 
+          # Start status tracking
+          status_writer.start_stage('figures', total=len(paper_ids), month=month)
+
           config = PipelineConfig(
               gemini_api_key=os.environ.get('GEMINI_API_KEY'),
               moondream_api_key=os.environ.get('MOONDREAM_API_KEY'),
@@ -356,21 +367,48 @@ jobs:
           )
 
           pipeline = FigurePipeline(config)
-          results = pipeline.process_batch(paper_ids, workers=workers)
 
-          # Summary
-          total_figures = sum(r.total_figures for r in results)
-          translated = sum(r.translated for r in results)
-          failed = sum(r.failed for r in results)
+          # Process papers sequentially for real-time status updates
+          # (figure-level parallelism still happens within each paper)
+          results = []
+          success = True
+          try:
+              for i, paper_id in enumerate(paper_ids):
+                  print(f'[{i+1}/{len(paper_ids)}] Processing {paper_id}...')
+                  try:
+                      result = pipeline.process_paper(paper_id)
+                      results.append(result)
+                      paper_success = result.translated > 0 or result.total_figures == 0
+                      status_writer.record_completion(success=paper_success)
+                  except Exception as e:
+                      print(f'Error processing {paper_id}: {e}')
+                      from src.figure_pipeline import FigureProcessingResult
+                      results.append(FigureProcessingResult(paper_id=paper_id, failed=1))
+                      status_writer.record_completion(success=False)
 
-          print(f'\\n=== SUMMARY ===')
-          print(f'Papers processed: {len(results)}')
-          print(f'Total figures: {total_figures}')
-          print(f'Translated: {translated}')
-          print(f'Failed: {failed}')
+              # Summary
+              total_figures = sum(r.total_figures for r in results)
+              translated = sum(r.translated for r in results)
+              failed = sum(r.failed for r in results)
 
-          if failed > total_figures * 0.5:
-              print('⚠️ High failure rate')
+              print(f'\\n=== SUMMARY ===')
+              print(f'Papers processed: {len(results)}')
+              print(f'Total figures: {total_figures}')
+              print(f'Translated: {translated}')
+              print(f'Failed: {failed}')
+
+              if failed > total_figures * 0.5 and total_figures > 0:
+                  print('⚠️ High failure rate')
+                  success = False
+
+              status_writer.finish_stage(success=success)
+
+              if not success:
+                  sys.exit(1)
+
+          except Exception as e:
+              print(f'Pipeline failed: {e}')
+              status_writer.write_failure(str(e))
               sys.exit(1)
           "
 
