@@ -248,6 +248,10 @@ def get_rate_limiter(config: Optional[RateLimiterConfig] = None) -> AdaptiveRate
             if env_concurrent:
                 try:
                     max_concurrent = int(env_concurrent)
+                    # Clamp to at least 1 to prevent deadlock in acquire() or ValueError in ThreadPoolExecutor
+                    if max_concurrent < 1:
+                        print(f"[rate_limiter] Warning: FIGURE_CONCURRENT={max_concurrent} clamped to 1")
+                        max_concurrent = 1
                     config = RateLimiterConfig(
                         initial_concurrent=max_concurrent,
                         max_concurrent=max_concurrent,

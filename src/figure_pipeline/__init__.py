@@ -120,7 +120,16 @@ class FigurePipeline:
         circuit_breaker.check()  # Raises if open
 
         # Get concurrency from env var (for GitHub Actions) or use default
-        max_concurrent = int(os.environ.get("FIGURE_CONCURRENT", max_concurrent_figures))
+        env_concurrent = os.environ.get("FIGURE_CONCURRENT")
+        if env_concurrent:
+            try:
+                # Clamp to at least 1 to prevent ValueError in ThreadPoolExecutor or deadlock in acquire()
+                max_concurrent = max(1, int(env_concurrent))
+            except ValueError:
+                log(f"Warning: Invalid FIGURE_CONCURRENT='{env_concurrent}', using default {max_concurrent_figures}")
+                max_concurrent = max_concurrent_figures
+        else:
+            max_concurrent = max_concurrent_figures
 
         result = FigureProcessingResult(paper_id=paper_id)
 
@@ -346,11 +355,13 @@ class FigurePipeline:
 
                 except Exception as e:
                     error_str = str(e)
+                    # FIX M1: Extract status_code from typed exceptions (e.g., HTTPError)
+                    status_code = getattr(e, "status_code", None)
 
-                    # FIX P1-3: Check if this is a rate limit error (429) and retry
-                    if is_rate_limit_error(None, error_str) and attempt < max_retries - 1:
+                    # FIX P1-3: Check if this is a rate limit error (429/503) and retry
+                    if is_rate_limit_error(status_code, error_str) and attempt < max_retries - 1:
                         delay = rate_limiter.on_rate_limit(error_str)
-                        log(f"Rate limit hit for figure {fig.figure_number}, "
+                        log(f"Rate limit/overload ({status_code}) for figure {fig.figure_number}, "
                             f"retry {attempt + 1}/{max_retries} after {delay}s...")
                         time.sleep(delay)
                         continue  # Retry

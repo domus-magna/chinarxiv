@@ -43,4 +43,5 @@ def test_build_index_fields():
         "abstract",
         "subjects",
         "date",
+        "has_figures",
     }
