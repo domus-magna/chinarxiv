@@ -4,6 +4,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List
@@ -305,8 +306,33 @@ def render_site(items: List[Dict[str, Any]]) -> None:
     write_text(os.path.join(base_out, "index.html"), html_index)
 
     # Monitor page
+    # Build manifest base URL from environment (includes prefix for CI)
+    b2_endpoint = os.environ.get("BACKBLAZE_S3_ENDPOINT", "https://s3.us-west-004.backblazeb2.com")
+    b2_bucket = os.environ.get("BACKBLAZE_BUCKET", "chinaxiv")
+    b2_prefix = os.environ.get("BACKBLAZE_PREFIX", "").strip("/")
+    # Convert S3 endpoint to public file URL
+    # e.g., https://s3.us-west-004.backblazeb2.com → https://f004.backblazeb2.com/file
+    if "s3." in b2_endpoint and "backblazeb2.com" in b2_endpoint:
+        # Extract region code (e.g., "us-west-004")
+        match = re.search(r's3\.([^.]+)\.backblazeb2\.com', b2_endpoint)
+        if match:
+            region = match.group(1)
+            # Public URL format: f{region_suffix}.backblazeb2.com/file/{bucket}
+            region_suffix = region.split('-')[-1]  # "004" from "us-west-004"
+            manifest_base_url = f"https://f{region_suffix}.backblazeb2.com/file/{b2_bucket}"
+        else:
+            manifest_base_url = f"https://f004.backblazeb2.com/file/{b2_bucket}"
+    else:
+        # Non-B2 endpoint, use as-is
+        manifest_base_url = f"{b2_endpoint}/{b2_bucket}"
+    # Append prefix if set
+    if b2_prefix:
+        manifest_base_url = f"{manifest_base_url}/{b2_prefix}"
+
     tmpl_monitor = env.get_template("monitor.html")
-    html_monitor = tmpl_monitor.render(root=".", build_version=build_version)
+    html_monitor = tmpl_monitor.render(
+        root=".", build_version=build_version, manifest_base_url=manifest_base_url
+    )
     write_text(os.path.join(base_out, "monitor.html"), html_monitor)
 
     # Donations page

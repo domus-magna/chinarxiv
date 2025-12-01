@@ -23,6 +23,57 @@ on:
         required: false
         default: 'true'
 
+  # Allow calling from figure-gate.yml via orchestrator
+  workflow_call:
+    inputs:
+      month:
+        description: 'Month to process figures for (YYYYMM)'
+        type: string
+        required: true
+      workers:
+        description: 'Parallel paper workers'
+        type: string
+        required: false
+        default: '8'
+      figure_concurrent:
+        description: 'Concurrent figures per paper'
+        type: string
+        required: false
+        default: '8'
+      limit:
+        description: 'Max papers to process (0 = all)'
+        type: string
+        required: false
+        default: '0'
+      cs_ai_only:
+        description: 'Filter to CS/AI papers only'
+        type: string
+        required: false
+        default: 'true'
+    secrets:
+      GEMINI_API_KEY:
+        required: true
+      MOONDREAM_API_KEY:
+        required: true
+      BACKBLAZE_KEY_ID:
+        required: true
+      BACKBLAZE_APPLICATION_KEY:
+        required: true
+      BACKBLAZE_S3_ENDPOINT:
+        required: true
+      BACKBLAZE_BUCKET:
+        required: true
+      BACKBLAZE_PREFIX:
+        required: false
+      BRIGHTDATA_API_KEY:
+        required: false
+      BRIGHTDATA_ZONE:
+        required: false
+      BRIGHTDATA_UNLOCKER_ZONE:
+        required: false
+      BRIGHTDATA_UNLOCKER_PASSWORD:
+        required: false
+
 jobs:
   figure-backfill:
     runs-on: ubuntu-latest
@@ -248,11 +299,17 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
           FIGURE_CONCURRENT: ${{ inputs.figure_concurrent }}
-          # B2 credentials for figure upload
+          # B2 credentials for figure upload and status writing
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
           BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
           BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
           BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
           BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+          # GitHub run info for status writer
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -e
 
@@ -261,7 +318,7 @@ jobs:
           echo "Figure concurrent: ${{ inputs.figure_concurrent }}"
           echo "Limit: ${{ inputs.limit }}"
 
-          # Run the figure pipeline
+          # Run the figure pipeline with status writing
           python -c "
           import os
           import sys
@@ -270,10 +327,12 @@ jobs:
           sys.path.insert(0, str(Path.cwd()))
 
           from src.figure_pipeline import FigurePipeline, PipelineConfig
+          from src import status_writer
 
           # Get paper IDs from filtered file (or all translations if not filtered)
           limit = int('${{ inputs.limit }}') or None
           workers = int('${{ inputs.workers }}')
+          month = '${{ inputs.month }}'
 
           paper_ids = []
 
@@ -297,6 +356,9 @@ jobs:
               print('No papers to process')
               sys.exit(0)
 
+          # Start status tracking
+          status_writer.start_stage('figures', total=len(paper_ids), month=month)
+
           config = PipelineConfig(
               gemini_api_key=os.environ.get('GEMINI_API_KEY'),
               moondream_api_key=os.environ.get('MOONDREAM_API_KEY'),
@@ -304,22 +366,65 @@ jobs:
               dry_run=False,
           )
 
-          pipeline = FigurePipeline(config)
-          results = pipeline.process_batch(paper_ids, workers=workers)
+          # Process papers in parallel with real-time status updates
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from src.figure_pipeline import FigureProcessingResult
 
-          # Summary
-          total_figures = sum(r.total_figures for r in results)
-          translated = sum(r.translated for r in results)
-          failed = sum(r.failed for r in results)
+          def process_single(paper_id):
+              '''Process single paper, return (paper_id, result, error).'''
+              try:
+                  p = FigurePipeline(config)  # Fresh instance per thread
+                  result = p.process_paper(paper_id)
+                  return (paper_id, result, None)
+              except Exception as e:
+                  return (paper_id, None, str(e))
 
-          print(f'\\n=== SUMMARY ===')
-          print(f'Papers processed: {len(results)}')
-          print(f'Total figures: {total_figures}')
-          print(f'Translated: {translated}')
-          print(f'Failed: {failed}')
+          results = []
+          success = True
+          completed_count = 0
+          try:
+              with ThreadPoolExecutor(max_workers=workers) as executor:
+                  futures = {executor.submit(process_single, pid): pid for pid in paper_ids}
 
-          if failed > total_figures * 0.5:
-              print('⚠️ High failure rate')
+                  for future in as_completed(futures):
+                      paper_id = futures[future]
+                      completed_count += 1
+                      pid, result, error = future.result()
+
+                      if error:
+                          print(f'[{completed_count}/{len(paper_ids)}] {paper_id}: ERROR - {error}')
+                          results.append(FigureProcessingResult(paper_id=paper_id, failed=1))
+                          status_writer.record_completion(success=False)
+                      else:
+                          paper_success = result.translated > 0 or result.total_figures == 0
+                          print(f'[{completed_count}/{len(paper_ids)}] {paper_id}: {result.translated}/{result.total_figures} figures')
+                          results.append(result)
+                          status_writer.record_completion(success=paper_success)
+
+              # Summary
+              total_figures = sum(r.total_figures for r in results)
+              translated = sum(r.translated for r in results)
+              failed = sum(r.failed for r in results)
+
+              print(f'\\n=== SUMMARY ===')
+              print(f'Papers processed: {len(results)}')
+              print(f'Total figures: {total_figures}')
+              print(f'Translated: {translated}')
+              print(f'Failed: {failed}')
+
+              if failed > total_figures * 0.5 and total_figures > 0:
+                  print('⚠️ High failure rate')
+                  success = False
+
+              # Pass actual figures count for inventory (not paper count)
+              status_writer.finish_stage(success=success, figures_translated=translated)
+
+              if not success:
+                  sys.exit(1)
+
+          except Exception as e:
+              print(f'Pipeline failed: {e}')
+              status_writer.write_failure(str(e))
               sys.exit(1)
           "
 

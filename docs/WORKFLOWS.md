@@ -83,10 +83,10 @@ This document describes all GitHub Actions workflows used in the ChinaXiv Transl
 
 ### Figure Backfill
 - **File**: `.github/workflows/figure-backfill.yml`
-- **Trigger**: Manual dispatch
+- **Trigger**: Manual dispatch, workflow_call (from figure-gate or orchestrator)
 - **Purpose**: Translate figures in PDFs using Gemini for translation and Moondream for QA validation.
 
-**What to expect**: Runs 30-90 minutes per month. Extracts figures from PDFs, translates Chinese text to English using Gemini, validates with Moondream, uploads to B2. By default filters to CS/AI papers only.
+**What to expect**: Runs 30-90 minutes per month. Extracts figures from PDFs, translates Chinese text to English using Gemini, validates with Moondream, uploads to B2. By default filters to CS/AI papers only. Uses parallel workers with real-time progress reporting to B2.
 
 **Inputs**:
 - `month` (required): Month to process (YYYYMM)
@@ -94,6 +94,17 @@ This document describes all GitHub Actions workflows used in the ChinaXiv Transl
 - `figure_concurrent` (default: 8): Concurrent figures per paper
 - `limit` (default: 0): Max papers (0 = all)
 - `cs_ai_only` (default: true): Filter to CS/AI papers only
+
+---
+
+### Figure Gate
+- **File**: `.github/workflows/figure-gate.yml`
+- **Trigger**: Manual dispatch, workflow_call (from orchestrator)
+- **Purpose**: Validation wrapper for figure-backfill that ensures proper input validation before processing.
+
+**What to expect**: Quick validation step then calls figure-backfill. Used by pipeline-orchestrator to ensure month format is valid.
+
+**Inputs**: Same as figure-backfill (month, workers, figure_concurrent, limit, cs_ai_only)
 
 ---
 
@@ -121,9 +132,18 @@ This document describes all GitHub Actions workflows used in the ChinaXiv Transl
 ### Pipeline Orchestrator
 - **File**: `.github/workflows/pipeline-orchestrator.yml`
 - **Trigger**: Manual dispatch
-- **Purpose**: Multi-stage pipeline orchestration with configurable stages (preflight → harvest → ocr → translate → qa → render).
+- **Purpose**: Multi-stage pipeline orchestration with configurable stages (preflight → harvest → ocr → translate → figures → qa → render).
 
-**What to expect**: Complex multi-stage workflow with Discord notifications between stages. Use for controlled, monitored backfill.
+**What to expect**: Complex multi-stage workflow with Discord notifications between stages. Includes figures stage (calls figure-gate.yml) for figure translation when month is provided. The figures stage writes real-time progress to B2 status manifests (other stages to be instrumented in future). Use for controlled, monitored backfill.
+
+**Stages**:
+- `preflight`: Environment validation
+- `harvest`: Download paper metadata and PDFs
+- `ocr`: Process PDFs for text extraction
+- `translate`: Translate text with DeepSeek via OpenRouter
+- `figures`: Translate figures with Gemini (requires month input)
+- `qa`: Quality assurance validation
+- `render`: Build and deploy static site
 
 ---
 
@@ -301,9 +321,75 @@ gh run view <run_id> --log
 
 ---
 
+## Pipeline Observability
+
+### Real-Time Status Manifests
+
+The figure-backfill stage writes status manifests to B2 for real-time progress visibility. Other stages (harvest, translate, QA, render) will be instrumented in future updates.
+
+| File | Purpose | Update Frequency |
+|------|---------|------------------|
+| `status/pipeline-status.json` | Current pipeline progress | Every 25 papers or 30 seconds |
+| `status/inventory.json` | B2 content totals | On stage completion |
+
+**Status JSON format** (`pipeline-status.json`):
+```json
+{
+  "stage": "figures",
+  "month": "202410",
+  "run_id": 12345678,
+  "run_url": "https://github.com/.../runs/12345678",
+  "started_at": "2025-01-01T10:00:00Z",
+  "updated_at": "2025-01-01T10:15:00Z",
+  "status": "in_progress",
+  "counts": {
+    "total": 244,
+    "completed": 100,
+    "failed": 2
+  }
+}
+```
+
+### Monitor Dashboard
+
+The public monitor dashboard (`/monitor.html`) displays:
+- Real-time progress bar and job statistics
+- GitHub Actions run link (when repo is public)
+- Estimated completion time
+- Recent activity from inventory
+
+**Implementation**:
+- `src/status_writer.py`: Thread-safe status writer with batching
+- `assets/monitor.js`: Dashboard JavaScript (fetches from B2)
+- `src/templates/monitor.html`: Dashboard template (config injected by render.py)
+
+### Inventory Tracking
+
+The inventory manifest tracks cumulative totals per-month:
+
+```json
+{
+  "updated_at": "2025-01-01T12:00:00Z",
+  "validated": 3872,
+  "figures": 15420,
+  "by_month": {
+    "202410": {
+      "validated": 244,
+      "figures": 980,
+      "last_figures_run": 12345678
+    }
+  }
+}
+```
+
+**Idempotent updates**: Re-running a month overwrites (not adds) the per-month counts, preventing double-counting.
+
+---
+
 ## Monitoring
 
 - **GitHub Actions tab**: View workflow runs and logs
+- **Monitor dashboard**: `/monitor.html` for real-time pipeline progress
 - **Discord**: Automated notifications for failures and alerts
 - **Cloudflare Pages dashboard**: Deployment status
 - **Daily canary**: `translation-canary.yml` runs at 6 AM UTC

@@ -1,0 +1,108 @@
+name: Figure Gate
+
+# Gate wrapper for figure-backfill that validates inputs before processing.
+# Called by pipeline-orchestrator.yml via the run-gate action.
+#
+# NOTE: Both workflow_dispatch AND workflow_call triggers are required because:
+# - workflow_dispatch: run-gate action uses createWorkflowDispatch API
+# - workflow_call: allows direct reusable workflow calls if needed
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month to process (YYYYMM) - REQUIRED'
+        required: true
+      workers:
+        description: 'Parallel paper workers'
+        required: false
+        default: '8'
+      figure_concurrent:
+        description: 'Concurrent figures per paper'
+        required: false
+        default: '8'
+      limit:
+        description: 'Max papers to process (0 = all)'
+        required: false
+        default: '0'
+      cs_ai_only:
+        description: 'Filter to CS/AI papers only'
+        required: false
+        default: 'true'
+
+  workflow_call:
+    inputs:
+      month:
+        description: 'Month to process (YYYYMM) - REQUIRED'
+        type: string
+        required: true
+      workers:
+        description: 'Parallel paper workers'
+        type: string
+        required: false
+        default: '8'
+      figure_concurrent:
+        description: 'Concurrent figures per paper'
+        type: string
+        required: false
+        default: '8'
+      limit:
+        description: 'Max papers to process (0 = all)'
+        type: string
+        required: false
+        default: '0'
+      cs_ai_only:
+        description: 'Filter to CS/AI papers only'
+        type: string
+        required: false
+        default: 'true'
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate month format
+        run: |
+          MONTH="${{ inputs.month }}"
+          echo "Validating month input: '$MONTH'"
+
+          # Check for empty/missing month
+          if [ -z "$MONTH" ]; then
+            echo "❌ Month is required but was empty"
+            exit 1
+          fi
+
+          # Check format: exactly 6 digits (YYYYMM)
+          if [[ ! "$MONTH" =~ ^[0-9]{6}$ ]]; then
+            echo "❌ Invalid month format: '$MONTH'"
+            echo "   Expected: YYYYMM (e.g., 202402)"
+            exit 1
+          fi
+
+          # Basic sanity check: year should be 2020+, month 01-12
+          YEAR="${MONTH:0:4}"
+          MM="${MONTH:4:2}"
+          # Force base-10 interpretation to avoid octal issues with 08, 09
+          YEAR_NUM=$((10#$YEAR))
+          MM_NUM=$((10#$MM))
+          if [ "$YEAR_NUM" -lt 2020 ]; then
+            echo "❌ Year out of range: $YEAR (expected 2020 or later)"
+            exit 1
+          fi
+          if [ "$MM_NUM" -lt 1 ] || [ "$MM_NUM" -gt 12 ]; then
+            echo "❌ Month out of range: $MM (expected 01-12)"
+            exit 1
+          fi
+
+          echo "✅ Month validated: $MONTH (${YEAR}-${MM})"
+
+  figure-processing:
+    needs: validate-inputs
+    uses: ./.github/workflows/figure-backfill.yml
+    with:
+      month: ${{ inputs.month }}
+      workers: ${{ inputs.workers }}
+      figure_concurrent: ${{ inputs.figure_concurrent }}
+      limit: ${{ inputs.limit }}
+      cs_ai_only: ${{ inputs.cs_ai_only }}
+    secrets: inherit
