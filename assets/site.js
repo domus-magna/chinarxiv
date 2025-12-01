@@ -30,6 +30,7 @@ function searchSubject(subject) {
   const results = document.getElementById('search-results');
   const categoryFilter = document.getElementById('category-filter');
   const dateFilter = document.getElementById('date-filter');
+  const figuresFilter = document.getElementById('figures-filter');
   const searchBtn = document.querySelector('.search-btn');
   if (!input || !results) return;
 
@@ -57,7 +58,7 @@ function searchSubject(subject) {
     try {
       miniSearch = new MiniSearch({
         fields: ['title', 'authors', 'abstract', 'subjects'],
-        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date'],
+        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date', 'has_figures'],
         searchOptions: { boost: { title: 3, authors: 2, subjects: 1.5, abstract: 1 }, fuzzy: 0.2, prefix: true }
       });
       miniSearch.addAll(docs);
@@ -78,6 +79,7 @@ function searchSubject(subject) {
   function applyFiltersAndRender() {
     const cat = categoryFilter?.value || '';
     const dateRange = dateFilter?.value || '';
+    const figuresOnly = figuresFilter?.checked || false;
 
     const filtered = lastSearchResults.filter(hit => {
       // Category filter - exact match (subjects is comma-separated string like "Physics, Nuclear Physics")
@@ -94,10 +96,12 @@ function searchSubject(subject) {
         if (isNaN(hitDate.getTime())) return true; // Keep papers with invalid dates
         if (hitDate < cutoff) return false;
       }
+      // Figures filter
+      if (figuresOnly && !hit.has_figures) return false;
       return true;
     });
 
-    renderResults(filtered, cat || dateRange);
+    renderResults(filtered, cat || dateRange || figuresOnly);
   }
 
   // Highlight search terms (using function replacement for safety)
@@ -143,6 +147,7 @@ function searchSubject(subject) {
 
   if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndRender);
   if (dateFilter) dateFilter.addEventListener('change', applyFiltersAndRender);
+  if (figuresFilter) figuresFilter.addEventListener('change', applyFiltersAndRender);
   if (searchBtn) searchBtn.addEventListener('click', () => performSearch(input.value));
 
   function escapeHtml(s) {
