@@ -366,25 +366,40 @@ jobs:
               dry_run=False,
           )
 
-          pipeline = FigurePipeline(config)
+          # Process papers in parallel with real-time status updates
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from src.figure_pipeline import FigureProcessingResult
 
-          # Process papers sequentially for real-time status updates
-          # (figure-level parallelism still happens within each paper)
+          def process_single(paper_id):
+              '''Process single paper, return (paper_id, result, error).'''
+              try:
+                  p = FigurePipeline(config)  # Fresh instance per thread
+                  result = p.process_paper(paper_id)
+                  return (paper_id, result, None)
+              except Exception as e:
+                  return (paper_id, None, str(e))
+
           results = []
           success = True
+          completed_count = 0
           try:
-              for i, paper_id in enumerate(paper_ids):
-                  print(f'[{i+1}/{len(paper_ids)}] Processing {paper_id}...')
-                  try:
-                      result = pipeline.process_paper(paper_id)
-                      results.append(result)
-                      paper_success = result.translated > 0 or result.total_figures == 0
-                      status_writer.record_completion(success=paper_success)
-                  except Exception as e:
-                      print(f'Error processing {paper_id}: {e}')
-                      from src.figure_pipeline import FigureProcessingResult
-                      results.append(FigureProcessingResult(paper_id=paper_id, failed=1))
-                      status_writer.record_completion(success=False)
+              with ThreadPoolExecutor(max_workers=workers) as executor:
+                  futures = {executor.submit(process_single, pid): pid for pid in paper_ids}
+
+                  for future in as_completed(futures):
+                      paper_id = futures[future]
+                      completed_count += 1
+                      pid, result, error = future.result()
+
+                      if error:
+                          print(f'[{completed_count}/{len(paper_ids)}] {paper_id}: ERROR - {error}')
+                          results.append(FigureProcessingResult(paper_id=paper_id, failed=1))
+                          status_writer.record_completion(success=False)
+                      else:
+                          paper_success = result.translated > 0 or result.total_figures == 0
+                          print(f'[{completed_count}/{len(paper_ids)}] {paper_id}: {result.translated}/{result.total_figures} figures')
+                          results.append(result)
+                          status_writer.record_completion(success=paper_success)
 
               # Summary
               total_figures = sum(r.total_figures for r in results)
@@ -401,7 +416,8 @@ jobs:
                   print('⚠️ High failure rate')
                   success = False
 
-              status_writer.finish_stage(success=success)
+              # Pass actual figures count for inventory (not paper count)
+              status_writer.finish_stage(success=success, figures_translated=translated)
 
               if not success:
                   sys.exit(1)

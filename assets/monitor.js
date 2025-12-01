@@ -244,14 +244,15 @@ function updateDashboard(status, inventory) {
  */
 function showStaleWarning(timestamp) {
   const warning = document.getElementById("status-warning");
-  if (!warning) return;
+  const warningText = document.getElementById("status-warning-text");
+  if (!warning || !warningText) return;
 
   if (timestamp) {
-    warning.textContent = `Unable to refresh. Last update: ${formatTime(
+    warningText.textContent = `Unable to refresh. Last update: ${formatTime(
       timestamp
     )}`;
   } else {
-    warning.textContent = `Unable to load status`;
+    warningText.textContent = `Unable to load status`;
   }
   warning.style.display = "block";
 }

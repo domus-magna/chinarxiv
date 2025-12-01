@@ -245,12 +245,18 @@ class StatusWriter:
             total = self._current_status["counts"]["total"]
             print(f"[status_writer] Progress: {completed}/{total}")
 
-    def finish_stage(self, success: bool = True) -> None:
+    def finish_stage(
+        self,
+        success: bool = True,
+        figures_translated: Optional[int] = None,
+    ) -> None:
         """
         Finalize stage and update inventory.
 
         Args:
             success: True if stage completed successfully
+            figures_translated: Actual number of figures translated (for figures stage)
+                               If not provided, falls back to completed papers count
         """
         if not self._current_status:
             return
@@ -258,6 +264,10 @@ class StatusWriter:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         self._current_status["updated_at"] = now
         self._current_status["status"] = "completed" if success else "failed"
+
+        # Store actual figures count for inventory
+        if figures_translated is not None:
+            self._current_status["figures_translated"] = figures_translated
 
         # Final status write
         self._upload_json(self._current_status, self.STATUS_KEY)
@@ -290,7 +300,8 @@ class StatusWriter:
         """
         Update B2 inventory with stage completion data.
 
-        Uses read-modify-write to preserve other stages' counts.
+        Uses idempotent per-month overwrites to prevent double-counting on reruns.
+        Each (month, stage) combination stores absolute counts, not deltas.
         """
         if not self._current_status:
             return
@@ -309,32 +320,46 @@ class StatusWriter:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         inventory["updated_at"] = now
 
-        # Update counts based on stage
+        # Get stage info
         stage = self._current_status["stage"]
         month = self._current_status.get("month")
-        completed = self._current_status["counts"]["completed"]
+        run_id = self._current_status.get("run_id")
 
-        if stage == "translate":
-            # Translate stage updates validated count
-            inventory["validated"] = inventory.get("validated", 0) + completed
-        elif stage == "figures":
-            # Figure stage updates figures count
-            inventory["figures"] = inventory.get("figures", 0) + completed
+        # For figures stage, use actual figures count (not papers count)
+        if stage == "figures":
+            count = self._current_status.get("figures_translated", 0)
+        else:
+            count = self._current_status["counts"]["completed"]
 
-        # Update per-month counts if month is provided
+        # Idempotent update: overwrite per-month counts (not add)
+        # This prevents double-counting on reruns
         if month:
             if month not in inventory["by_month"]:
                 inventory["by_month"][month] = {}
             month_data = inventory["by_month"][month]
 
             if stage == "translate":
-                month_data["validated"] = month_data.get("validated", 0) + completed
+                month_data["validated"] = count
+                month_data["last_translate_run"] = run_id
             elif stage == "figures":
-                month_data["figures"] = month_data.get("figures", 0) + completed
+                month_data["figures"] = count
+                month_data["last_figures_run"] = run_id
+
+        # Recalculate totals from per-month data (idempotent)
+        # This ensures totals are always correct regardless of rerun order
+        total_validated = sum(
+            m.get("validated", 0) for m in inventory["by_month"].values()
+        )
+        total_figures = sum(
+            m.get("figures", 0) for m in inventory["by_month"].values()
+        )
+
+        inventory["validated"] = total_validated
+        inventory["figures"] = total_figures
 
         # Upload updated inventory
         self._upload_json(inventory, self.INVENTORY_KEY)
-        print(f"[status_writer] Inventory updated")
+        print(f"[status_writer] Inventory updated (month={month}, {stage}={count})")
 
 
 # Module-level convenience functions for simple usage
@@ -365,9 +390,12 @@ def record_completion(success: bool = True) -> None:
     get_writer().record_completion(success)
 
 
-def finish_stage(success: bool = True) -> None:
+def finish_stage(
+    success: bool = True,
+    figures_translated: Optional[int] = None,
+) -> None:
     """Finalize stage and update inventory."""
-    get_writer().finish_stage(success)
+    get_writer().finish_stage(success, figures_translated)
 
 
 def write_failure(error_message: Optional[str] = None) -> None:
