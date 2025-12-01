@@ -45,14 +45,12 @@ This guide describes all 23 workflows in the repo, grouped by purpose with quick
 ### Figure Backfill (`.github/workflows/figure-backfill.yml`)
 - **Trigger**: Manual.
 - **Purpose**: Translate figures for validated papers (defaults to CS/AI filter).
-- **Prerequisite**: PDFs must already exist in B2. Run `pdf-backfill.yml` first if PDFs are missing.
-- **What to expect**: 30–90 minutes per month. Papers without PDFs in B2 are skipped (not failed). Requires Gemini + Moondream + B2.
+- **Automatic PDF acquisition**: If PDFs are missing from B2, the workflow automatically harvests fresh metadata and downloads them. This adds ~5-15 minutes but makes the workflow self-contained. BrightData credentials are required for auto-acquisition; if missing, fails with a clear error naming the missing secrets.
+- **What to expect**: 30–90 minutes per month (up to 2 hours if PDFs need acquisition). Requires Gemini + Moondream + B2. BrightData credentials optional (only needed if PDFs missing).
 - **Inputs**: `month` (required), `workers` (default 8), `figure_concurrent` (default 8), `limit` (0 = all), `cs_ai_only` (default true).
 - **Example**:
   ```bash
-  # Step 1: Ensure PDFs are in B2
-  gh workflow run pdf-backfill.yml -f month=202510
-  # Step 2: Translate figures
+  # Single command - automatically acquires missing PDFs
   gh workflow run figure-backfill.yml -f month=202510 -f limit=10 -f cs_ai_only=true
   ```
 
