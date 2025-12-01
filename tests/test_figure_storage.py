@@ -35,7 +35,7 @@ class TestFigureStorageCredentials:
             {"B2_KEY_ID": "b2-key", "B2_APP_KEY": "b2-secret"},
             clear=True,
         ):
-            with patch("b2sdk.v2.InMemoryAccountInfo") as mock_info, \
+            with patch("b2sdk.v2.InMemoryAccountInfo") , \
                  patch("b2sdk.v2.B2Api") as mock_api_class:
                 mock_api = MagicMock()
                 mock_api_class.return_value = mock_api
@@ -59,7 +59,7 @@ class TestFigureStorageCredentials:
             {"BACKBLAZE_KEY_ID": "bb-key", "BACKBLAZE_APPLICATION_KEY": "bb-secret"},
             clear=True,
         ):
-            with patch("b2sdk.v2.InMemoryAccountInfo") as mock_info, \
+            with patch("b2sdk.v2.InMemoryAccountInfo") , \
                  patch("b2sdk.v2.B2Api") as mock_api_class:
                 mock_api = MagicMock()
                 mock_api_class.return_value = mock_api
@@ -88,7 +88,7 @@ class TestFigureStorageCredentials:
             },
             clear=True,
         ):
-            with patch("b2sdk.v2.InMemoryAccountInfo") as mock_info, \
+            with patch("b2sdk.v2.InMemoryAccountInfo") , \
                  patch("b2sdk.v2.B2Api") as mock_api_class:
                 mock_api = MagicMock()
                 mock_api_class.return_value = mock_api
@@ -121,7 +121,7 @@ class TestFigureStorageBucket:
             },
             clear=True,
         ):
-            with patch("b2sdk.v2.InMemoryAccountInfo") as mock_info, \
+            with patch("b2sdk.v2.InMemoryAccountInfo") , \
                  patch("b2sdk.v2.B2Api") as mock_api_class:
                 mock_api = MagicMock()
                 mock_api_class.return_value = mock_api
@@ -148,7 +148,7 @@ class TestFigureStorageBucket:
             },
             clear=True,
         ):
-            with patch("b2sdk.v2.InMemoryAccountInfo") as mock_info, \
+            with patch("b2sdk.v2.InMemoryAccountInfo") , \
                  patch("b2sdk.v2.B2Api") as mock_api_class:
                 mock_api = MagicMock()
                 mock_api_class.return_value = mock_api
@@ -181,7 +181,7 @@ class TestFigureStorageUpload:
         with patch.dict(
             os.environ, {"B2_KEY_ID": "key", "B2_APP_KEY": "secret"}, clear=True
         ):
-            with patch("b2sdk.v2.InMemoryAccountInfo") as mock_info, \
+            with patch("b2sdk.v2.InMemoryAccountInfo") , \
                  patch("b2sdk.v2.B2Api") as mock_api_class:
                 mock_api = MagicMock()
                 mock_bucket = MagicMock()
@@ -217,7 +217,7 @@ class TestFigureStorageUpload:
         with patch.dict(
             os.environ, {"B2_KEY_ID": "key", "B2_APP_KEY": "secret"}, clear=True
         ):
-            with patch("b2sdk.v2.InMemoryAccountInfo") as mock_info, \
+            with patch("b2sdk.v2.InMemoryAccountInfo") , \
                  patch("b2sdk.v2.B2Api") as mock_api_class:
                 mock_api = MagicMock()
                 mock_bucket = MagicMock()
@@ -251,7 +251,7 @@ class TestFigureStorageManifest:
         with patch.dict(
             os.environ, {"B2_KEY_ID": "key", "B2_APP_KEY": "secret"}, clear=True
         ):
-            with patch("b2sdk.v2.InMemoryAccountInfo") as mock_info, \
+            with patch("b2sdk.v2.InMemoryAccountInfo") , \
                  patch("b2sdk.v2.B2Api") as mock_api_class:
                 mock_api = MagicMock()
                 mock_bucket = MagicMock()
@@ -276,7 +276,7 @@ class TestFigureStorageManifest:
         with patch.dict(
             os.environ, {"B2_KEY_ID": "key", "B2_APP_KEY": "secret"}, clear=True
         ):
-            with patch("b2sdk.v2.InMemoryAccountInfo") as mock_info, \
+            with patch("b2sdk.v2.InMemoryAccountInfo") , \
                  patch("b2sdk.v2.B2Api") as mock_api_class:
                 mock_api = MagicMock()
                 mock_bucket = MagicMock()
