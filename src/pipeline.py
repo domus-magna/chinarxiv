@@ -327,10 +327,11 @@ def run_cli() -> None:
         figure_pipeline = FigurePipeline(figure_config)
 
         # Only process papers that were successfully translated (not the full worklist)
-        log(f"Processing figures for {len(successful_paper_ids)} successfully translated papers...")
+        figure_workers = int(os.environ.get("FIGURE_WORKERS", "4"))
+        log(f"Processing figures for {len(successful_paper_ids)} successfully translated papers (workers={figure_workers})...")
 
         try:
-            figure_results = figure_pipeline.process_batch(successful_paper_ids, workers=4)
+            figure_results = figure_pipeline.process_batch(successful_paper_ids, workers=figure_workers)
 
             # Aggregate stats
             total_figures = sum(r.total_figures for r in figure_results)

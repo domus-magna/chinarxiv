@@ -194,9 +194,13 @@ jobs:
               fi
             fi
 
-            # Translate (text + figures)
+            # Translate (text + figures for non-PR builds)
             echo "🌐 Running translation pipeline..."
-            python -m src.pipeline --skip-selection --workers 20 --with-qa --with-figures
+            FIGURE_FLAG=""
+            if [ "${{ github.event_name }}" != "pull_request" ]; then
+              FIGURE_FLAG="--with-figures"
+            fi
+            python -m src.pipeline --skip-selection --workers 20 --with-qa $FIGURE_FLAG
 
             SUMMARY_FILE="reports/pipeline_summary.json"
             if [ ! -f "$SUMMARY_FILE" ]; then

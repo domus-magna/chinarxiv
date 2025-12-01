@@ -181,6 +181,11 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
           FIGURE_CONCURRENT: ${{ inputs.figure_concurrent }}
+          # B2 credentials for figure upload
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
         run: |
           set -e
 
