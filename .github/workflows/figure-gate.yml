@@ -2,8 +2,34 @@ name: Figure Gate
 
 # Gate wrapper for figure-backfill that validates inputs before processing.
 # Called by pipeline-orchestrator.yml via the run-gate action.
+#
+# NOTE: Both workflow_dispatch AND workflow_call triggers are required because:
+# - workflow_dispatch: run-gate action uses createWorkflowDispatch API
+# - workflow_call: allows direct reusable workflow calls if needed
 
 on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month to process (YYYYMM) - REQUIRED'
+        required: true
+      workers:
+        description: 'Parallel paper workers'
+        required: false
+        default: '8'
+      figure_concurrent:
+        description: 'Concurrent figures per paper'
+        required: false
+        default: '8'
+      limit:
+        description: 'Max papers to process (0 = all)'
+        required: false
+        default: '0'
+      cs_ai_only:
+        description: 'Filter to CS/AI papers only'
+        required: false
+        default: 'true'
+
   workflow_call:
     inputs:
       month:
