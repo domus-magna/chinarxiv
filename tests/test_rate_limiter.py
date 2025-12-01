@@ -6,7 +6,6 @@ import threading
 import time
 from unittest import mock
 
-import pytest
 
 from src.figure_pipeline.rate_limiter import (
     AdaptiveRateLimiter,
