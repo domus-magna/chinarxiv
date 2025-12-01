@@ -11,6 +11,13 @@ markdown==3.7
 PySocks==1.7.1
 ocrmypdf==16.8.0
 Pillow==10.4.0
+pydantic>=2.0.0
+
+# Figure pipeline dependencies
+PyMuPDF>=1.24.0
+google-generativeai>=0.8.0
+moondream>=0.0.5
+imagehash>=4.3.0
 
 # Dev / Test
 pytest==8.3.3
