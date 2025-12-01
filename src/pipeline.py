@@ -83,8 +83,8 @@ def run_cli() -> None:
     )
     args = parser.parse_args()
 
-    # Validate figure secrets if --with-figures is enabled
-    if args.with_figures:
+    # Validate figure secrets if --with-figures is enabled (skip for dry-run/PR builds)
+    if args.with_figures and not args.dry_run:
         missing_secrets = []
         if not os.environ.get("GEMINI_API_KEY"):
             missing_secrets.append("GEMINI_API_KEY")
@@ -264,6 +264,7 @@ def run_cli() -> None:
     failures = 0
     qa_passed_count = 0
     qa_flagged_count = 0
+    successful_paper_ids: list[str] = []  # Track papers that succeeded for figure processing
 
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as ex:
         futures = {
@@ -273,6 +274,7 @@ def run_cli() -> None:
             pid, ok, info, qa_passed = fut.result()
             if ok:
                 successes += 1
+                successful_paper_ids.append(pid)
                 log(f"✓ {pid} → {info}")
 
                 # Update cloud queue if in cloud mode
@@ -324,12 +326,11 @@ def run_cli() -> None:
         )
         figure_pipeline = FigurePipeline(figure_config)
 
-        # Get paper IDs that were successfully translated
-        paper_ids = [p["id"] for p in worklist if p.get("id")]
-        log(f"Processing figures for {len(paper_ids)} papers...")
+        # Only process papers that were successfully translated (not the full worklist)
+        log(f"Processing figures for {len(successful_paper_ids)} successfully translated papers...")
 
         try:
-            figure_results = figure_pipeline.process_batch(paper_ids, workers=4)
+            figure_results = figure_pipeline.process_batch(successful_paper_ids, workers=4)
 
             # Aggregate stats
             total_figures = sum(r.total_figures for r in figure_results)
@@ -346,8 +347,11 @@ def run_cli() -> None:
             if total_figures > 0:
                 log(f"  Success rate: {translated_figures / total_figures * 100:.1f}%")
         except Exception as e:
+            # Figure errors are fatal when --with-figures is set
             log(f"Figure translation failed: {e}")
             summary["figures_error"] = str(e)
+            _write_summary(summary)
+            raise SystemExit(f"Figure translation failed: {e}")
 
     # Render + index + pdf (skip if cloud mode - will be done after all batches)
     if not args.cloud_mode:

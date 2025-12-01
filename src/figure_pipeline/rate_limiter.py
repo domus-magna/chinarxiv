@@ -14,7 +14,7 @@ from __future__ import annotations
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -71,34 +71,48 @@ class AdaptiveRateLimiter:
         # Last rate limit time for cooldown
         self._last_rate_limit: float = 0.0
 
-        # Thread safety
+        # Thread safety for stats/state
         self._lock = threading.Lock()
 
         # Stats for monitoring
         self._total_successes: int = 0
         self._total_rate_limits: int = 0
 
-        # Global semaphore for hard cap on concurrent requests across all papers
-        # This prevents 8 papers × 8 figures = 64 concurrent from spiking
-        self._global_semaphore = threading.Semaphore(self.config.max_concurrent)
+        # Active request counter with condition variable for dynamic concurrency
+        # This replaces the fixed semaphore to allow backoff to actually reduce
+        # in-flight requests. When _current is lowered, waiting threads will
+        # block until active count drops below the new limit.
+        self._active_count: int = 0
+        self._active_condition = threading.Condition(self._lock)
 
     @contextmanager
     def acquire(self):
         """
         Context manager to acquire a translation slot.
 
-        Use this to enforce the global concurrency cap across all papers.
-        The semaphore blocks if max_concurrent translations are already running.
+        Blocks if _active_count >= _current (the adaptive limit).
+        This allows backoff to actually reduce in-flight requests - when
+        on_rate_limit() halves _current, threads blocking in acquire()
+        will wait until active count drops below the new limit.
 
         Usage:
             with rate_limiter.acquire():
                 translated_path = translator.translate(...)
         """
-        self._global_semaphore.acquire()
+        with self._active_condition:
+            # Wait until we're under the current adaptive limit
+            while self._active_count >= int(self._current):
+                # Use timeout to periodically re-check _current in case it changed
+                self._active_condition.wait(timeout=1.0)
+            self._active_count += 1
+
         try:
             yield
         finally:
-            self._global_semaphore.release()
+            with self._active_condition:
+                self._active_count -= 1
+                # Wake up all waiting threads so they can check the new active count
+                self._active_condition.notify_all()
 
     def get_concurrent(self) -> int:
         """
@@ -115,8 +129,9 @@ class AdaptiveRateLimiter:
         Record a successful API call.
 
         Gradually increases concurrency if sustained success.
+        Wakes up waiting threads when concurrency increases.
         """
-        with self._lock:
+        with self._active_condition:
             self._total_successes += 1
             self._success_count += 1
 
@@ -135,6 +150,8 @@ class AdaptiveRateLimiter:
 
                     if self._current != old_concurrent:
                         print(f"[rate_limiter] Speeding up: {old_concurrent:.1f} -> {self._current:.1f} concurrent")
+                        # Wake up waiting threads so they can use the higher limit
+                        self._active_condition.notify_all()
 
                 # Reset success counter
                 self._success_count = 0
@@ -144,6 +161,7 @@ class AdaptiveRateLimiter:
         Record a 429 rate limit error.
 
         Immediately reduces concurrency and returns recommended delay.
+        Wakes up waiting threads so they can see the new lower limit.
 
         Args:
             error_message: Error message from API (for logging)
@@ -151,7 +169,7 @@ class AdaptiveRateLimiter:
         Returns:
             Recommended delay in seconds before retrying
         """
-        with self._lock:
+        with self._active_condition:
             self._total_rate_limits += 1
             self._last_rate_limit = time.time()
             self._success_count = 0  # Reset success counter
@@ -163,8 +181,13 @@ class AdaptiveRateLimiter:
             )
 
             print(f"[rate_limiter] Rate limit hit! Backing off: {old_concurrent:.1f} -> {self._current:.1f} concurrent")
+            print(f"[rate_limiter] Active requests: {self._active_count}, new limit: {int(self._current)}")
             if error_message:
                 print(f"[rate_limiter] Error: {error_message[:100]}")
+
+            # Wake up waiting threads so they see the new lower limit
+            # (they won't proceed until active count drops below _current)
+            self._active_condition.notify_all()
 
             return self.config.cooldown_seconds
 
@@ -175,10 +198,11 @@ class AdaptiveRateLimiter:
         Returns:
             Dictionary with current state and totals
         """
-        with self._lock:
+        with self._active_condition:
             return {
                 "current_concurrent": int(self._current),
                 "current_concurrent_exact": self._current,
+                "active_count": self._active_count,
                 "total_successes": self._total_successes,
                 "total_rate_limits": self._total_rate_limits,
                 "success_streak": self._success_count,
@@ -187,14 +211,15 @@ class AdaptiveRateLimiter:
 
     def reset(self) -> None:
         """Reset rate limiter to initial state."""
-        with self._lock:
+        with self._active_condition:
             self._current = float(self.config.initial_concurrent)
             self._success_count = 0
             self._last_rate_limit = 0.0
             self._total_successes = 0
             self._total_rate_limits = 0
-            # Re-create semaphore to ensure clean state
-            self._global_semaphore = threading.Semaphore(self.config.max_concurrent)
+            self._active_count = 0
+            # Wake up any waiting threads
+            self._active_condition.notify_all()
             print(f"[rate_limiter] Reset to {self._current:.0f} concurrent")
 
 
@@ -207,13 +232,29 @@ def get_rate_limiter(config: Optional[RateLimiterConfig] = None) -> AdaptiveRate
     Get the global rate limiter instance.
 
     Args:
-        config: Optional configuration (only used on first call)
+        config: Optional configuration (only used on first call).
+                If not provided, reads FIGURE_CONCURRENT env var.
 
     Returns:
         Shared AdaptiveRateLimiter instance
     """
+    import os
+
     global _global_rate_limiter
     if _global_rate_limiter is None:
+        if config is None:
+            # FIX M2: Initialize from FIGURE_CONCURRENT env var if set
+            env_concurrent = os.environ.get("FIGURE_CONCURRENT")
+            if env_concurrent:
+                try:
+                    max_concurrent = int(env_concurrent)
+                    config = RateLimiterConfig(
+                        initial_concurrent=max_concurrent,
+                        max_concurrent=max_concurrent,
+                    )
+                    print(f"[rate_limiter] Initialized from FIGURE_CONCURRENT={max_concurrent}")
+                except ValueError:
+                    print(f"[rate_limiter] Warning: Invalid FIGURE_CONCURRENT='{env_concurrent}', using defaults")
         _global_rate_limiter = AdaptiveRateLimiter(config)
     return _global_rate_limiter
 
