@@ -250,6 +250,14 @@ def render_site(items: List[Dict[str, Any]]) -> None:
     base_out = "site"
     ensure_dir(base_out)
 
+    # Clean paper directories to remove orphans from previous builds
+    # This ensures each deploy is a complete, clean snapshot of validated content
+    for paper_dir in ["items", "abs"]:
+        paper_path = os.path.join(base_out, paper_dir)
+        if os.path.exists(paper_path):
+            shutil.rmtree(paper_path)
+        ensure_dir(paper_path)
+
     # Copy assets
     assets_src = "assets"
     assets_dst = os.path.join(base_out, "assets")
