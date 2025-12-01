@@ -279,9 +279,7 @@ def is_rate_limit_error(status_code: Optional[int], error_text: str) -> bool:
     # 429 is rate limit, but check if it's quota-related
     if status_code == 429:
         # Quota exhaustion should go to circuit breaker, not rate limiter
-        if "quota" in error_lower or "billing" in error_lower:
-            return False
-        return True
+        return "quota" not in error_lower and "billing" not in error_lower
 
     # Some APIs return 503 for temporary overload
     if status_code == 503:

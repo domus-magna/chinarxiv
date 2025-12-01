@@ -758,8 +758,7 @@ def inject_figure_markers(
 
         for pattern, marker_type in MARKER_PATTERNS:
             for match in pattern.finditer(para):
-                # Extract the full match and number
-                full_match = match.group(1)
+                # Extract the number
                 number = match.group(2)
                 sub_letter = match.group(3) if match.lastindex >= 3 else ''
 

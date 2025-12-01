@@ -182,7 +182,7 @@ def run_backfill(
         log(f"Wrote figure manifest to {output_path}")
 
     # Summary
-    log(f"\n=== Figure Detection Summary ===")
+    log("\n=== Figure Detection Summary ===")
     log(f"Papers scanned: {len(files)}")
     log(f"Papers with figures: {len(papers_with_figures)}")
     log(f"Total figures detected: {total_figures}")

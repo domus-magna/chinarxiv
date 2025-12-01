@@ -19,19 +19,17 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 
 from .circuit_breaker import get_circuit_breaker
-
-
-def log(message: str) -> None:
-    """Simple logging function."""
-    print(f"[figure_pipeline] {message}")
-
-
 from .models import (
     Figure,
     FigureProcessingResult,
     PipelineConfig,
     ProcessingStatus,
 )
+
+
+def log(message: str) -> None:
+    """Simple logging function."""
+    print(f"[figure_pipeline] {message}")
 
 
 class FigurePipeline:
@@ -254,7 +252,7 @@ class FigurePipeline:
         Returns:
             List of FigureProcessingResult objects
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import as_completed
         from .rate_limiter import get_rate_limiter
 
         # FIX M: Reset rate limiter at start of each batch to clear stale state
@@ -318,7 +316,6 @@ class FigurePipeline:
         Returns:
             List of (figure, translated_path, error) tuples
         """
-        import time
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from .rate_limiter import get_rate_limiter, is_rate_limit_error
 
