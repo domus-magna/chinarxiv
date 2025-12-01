@@ -23,6 +23,57 @@ on:
         required: false
         default: 'true'
 
+  # Allow calling from figure-gate.yml via orchestrator
+  workflow_call:
+    inputs:
+      month:
+        description: 'Month to process figures for (YYYYMM)'
+        type: string
+        required: true
+      workers:
+        description: 'Parallel paper workers'
+        type: string
+        required: false
+        default: '8'
+      figure_concurrent:
+        description: 'Concurrent figures per paper'
+        type: string
+        required: false
+        default: '8'
+      limit:
+        description: 'Max papers to process (0 = all)'
+        type: string
+        required: false
+        default: '0'
+      cs_ai_only:
+        description: 'Filter to CS/AI papers only'
+        type: string
+        required: false
+        default: 'true'
+    secrets:
+      GEMINI_API_KEY:
+        required: true
+      MOONDREAM_API_KEY:
+        required: true
+      BACKBLAZE_KEY_ID:
+        required: true
+      BACKBLAZE_APPLICATION_KEY:
+        required: true
+      BACKBLAZE_S3_ENDPOINT:
+        required: true
+      BACKBLAZE_BUCKET:
+        required: true
+      BACKBLAZE_PREFIX:
+        required: false
+      BRIGHTDATA_API_KEY:
+        required: false
+      BRIGHTDATA_ZONE:
+        required: false
+      BRIGHTDATA_UNLOCKER_ZONE:
+        required: false
+      BRIGHTDATA_UNLOCKER_PASSWORD:
+        required: false
+
 jobs:
   figure-backfill:
     runs-on: ubuntu-latest
