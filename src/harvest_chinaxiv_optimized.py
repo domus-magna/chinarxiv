@@ -354,22 +354,28 @@ class OptimizedChinaXivScraper:
             start_num = checkpoint.get("last_id_num", 1) + 1
             log(f"Resuming {year_month} from ID #{start_num:05d}")
 
-        log(f"Scraping {year_month} from #{start_num:05d} to #{max_id:05d}")
+        total_to_check = max_id - start_num + 1
+        log(f"📄 Scraping {year_month}: {total_to_check} IDs to check ({start_num:05d} → {max_id:05d})")
 
         for num in range(start_num, max_id + 1):
             paper_id = f"{year_month}.{num:05d}"
+            progress_num = num - start_num + 1
 
             paper = self.scrape_paper(paper_id)
 
             if paper:
                 papers.append(paper)
-                log(f"✓ {paper_id}: {paper['title'][:60]}...")
+                log(f"[{progress_num}/{total_to_check}] ✓ {paper_id}: {paper['title'][:50]}...")
 
                 # Save checkpoint every 10 papers
                 if len(papers) % 10 == 0:
                     self._save_checkpoint(year_month, papers, num)
+            else:
+                # Log periodic progress even for missing papers (every 20)
+                if progress_num % 20 == 0:
+                    log(f"[{progress_num}/{total_to_check}] Progress: {len(papers)} papers found so far")
 
-        log(f"Finished {year_month}: {len(papers)} papers scraped")
+        log(f"✅ Finished {year_month}: {len(papers)} papers scraped from {total_to_check} IDs checked")
         return papers
 
     def _save_checkpoint(self, year_month: str, papers: List[Dict], last_id_num: int):

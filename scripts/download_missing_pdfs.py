@@ -75,43 +75,74 @@ def download_missing(
     limit: int | None = None,
     allowed_ids: set[str] | None = None,
 ) -> Tuple[int, int, int]:
+    import time
+
     downloaded = 0
     skipped = 0
     failures = 0
     found_in_records = 0
     ensure_dir(str(PDF_DIR))
 
+    # First pass: count how many need downloading (for progress)
+    to_download = []
     for rec in iter_records(files):
         rid = rec.get("id") or ""
         pdf_url = (rec.get("pdf_url") or "").strip()
         if not rid or not pdf_url:
-            skipped += 1
             continue
-        # Filter to allowed IDs if specified
-        if allowed_ids is not None:
-            if rid not in allowed_ids:
-                continue  # Skip papers not in filter
-            found_in_records += 1
+        if allowed_ids is not None and rid not in allowed_ids:
+            continue
         dst = PDF_DIR / f"{rid}.pdf"
         if dst.exists():
-            skipped += 1
             continue
+        to_download.append(rec)
+
+    total = len(to_download)
+    if limit:
+        total = min(total, limit)
+
+    log(f"📥 Starting download: {total} PDFs to fetch")
+    start_time = time.time()
+
+    for i, rec in enumerate(to_download):
+        if limit and downloaded >= limit:
+            break
+
+        rid = rec.get("id") or ""
+        pdf_url = (rec.get("pdf_url") or "").strip()
+
+        if allowed_ids is not None:
+            found_in_records += 1
+
+        dst = PDF_DIR / f"{rid}.pdf"
+        progress = i + 1
+
+        log(f"[{progress}/{total}] Downloading {rid}...")
+
         # Try with referer and stable session id (paper id) for Unlocker cookies
         referer = (rec.get("source_url") or "").strip() or None
         ok = download_pdf(pdf_url, str(dst), referer=referer, session_id=rid)
+
         if ok:
             downloaded += 1
-            log(f"Downloaded {rid} -> {dst}")
+            # Get file size for logging
+            try:
+                size_mb = dst.stat().st_size / (1024 * 1024)
+                log(f"[{progress}/{total}] ✓ Success ({size_mb:.1f} MB)")
+            except Exception:
+                log(f"[{progress}/{total}] ✓ Success")
         else:
             failures += 1
+            log(f"[{progress}/{total}] ✗ Failed")
             # remove any partial
             if dst.exists():
                 try:
                     dst.unlink()
                 except Exception:
                     pass
-        if limit and downloaded >= limit:
-            break
+
+    elapsed = time.time() - start_time
+    log(f"✅ Download complete in {elapsed:.1f}s: {downloaded} succeeded, {failures} failed")
 
     # Log requested vs found if filtering
     if allowed_ids is not None:

@@ -230,8 +230,7 @@ jobs:
           # filtered by CS/AI filter step
           # Format: one paper ID per line, e.g., chinaxiv-202411.00001
 
-          # Step 1: Count total papers and identify missing PDFs
-          # Use temp file instead of string to avoid empty entry issues
+          echo "::group::Step 1/6: Detecting missing PDFs ($(date +%H:%M:%S))"
           PAPER_COUNT=$(wc -l < /tmp/paper_ids.txt | tr -d ' ')
           > /tmp/missing_paper_ids.txt  # truncate
           while read -r paper_id; do
@@ -244,6 +243,8 @@ jobs:
           # Dedupe (shouldn't be needed but defensive)
           sort -u /tmp/missing_paper_ids.txt -o /tmp/missing_paper_ids.txt
           MISSING_COUNT=$(wc -l < /tmp/missing_paper_ids.txt | tr -d ' ')
+          echo "Total papers: ${PAPER_COUNT}, Missing PDFs: ${MISSING_COUNT}"
+          echo "::endgroup::"
 
           if [ "$MISSING_COUNT" -gt 0 ]; then
             echo ""
@@ -262,18 +263,20 @@ jobs:
             head -5 /tmp/missing_paper_ids.txt | sed 's/^/  /'
             echo ""
 
-            # Step 2: Validate BrightData credentials (fail fast if missing)
-            # Only check the two required secrets; UNLOCKER_* are optional fallbacks
+            echo "::group::Step 2/6: Validating BrightData credentials ($(date +%H:%M:%S))"
             MISSING_CREDS=""
             [ -z "${BRIGHTDATA_API_KEY}" ] && MISSING_CREDS="BRIGHTDATA_API_KEY"
             [ -z "${BRIGHTDATA_ZONE}" ] && MISSING_CREDS="${MISSING_CREDS:+$MISSING_CREDS, }BRIGHTDATA_ZONE"
             if [ -n "${MISSING_CREDS}" ]; then
               echo "❌ FATAL: Missing secrets: ${MISSING_CREDS}"
               echo "   Run pdf-backfill.yml first: gh workflow run pdf-backfill.yml -f month=$MONTH"
+              echo "::endgroup::"
               exit 1
             fi
+            echo "✓ BrightData credentials present"
+            echo "::endgroup::"
 
-            # Step 3: Re-harvest the month to get fresh UUIDs
+            echo "::group::Step 3/6: Harvesting fresh metadata ($(date +%H:%M:%S))"
             RECORDS_PATH="data/records/chinaxiv_${MONTH}.json"
             echo "📥 Harvesting fresh metadata for $MONTH..."
             echo "   Records will be written to: ${RECORDS_PATH}"
@@ -283,19 +286,19 @@ jobs:
             # Verify records file was created
             if [ ! -f "$RECORDS_PATH" ]; then
               echo "❌ FATAL: Harvest did not create ${RECORDS_PATH}"
+              echo "::endgroup::"
               exit 1
             fi
             echo "   Records file size: $(wc -c < "$RECORDS_PATH" | tr -d ' ') bytes"
+            echo "::endgroup::"
 
-            # Step 4: Download PDFs for missing papers only
-            # The --paper-ids filter ensures we only download for our selection set
+            echo "::group::Step 4/6: Downloading PDFs ($(date +%H:%M:%S))"
             echo "📥 Downloading PDFs for ${MISSING_COUNT} missing papers..."
             echo "   Using records: ${RECORDS_PATH}"
-
             python scripts/download_missing_pdfs.py --months "$MONTH" --paper-ids /tmp/missing_paper_ids.txt
+            echo "::endgroup::"
 
-            # Step 5: Verify downloads succeeded
-            # The script logs requested vs found; we check for actual PDFs
+            echo "::group::Step 5/6: Verifying downloads ($(date +%H:%M:%S))"
             DOWNLOADED=0
             STILL_MISSING=0
             while read -r paper_id; do
@@ -309,19 +312,18 @@ jobs:
             echo "   Downloaded: ${DOWNLOADED}/${MISSING_COUNT}"
             if [ "$STILL_MISSING" -gt 0 ]; then
               echo "⚠️  ${STILL_MISSING} papers still missing PDFs after download"
-              # Don't fail - some papers genuinely may not have PDFs on ChinaXiv
             fi
+            echo "::endgroup::"
 
-            # Step 6: Upload new PDFs to B2
-            # PDFs are stored flat in B2: pdfs/chinaxiv-YYYYMM.NNNNN.pdf (no subfolders)
+            echo "::group::Step 6/6: Uploading to B2 ($(date +%H:%M:%S))"
             echo "📤 Uploading new PDFs to B2..."
             aws s3 sync data/pdfs "${DEST}pdfs/" \
               --exclude "*" \
               --include "chinaxiv-${MONTH}*.pdf" \
               --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
               --only-show-errors
-
             echo "✅ PDFs acquired and uploaded to B2"
+            echo "::endgroup::"
           else
             echo "✅ All ${PAPER_COUNT} papers have PDFs in B2"
           fi
@@ -340,7 +342,7 @@ jobs:
             echo "❌ FATAL: No papers have PDFs after acquisition attempt"
             exit 1
           fi
-          echo "✅ Will process ${PAPERS_WITH_PDFS} papers with available PDFs"
+          echo "✅ Will process ${PAPERS_WITH_PDFS} papers with available PDFs ($(date +%H:%M:%S))"
 
       - name: Run figure pipeline
         if: env.SKIP_FIGURES != 'true'
