@@ -18,6 +18,10 @@ on:
         description: 'Max papers to process (0 = all)'
         required: false
         default: '0'
+      cs_ai_only:
+        description: 'Filter to CS/AI papers only (true/false)'
+        required: false
+        default: 'true'
 
 jobs:
   figure-backfill:
@@ -102,7 +106,33 @@ jobs:
           head -20 /tmp/paper_ids.txt
           echo "PAPER_COUNT=${COUNT}" >> $GITHUB_ENV
 
+      - name: Filter to CS/AI papers (optional)
+        if: inputs.cs_ai_only == 'true'
+        run: |
+          set -e
+          echo "🔬 Filtering to CS/AI papers only..."
+
+          # Run CS/AI filter on downloaded translations
+          python scripts/filter_cs_ai_papers.py \
+            --input data/translated \
+            --output /tmp/cs_ai_paper_ids.txt \
+            --month "${{ inputs.month }}"
+
+          CS_AI_COUNT=$(wc -l < /tmp/cs_ai_paper_ids.txt | tr -d ' ')
+          echo "Found ${CS_AI_COUNT} CS/AI papers out of ${{ env.PAPER_COUNT }}"
+
+          if [ "${CS_AI_COUNT}" = "0" ]; then
+            echo "ℹ️ No CS/AI papers found for ${{ inputs.month }}, skipping figure processing"
+            echo "SKIP_FIGURES=true" >> $GITHUB_ENV
+          else
+            # Replace paper_ids.txt with filtered list
+            cp /tmp/cs_ai_paper_ids.txt /tmp/paper_ids.txt
+            echo "CS_AI_COUNT=${CS_AI_COUNT}" >> $GITHUB_ENV
+            echo "PAPER_COUNT=${CS_AI_COUNT}" >> $GITHUB_ENV
+          fi
+
       - name: Sync existing PDFs from B2 (skip already downloaded)
+        if: env.SKIP_FIGURES != 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
@@ -126,6 +156,7 @@ jobs:
           echo "✅ Found ${CACHED} cached PDFs in B2"
 
       - name: Download missing PDFs from ChinaXiv
+        if: env.SKIP_FIGURES != 'true'
         env:
           BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
           BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
@@ -157,6 +188,7 @@ jobs:
           echo "PDF_COUNT=${PDF_COUNT}" >> $GITHUB_ENV
 
       - name: Upload PDFs to B2 (for future runs)
+        if: env.SKIP_FIGURES != 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
@@ -177,6 +209,7 @@ jobs:
           echo "✅ PDFs synced to B2"
 
       - name: Run figure pipeline
+        if: env.SKIP_FIGURES != 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
@@ -204,18 +237,22 @@ jobs:
 
           from src.figure_pipeline import FigurePipeline, PipelineConfig
 
-          # Get paper IDs from translated files
-          translated_dir = Path('data/translated')
-          month = '${{ inputs.month }}'
+          # Get paper IDs from filtered file (or all translations if not filtered)
           limit = int('${{ inputs.limit }}') or None
           workers = int('${{ inputs.workers }}')
 
           paper_ids = []
-          for f in sorted(translated_dir.glob(f'chinaxiv-{month}*.json')):
-              paper_id = f.stem
-              pdf_path = Path('data/pdfs') / f'{paper_id}.pdf'
-              if pdf_path.exists():
-                  paper_ids.append(paper_id)
+
+          # Read paper IDs from filter output
+          paper_ids_file = Path('/tmp/paper_ids.txt')
+          if paper_ids_file.exists():
+              with open(paper_ids_file) as f:
+                  for line in f:
+                      paper_id = line.strip()
+                      if paper_id:
+                          pdf_path = Path('data/pdfs') / f'{paper_id}.pdf'
+                          if pdf_path.exists():
+                              paper_ids.append(paper_id)
 
           if limit:
               paper_ids = paper_ids[:limit]
@@ -253,6 +290,7 @@ jobs:
           "
 
       - name: Upload figures to B2
+        if: env.SKIP_FIGURES != 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
