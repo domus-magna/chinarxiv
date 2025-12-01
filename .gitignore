@@ -2,10 +2,12 @@
 __pycache__/
 *.pyc
 .venv/
+node_modules/
 .env
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+.coverage
 .idea/
 .vscode/
 
@@ -18,4 +20,3 @@ data/
 site/
 
 smoke_local.log
-

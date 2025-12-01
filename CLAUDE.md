@@ -110,41 +110,64 @@ wrangler pages deploy site --project-name chinarxiv
 
 ## GitHub Token Management
 
-**IMPORTANT**: The `.env` file contains `GH_TOKEN` which overrides `gh` CLI keyring authentication.
+### Architecture: Separate API Token from Git Operations
 
-### Problem
-When you run `gh auth refresh -s workflow`, it updates the token in macOS keyring, but `.env` still has the OLD token without `workflow` scope. This causes "refusing to allow OAuth App to create or update workflow" errors when pushing workflow files.
+Git operations and API calls use **different tokens** to avoid workflow scope conflicts:
 
-### Solution
-After refreshing GitHub auth, sync the token to `.env`:
+- **Git operations** (push, pull): Use `gh` CLI keyring (has workflow scope)
+- **API calls** (`src/gh_actions.py`): Use token from `.env.api` file
+
+This separation prevents the recurring "refusing to allow OAuth App to create or update workflow" error.
+
+### File Structure
+
+| File | Purpose | Loaded By |
+|------|---------|-----------|
+| `.env.api` | GH_TOKEN for API calls | `src/gh_actions.py` |
+| `.env` | Other secrets (no GH_TOKEN) | Shell, Python dotenv |
+| Keyring | Git authentication | `gh` CLI, git push |
+
+### Setup (one-time)
+
+1. **Ensure keyring has workflow scope:**
+   ```bash
+   gh auth refresh -s workflow
+   gh auth status  # Should show: Token scopes include 'workflow'
+   ```
+
+2. **Create `.env.api` if missing:**
+   ```bash
+   echo "GH_TOKEN=$(gh auth token)" > .env.api
+   echo "GH_REPO=domus-magna/chinaxiv-english" >> .env.api
+   ```
+
+3. **Verify `.env` does NOT have GH_TOKEN:**
+   ```bash
+   grep "^GH_TOKEN=" .env  # Should return nothing
+   ```
+
+### If Push Fails with Workflow Scope Error
+
 ```bash
-# Refresh with workflow scope (updates keyring)
+# Just refresh your keyring - no need to update any files!
 gh auth refresh -s workflow
-
-# Sync keyring token to .env
-./scripts/sync-gh-token.sh
 ```
 
-### One-liner alternative:
-```bash
-# Get fresh token and update .env directly
-NEW_TOKEN=$(unset GH_TOKEN && gh auth token) && \
-sed -i.bak "s|^GH_TOKEN=.*|GH_TOKEN=$NEW_TOKEN|" .env && \
-rm .env.bak && echo "Updated GH_TOKEN in .env"
-```
+The pre-push hook validates keyring has workflow scope before pushing workflow files.
 
-### Verify token has correct scopes:
+### Verify Setup
+
 ```bash
-unset GH_TOKEN && gh auth status
+# Check keyring has workflow scope
+gh auth status
 # Should show: Token scopes: 'gist', 'read:org', 'repo', 'workflow'
-```
 
-### Automated Protection
-A **pre-push git hook** is installed at `.git/hooks/pre-push` that:
-1. Detects if you're pushing workflow files (`.github/workflows/*`)
-2. Checks if your `.env` GH_TOKEN matches the keyring token
-3. Warns and offers to auto-sync if tokens are stale
-4. Blocks push if token doesn't have `workflow` scope
+# Check GH_TOKEN is NOT in shell environment
+echo $GH_TOKEN  # Should be empty
+
+# Check .env.api exists with GH_TOKEN
+cat .env.api | grep GH_TOKEN  # Should show the token
+```
 
 ## CRITICAL: Backblaze B2 Persistence is MANDATORY
 

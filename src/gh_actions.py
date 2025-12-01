@@ -1,7 +1,10 @@
 """
 Minimal GitHub Actions REST client for localhost admin.
 
-Reads GH_TOKEN and GH_REPO (owner/repo) from environment or constructor args.
+Reads GH_TOKEN and GH_REPO from .env.api (for API calls only) or constructor args.
+This separation allows git operations to use keyring with workflow scope,
+while API calls use the explicit token.
+
 Endpoints: list workflows, runs, run details, jobs, artifacts (download), dispatch.
 """
 
@@ -9,9 +12,17 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
+from dotenv import load_dotenv
+
+# Load .env.api for GitHub-specific secrets (separate from main .env)
+# This prevents GH_TOKEN from being in shell environment, allowing git to use keyring
+_env_api_path = Path(__file__).parent.parent / ".env.api"
+if _env_api_path.exists():
+    load_dotenv(_env_api_path)
 
 
 API_BASE = "https://api.github.com"
