@@ -82,11 +82,14 @@ jobs:
           # Basic sanity check: year should be 2020+, month 01-12
           YEAR="${MONTH:0:4}"
           MM="${MONTH:4:2}"
-          if [ "$YEAR" -lt 2020 ]; then
+          # Force base-10 interpretation to avoid octal issues with 08, 09
+          YEAR_NUM=$((10#$YEAR))
+          MM_NUM=$((10#$MM))
+          if [ "$YEAR_NUM" -lt 2020 ]; then
             echo "❌ Year out of range: $YEAR (expected 2020 or later)"
             exit 1
           fi
-          if [ "$MM" -lt 01 ] || [ "$MM" -gt 12 ]; then
+          if [ "$MM_NUM" -lt 1 ] || [ "$MM_NUM" -gt 12 ]; then
             echo "❌ Month out of range: $MM (expected 01-12)"
             exit 1
           fi

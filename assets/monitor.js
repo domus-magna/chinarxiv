@@ -143,10 +143,15 @@ function updateDashboard(status, inventory) {
     try {
       const startTime = new Date(status.started_at);
       const elapsed = Date.now() - startTime;
-      const rate = counts.completed / elapsed; // papers per ms
-      const remaining = pending / rate;
-      const eta = new Date(Date.now() + remaining);
-      estimatedCompletion = formatTime(eta.toISOString());
+      // Wait at least 10 seconds before calculating ETA to avoid wild estimates
+      if (elapsed > 10000) {
+        const rate = counts.completed / elapsed; // papers per ms
+        if (rate > 0) {
+          const remaining = pending / rate;
+          const eta = new Date(Date.now() + remaining);
+          estimatedCompletion = formatTime(eta.toISOString());
+        }
+      }
     } catch (e) {
       estimatedCompletion = "-";
     }
