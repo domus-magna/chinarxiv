@@ -1,4 +1,4 @@
-name: build-and-deploy
+name: daily-pipeline
 
 on:
   schedule:
@@ -10,23 +10,13 @@ on:
         required: false
         default: false
         type: boolean
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - "**"
 
 concurrency:
-  # Separate concurrency groups for push runs that are internal [skip ci] updates
-  # so those do not cancel an in-flight build-and-deploy run.
-  group: build-and-deploy-${{ github.ref }}-${{ (github.event_name == 'push' && contains(github.event.head_commit.message || '', '[skip ci]')) && 'skip' || 'run' }}
+  group: daily-pipeline
   cancel-in-progress: true
 
 jobs:
-  build:
-    # Avoid infinite loops when the workflow commits seen.json with [skip ci]
-    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
+  pipeline:
     runs-on: ubuntu-latest
     permissions:
       contents: write
