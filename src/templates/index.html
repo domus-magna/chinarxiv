@@ -11,6 +11,7 @@
       Automatically translated preprints from the Chinese arXiv (ChinaXiv).
       All translations are machine-generated—please verify with the original source.
     </p>
+    <p class="paper-count">{{ items|length }} papers translated</p>
   </div>
 
   <div class="search-block" id="search-section">
@@ -37,6 +38,12 @@
           <option value="month">This Month</option>
           <option value="year">This Year</option>
         </select>
+      </div>
+      <div class="filter-group filter-checkbox">
+        <label>
+          <input type="checkbox" id="figures-filter" />
+          Only show papers with figures
+        </label>
       </div>
     </div>
     <div id="search-results"></div>
