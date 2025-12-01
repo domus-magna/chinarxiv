@@ -26,6 +26,7 @@ import json
 import os
 import shlex
 import subprocess
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +39,9 @@ class StatusWriter:
 
     Batches updates to avoid excessive B2 writes while maintaining visibility.
     Writes occur every BATCH_SIZE completions OR every BATCH_SECONDS, whichever first.
+
+    Thread-safe: All mutations are protected by a lock to support concurrent
+    calls from ThreadPoolExecutor workers.
     """
 
     BATCH_SIZE = 25  # Papers between status updates
@@ -53,7 +57,10 @@ class StatusWriter:
         )
         self._prefix = os.environ.get("BACKBLAZE_PREFIX", "")
 
-        # Batch state
+        # Thread safety lock for all mutable state
+        self._lock = threading.Lock()
+
+        # Batch state (protected by _lock)
         self._current_status: Optional[Dict[str, Any]] = None
         self._last_write_time: float = 0
         self._pending_completions: int = 0
@@ -191,28 +198,31 @@ class StatusWriter:
         """
         Record completion of one item. May trigger batched write.
 
+        Thread-safe: Protected by lock for concurrent access from multiple workers.
+
         Args:
             success: True if item succeeded, False if failed
         """
-        if not self._current_status:
-            return
+        with self._lock:
+            if not self._current_status:
+                return
 
-        if success:
-            self._current_status["counts"]["completed"] += 1
-        else:
-            self._current_status["counts"]["failed"] += 1
+            if success:
+                self._current_status["counts"]["completed"] += 1
+            else:
+                self._current_status["counts"]["failed"] += 1
 
-        self._pending_completions += 1
+            self._pending_completions += 1
 
-        # Check if we should write
-        time_elapsed = time.time() - self._last_write_time
-        should_write = (
-            self._pending_completions >= self.BATCH_SIZE
-            or time_elapsed >= self.BATCH_SECONDS
-        )
+            # Check if we should write
+            time_elapsed = time.time() - self._last_write_time
+            should_write = (
+                self._pending_completions >= self.BATCH_SIZE
+                or time_elapsed >= self.BATCH_SECONDS
+            )
 
-        if should_write:
-            self._maybe_write_status()
+            if should_write:
+                self._maybe_write_status()
 
     def _counts_changed(self) -> bool:
         """Check if counts have changed since last write."""
@@ -253,48 +263,54 @@ class StatusWriter:
         """
         Finalize stage and update inventory.
 
+        Thread-safe: Protected by lock.
+
         Args:
             success: True if stage completed successfully
             figures_translated: Actual number of figures translated (for figures stage)
                                If not provided, falls back to completed papers count
         """
-        if not self._current_status:
-            return
+        with self._lock:
+            if not self._current_status:
+                return
 
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        self._current_status["updated_at"] = now
-        self._current_status["status"] = "completed" if success else "failed"
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            self._current_status["updated_at"] = now
+            self._current_status["status"] = "completed" if success else "failed"
 
-        # Store actual figures count for inventory
-        if figures_translated is not None:
-            self._current_status["figures_translated"] = figures_translated
+            # Store actual figures count for inventory
+            if figures_translated is not None:
+                self._current_status["figures_translated"] = figures_translated
 
-        # Final status write
-        self._upload_json(self._current_status, self.STATUS_KEY)
+            # Final status write
+            self._upload_json(self._current_status, self.STATUS_KEY)
 
-        # Update inventory on success
-        if success:
-            self._update_inventory()
+            # Update inventory on success
+            if success:
+                self._update_inventory()
 
-        self._current_status = None
+            self._current_status = None
 
     def write_failure(self, error_message: Optional[str] = None) -> None:
         """
         Write failure status. Call from finally/except blocks.
 
+        Thread-safe: Protected by lock.
+
         Args:
             error_message: Optional error message to include
         """
-        if not self._current_status:
-            return
+        with self._lock:
+            if not self._current_status:
+                return
 
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        self._current_status["updated_at"] = now
-        self._current_status["status"] = "failed"
-        if error_message:
-            self._current_status["error"] = error_message
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            self._current_status["updated_at"] = now
+            self._current_status["status"] = "failed"
+            if error_message:
+                self._current_status["error"] = error_message
 
-        self._upload_json(self._current_status, self.STATUS_KEY)
+            self._upload_json(self._current_status, self.STATUS_KEY)
 
     def _update_inventory(self) -> None:
         """
