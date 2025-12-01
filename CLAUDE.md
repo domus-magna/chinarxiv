@@ -105,7 +105,7 @@ wrangler pages deploy site --project-name chinarxiv
 ## Monitoring
 
 - Discord alerts for circuit breaker trips
-- Check `python -m src.batch_translate status` for progress
+- Check workflow status: `gh run list --workflow=daily-pipeline.yml --limit 5`
 - B2 manifests in `indexes/validated/manifest-*.csv`
 
 ## GitHub Token Management
@@ -115,7 +115,7 @@ wrangler pages deploy site --project-name chinarxiv
 Git operations and API calls use **different tokens** to avoid workflow scope conflicts:
 
 - **Git operations** (push, pull): Use `gh` CLI keyring (has workflow scope)
-- **API calls** (`src/gh_actions.py`): Use token from `.env.api` file
+- **API calls** (`src/gh_actions.py`): Use token from `.env.github` file
 
 This separation prevents the recurring "refusing to allow OAuth App to create or update workflow" error.
 
@@ -123,9 +123,18 @@ This separation prevents the recurring "refusing to allow OAuth App to create or
 
 | File | Purpose | Loaded By |
 |------|---------|-----------|
-| `.env.api` | GH_TOKEN for API calls | `src/gh_actions.py` |
+| `.env.github` | GH_TOKEN for API calls | `src/gh_actions.py` |
 | `.env` | Other secrets (no GH_TOKEN) | Shell, Python dotenv |
+| `.envrc` | Auto-unsets GH_TOKEN on repo entry | direnv |
 | Keyring | Git authentication | `gh` CLI, git push |
+
+### Layered Defense
+
+This repo uses three layers to prevent GH_TOKEN from breaking git push:
+
+1. **`.envrc`** - direnv auto-unsets GH_TOKEN when entering the repo
+2. **Pre-push hook** - blocks push if GH_TOKEN is in environment
+3. **Separate files** - `.env.github` for API calls, `.env` for everything else
 
 ### Setup (one-time)
 
@@ -135,10 +144,10 @@ This separation prevents the recurring "refusing to allow OAuth App to create or
    gh auth status  # Should show: Token scopes include 'workflow'
    ```
 
-2. **Create `.env.api` if missing:**
+2. **Create `.env.github` if missing:**
    ```bash
-   echo "GH_TOKEN=$(gh auth token)" > .env.api
-   echo "GH_REPO=domus-magna/chinaxiv-english" >> .env.api
+   echo "GH_TOKEN=$(gh auth token)" > .env.github
+   echo "GH_REPO=domus-magna/chinaxiv-english" >> .env.github
    ```
 
 3. **Verify `.env` does NOT have GH_TOKEN:**
@@ -146,11 +155,24 @@ This separation prevents the recurring "refusing to allow OAuth App to create or
    grep "^GH_TOKEN=" .env  # Should return nothing
    ```
 
+4. **(Optional) Enable direnv:**
+   ```bash
+   brew install direnv
+   echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc  # or ~/.bashrc
+   direnv allow .
+   ```
+
 ### If Push Fails with Workflow Scope Error
 
 ```bash
-# Just refresh your keyring - no need to update any files!
+# Step 1: Unset any GH_TOKEN in your shell
+unset GH_TOKEN
+
+# Step 2: Refresh your keyring (if needed)
 gh auth refresh -s workflow
+
+# Step 3: Retry push
+git push
 ```
 
 The pre-push hook validates keyring has workflow scope before pushing workflow files.
@@ -165,8 +187,8 @@ gh auth status
 # Check GH_TOKEN is NOT in shell environment
 echo $GH_TOKEN  # Should be empty
 
-# Check .env.api exists with GH_TOKEN
-cat .env.api | grep GH_TOKEN  # Should show the token
+# Check .env.github exists with GH_TOKEN
+cat .env.github | grep GH_TOKEN  # Should show the token
 ```
 
 ## CRITICAL: Backblaze B2 Persistence is MANDATORY
@@ -276,16 +298,16 @@ s3://chinaxiv/
 | `validated/translations/` | QA-passed JSON (text only for now) | `batch_translate.yml` workflow |
 | `flagged/translations/` | Failed QA, needs manual review | `batch_translate.yml` workflow |
 | `figures/` | **EMPTY** - figure pipeline hasn't run | `figure-backfill.yml` (pending) |
-| `records/` | Harvested paper metadata | `build.yml` daily harvest |
+| `records/` | Harvested paper metadata | `daily-pipeline.yml` harvest |
 | `selections/` | Papers selected for translation | Pipeline selection step |
 
-### Status Summary (as of Nov 30, 2025)
+### Status Summary (as of Dec 2025)
 
 | Data | Count | Status |
 |------|-------|--------|
 | Text translations | 3,872+ | ✅ Working |
-| PDFs | 934+ | ✅ Working |
-| Figures | 0 | ❌ Pipeline crashed (pydantic import) |
+| PDFs | In progress | ✅ PDF backfill running |
+| Figures | In progress | ✅ CS/AI filter implemented |
 | Records | ~50 months | ✅ Working |
 
 **To check current status:** `python scripts/b2_status.py`
