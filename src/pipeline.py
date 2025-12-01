@@ -76,19 +76,39 @@ def run_cli() -> None:
         default="local-worker",
         help="Worker ID for cloud mode (default: local-worker)",
     )
+    parser.add_argument(
+        "--with-figures",
+        action="store_true",
+        help="Enable figure translation after text translation",
+    )
     args = parser.parse_args()
+
+    # Validate figure secrets if --with-figures is enabled (skip for dry-run/PR builds)
+    if args.with_figures and not args.dry_run:
+        missing_secrets = []
+        if not os.environ.get("GEMINI_API_KEY"):
+            missing_secrets.append("GEMINI_API_KEY")
+        if not os.environ.get("MOONDREAM_API_KEY"):
+            missing_secrets.append("MOONDREAM_API_KEY")
+        if missing_secrets:
+            log(f"ERROR: --with-figures requires these environment variables: {', '.join(missing_secrets)}")
+            log("Set these secrets in GitHub Actions or your local environment.")
+            raise SystemExit(f"Missing required secrets for figure translation: {', '.join(missing_secrets)}")
 
     summary = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "dry_run": args.dry_run,
         "cloud_mode": args.cloud_mode,
         "with_qa": args.with_qa,
+        "with_figures": args.with_figures,
         "selection_status": "skipped" if args.skip_selection else "pending",
         "attempted": 0,
         "successes": 0,
         "failures": 0,
         "qa_passed": 0,
         "qa_flagged": 0,
+        "figures_total": 0,
+        "figures_translated": 0,
     }
 
     # Selection step (unless skipped and selected.json already exists)
@@ -244,6 +264,7 @@ def run_cli() -> None:
     failures = 0
     qa_passed_count = 0
     qa_flagged_count = 0
+    successful_paper_ids: list[str] = []  # Track papers that succeeded for figure processing
 
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as ex:
         futures = {
@@ -253,6 +274,7 @@ def run_cli() -> None:
             pid, ok, info, qa_passed = fut.result()
             if ok:
                 successes += 1
+                successful_paper_ids.append(pid)
                 log(f"✓ {pid} → {info}")
 
                 # Update cloud queue if in cloud mode
@@ -291,6 +313,46 @@ def run_cli() -> None:
         log(f"  Passed: {qa_passed_count}")
         log(f"  Flagged: {qa_flagged_count}")
         log(f"  Pass rate: {pass_rate:.1f}%")
+
+    # Figure translation step (after text translation)
+    if args.with_figures and not args.dry_run and successes > 0:
+        log("\nFigure translation step…")
+        from .figure_pipeline import FigurePipeline, PipelineConfig
+
+        figure_config = PipelineConfig(
+            gemini_api_key=os.environ.get("GEMINI_API_KEY"),
+            moondream_api_key=os.environ.get("MOONDREAM_API_KEY"),
+            dry_run=False,
+        )
+        figure_pipeline = FigurePipeline(figure_config)
+
+        # Only process papers that were successfully translated (not the full worklist)
+        figure_workers = int(os.environ.get("FIGURE_WORKERS", "4"))
+        log(f"Processing figures for {len(successful_paper_ids)} successfully translated papers (workers={figure_workers})...")
+
+        try:
+            figure_results = figure_pipeline.process_batch(successful_paper_ids, workers=figure_workers)
+
+            # Aggregate stats
+            total_figures = sum(r.total_figures for r in figure_results)
+            translated_figures = sum(r.translated for r in figure_results)
+            failed_figures = sum(r.failed for r in figure_results)
+
+            summary["figures_total"] = total_figures
+            summary["figures_translated"] = translated_figures
+
+            log("\nFigure Summary:")
+            log(f"  Total figures: {total_figures}")
+            log(f"  Translated: {translated_figures}")
+            log(f"  Failed: {failed_figures}")
+            if total_figures > 0:
+                log(f"  Success rate: {translated_figures / total_figures * 100:.1f}%")
+        except Exception as e:
+            # Figure errors are fatal when --with-figures is set
+            log(f"Figure translation failed: {e}")
+            summary["figures_error"] = str(e)
+            _write_summary(summary)
+            raise SystemExit(f"Figure translation failed: {e}")
 
     # Render + index + pdf (skip if cloud mode - will be done after all batches)
     if not args.cloud_mode:

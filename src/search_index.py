@@ -9,14 +9,18 @@ import gzip as _gzip
 from .utils import read_json, log
 from .models import Translation
 from .data_utils import has_full_body_content
+from .render import load_figure_manifest
 
 
-def build_index(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def build_index(items: List[Dict[str, Any]], figure_manifest: Dict[str, Any] = None) -> List[Dict[str, Any]]:
     """Build search index entries from translation dicts.
 
     Skips QA-flagged translations to align with renderer behavior
     (renderer excludes items where _qa_status != 'pass').
     """
+    if figure_manifest is None:
+        figure_manifest = {}
+
     idx: List[Dict[str, Any]] = []
     for item_data in items:
         qa_status = item_data.get("_qa_status", "pass")
@@ -26,11 +30,19 @@ def build_index(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not has_full_body_content(item_data):
             continue
         translation = Translation.from_dict(item_data)
-        idx.append(translation.get_search_index_entry())
+        entry = translation.get_search_index_entry()
+        # Add has_figures flag based on figure manifest
+        paper_id = item_data.get("id", "")
+        entry["has_figures"] = paper_id in figure_manifest
+        idx.append(entry)
     return idx
 
 
 def run_cli() -> None:
+    # Load figure manifest for has_figures flag
+    figure_manifest = load_figure_manifest()
+    log(f"Loaded figure manifest with {len(figure_manifest)} papers")
+
     # Check for bypass file first, but only use if explicitly enabled
     bypass_file = os.path.join("data", "translated_bypass.json")
     use_bypass = os.environ.get("USE_TRANSLATED_BYPASS", "0").strip().lower() in {
@@ -44,7 +56,7 @@ def run_cli() -> None:
                 "Using bypassed translations for search index (USE_TRANSLATED_BYPASS=1)"
             )
             items = read_json(bypass_file)
-            idx = build_index(items)
+            idx = build_index(items, figure_manifest)
             out_path = os.path.join("site", "search-index.json")
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path, "w", encoding="utf-8") as f:
@@ -86,6 +98,9 @@ def run_cli() -> None:
                     missing_body_skipped += 1
                     continue
                 entry = Translation.from_dict(item_data).get_search_index_entry()
+                # Add has_figures flag
+                paper_id = item_data.get("id", "")
+                entry["has_figures"] = paper_id in figure_manifest
                 if not first:
                     f.write(",")
                 json.dump(entry, f, ensure_ascii=False, separators=(",", ":"))

@@ -41,16 +41,32 @@ class FigureStorage:
             try:
                 import b2sdk.v2 as b2
 
-                key_id = self.config.b2_key_id or os.environ.get("B2_KEY_ID")
-                app_key = self.config.b2_app_key or os.environ.get("B2_APP_KEY")
+                # Support both B2_* and BACKBLAZE_* env var naming conventions
+                key_id = (
+                    self.config.b2_key_id
+                    or os.environ.get("B2_KEY_ID")
+                    or os.environ.get("BACKBLAZE_KEY_ID")
+                )
+                app_key = (
+                    self.config.b2_app_key
+                    or os.environ.get("B2_APP_KEY")
+                    or os.environ.get("BACKBLAZE_APPLICATION_KEY")
+                )
 
                 if not key_id or not app_key:
                     raise ValueError("B2_KEY_ID and B2_APP_KEY must be set")
 
+                # Support BACKBLAZE_BUCKET env var for bucket name
+                bucket_name = (
+                    self.config.b2_bucket
+                    if self.config.b2_bucket != "chinaxiv"  # Not the default
+                    else os.environ.get("BACKBLAZE_BUCKET", "chinaxiv")
+                )
+
                 info = b2.InMemoryAccountInfo()
                 self._client = b2.B2Api(info)
                 self._client.authorize_account("production", key_id, app_key)
-                self._bucket = self._client.get_bucket_by_name(self.config.b2_bucket)
+                self._bucket = self._client.get_bucket_by_name(bucket_name)
 
             except ImportError:
                 raise ImportError(
