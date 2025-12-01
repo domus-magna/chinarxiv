@@ -54,6 +54,13 @@ jobs:
             python -m src.tools.b2_alerts flush || true
             exit 1;
           fi
+          # Download figure manifest from B2
+          echo "⬇️  Downloading figure manifest from B2..."
+          aws s3 cp "${DEST}figures/manifest.json" data/figure_manifest.json --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" || echo "⚠️ No figure manifest found in B2"
+          if [ -f data/figure_manifest.json ]; then
+            FIG_COUNT=$(python -c "import json; d=json.load(open('data/figure_manifest.json')); print(len(d.get('papers', {})))")
+            echo "📊 Figure manifest: ${FIG_COUNT} papers with translated figures"
+          fi
       - name: Render site from hydrated data
         run: |
           set -e
