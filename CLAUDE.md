@@ -191,6 +191,12 @@ A **pre-push git hook** is installed at `.git/hooks/pre-push` that:
 
 ### Verifying B2 Persistence
 
+**Quick status check:**
+```bash
+python scripts/b2_status.py
+```
+
+**Manual checks:**
 ```bash
 # Check if PDFs are in B2
 aws s3 ls s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}pdfs/ --endpoint-url ${BACKBLAZE_S3_ENDPOINT}
@@ -201,3 +207,62 @@ aws s3 ls s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}validated/translations/ --
 # Count files for a specific month
 aws s3 ls s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}pdfs/chinaxiv-202401 --endpoint-url ${BACKBLAZE_S3_ENDPOINT} | wc -l
 ```
+
+## B2 Storage Map
+
+**Bucket:** `chinaxiv` (Backblaze B2)
+**Endpoint:** `https://s3.us-west-004.backblazeb2.com`
+
+### Directory Structure
+
+```
+s3://chinaxiv/
+├── pdfs/                              # Source PDFs (934+ files)
+│   └── chinaxiv-YYYYMM.NNNNN.pdf
+│
+├── validated/translations/            # QA-passed text translations (3,872+ files)
+│   └── chinaxiv-YYYYMM.NNNNN.json
+│
+├── flagged/translations/              # QA-failed translations (need review)
+│   └── chinaxiv-YYYYMM.NNNNN.json
+│
+├── figures/                           # Translated figures (currently EMPTY)
+│   └── chinaxiv-YYYYMM.NNNNN/
+│       ├── original/
+│       │   └── fig_N.png
+│       └── translated/
+│           └── fig_N.png
+│
+├── records/                           # Harvested metadata
+│   └── chinaxiv_YYYYMM.json
+│
+├── selections/                        # Daily selection files
+│   └── daily/
+│       └── YYYY-MM-DD.json
+│
+└── indexes/                           # Manifests and indices
+    └── validated/
+        └── manifest-YYYY-MM-DD.csv
+```
+
+### What Each Directory Contains
+
+| Path | Contents | Created By |
+|------|----------|------------|
+| `pdfs/` | Original Chinese PDFs | `harvest_chinaxiv_optimized.py` |
+| `validated/translations/` | QA-passed JSON (text only for now) | `batch_translate.yml` workflow |
+| `flagged/translations/` | Failed QA, needs manual review | `batch_translate.yml` workflow |
+| `figures/` | **EMPTY** - figure pipeline hasn't run | `figure-backfill.yml` (pending) |
+| `records/` | Harvested paper metadata | `build.yml` daily harvest |
+| `selections/` | Papers selected for translation | Pipeline selection step |
+
+### Status Summary (as of Nov 30, 2025)
+
+| Data | Count | Status |
+|------|-------|--------|
+| Text translations | 3,872+ | ✅ Working |
+| PDFs | 934+ | ✅ Working |
+| Figures | 0 | ❌ Pipeline crashed (pydantic import) |
+| Records | ~50 months | ✅ Working |
+
+**To check current status:** `python scripts/b2_status.py`
