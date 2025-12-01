@@ -4,9 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       stages:
-        description: 'Pipeline stages to run (comma-separated: preflight,harvest,ocr,translate,qa,render)'
+        description: 'Pipeline stages to run (comma-separated: preflight,harvest,ocr,translate,qa,figures,render)'
         required: false
-        default: 'preflight,harvest,ocr,translate,qa,render'
+        default: 'preflight,harvest,ocr,translate,qa,figures,render'
+      month:
+        description: 'Month for figure processing (YYYYMM) - required if figures stage is included'
+        required: false
+        default: ''
       batch_size:
         description: 'Papers per batch'
         required: false
@@ -36,7 +40,7 @@ jobs:
       - name: Parse stages
         id: parse-stages
         run: |
-          STAGES="${{ github.event.inputs.stages || 'preflight,harvest,ocr,translate,qa,render' }}"
+          STAGES="${{ github.event.inputs.stages || 'preflight,harvest,ocr,translate,qa,figures,render' }}"
           echo "stages=$STAGES" >> $GITHUB_OUTPUT
           echo "Running stages: $STAGES"
 
@@ -51,9 +55,11 @@ jobs:
           BATCH_SIZE="${{ github.event.inputs.batch_size || '100' }}"
           WORKERS="${{ github.event.inputs.workers || '20' }}"
           MATRIX_SIZE="${{ github.event.inputs.matrix_size || '3' }}"
+          MONTH="${{ github.event.inputs.month || '' }}"
           echo "batch-size=$BATCH_SIZE" >> $GITHUB_OUTPUT
           echo "workers=$WORKERS" >> $GITHUB_OUTPUT
           echo "matrix-size=$MATRIX_SIZE" >> $GITHUB_OUTPUT
+          echo "month=$MONTH" >> $GITHUB_OUTPUT
 
       - name: Export orchestrator inputs
         run: |
@@ -61,6 +67,7 @@ jobs:
           echo "BATCH_SIZE=${{ steps.parse-stages.outputs['batch-size'] }}" >> $GITHUB_ENV
           echo "WORKERS=${{ steps.parse-stages.outputs['workers'] }}" >> $GITHUB_ENV
           echo "MATRIX_SIZE=${{ steps.parse-stages.outputs['matrix-size'] }}" >> $GITHUB_ENV
+          echo "MONTH=${{ steps.parse-stages.outputs['month'] }}" >> $GITHUB_ENV
 
       - name: Initialize stage tracking
         run: |
@@ -150,6 +157,34 @@ jobs:
       - name: Record QA completion
         if: contains(steps.parse-stages.outputs.stages, 'qa')
         run: echo "COMPLETED_STAGES=${COMPLETED_STAGES}qa " >> $GITHUB_ENV
+
+      - name: Mark stage figures
+        if: success() && contains(steps.parse-stages.outputs.stages, 'figures')
+        run: echo "LAST_STAGE=figures" >> $GITHUB_ENV
+
+      - name: Validate month for figures
+        if: success() && contains(steps.parse-stages.outputs.stages, 'figures')
+        run: |
+          if [ -z "${{ env.MONTH }}" ]; then
+            echo "❌ Month is required when figures stage is included"
+            echo "   Provide month input in YYYYMM format (e.g., 202402)"
+            exit 1
+          fi
+          echo "✅ Month for figure processing: ${{ env.MONTH }}"
+
+      - name: Run figure gate
+        if: success() && contains(steps.parse-stages.outputs.stages, 'figures')
+        uses: ./.github/actions/run-gate
+        with:
+          workflow: figure-gate.yml
+          ref: ${{ github.ref }}
+          head-branch: ${{ steps.parse-stages.outputs['head-branch'] }}
+          inputs-json: >-
+            {"month":"${{ env.MONTH }}","workers":"${{ env.WORKERS }}","figure_concurrent":"8","cs_ai_only":"true"}
+
+      - name: Record figures completion
+        if: success() && contains(steps.parse-stages.outputs.stages, 'figures')
+        run: echo "COMPLETED_STAGES=${COMPLETED_STAGES}figures " >> $GITHUB_ENV
 
       - name: Mark stage render
         if: contains(steps.parse-stages.outputs.stages, 'render')
