@@ -13,7 +13,9 @@ All processing runs in GitHub Actions - nothing runs locally.
 """
 from __future__ import annotations
 
+import asyncio
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 
 from .circuit_breaker import get_circuit_breaker
@@ -87,20 +89,25 @@ class FigurePipeline:
             self._storage = FigureStorage(self.config)
         return self._storage
 
-    def process_paper(self, paper_id: str) -> FigureProcessingResult:
+    def process_paper(
+        self,
+        paper_id: str,
+        max_concurrent_figures: int = 8,
+    ) -> FigureProcessingResult:
         """
         Process all figures for a single paper.
 
         Pipeline steps:
         1. Extract images from PDF
         2. Validate with Moondream (check if needs translation)
-        3. Translate with Gemini 3 Pro Image
+        3. Translate with Gemini 3 Pro Image (parallel)
         4. QA the translation (compare before/after)
         5. Upload to B2
         6. Update manifest
 
         Args:
             paper_id: Paper ID (e.g., "chinaxiv-202510.00001")
+            max_concurrent_figures: Max figures to translate concurrently (default: 8)
 
         Returns:
             FigureProcessingResult with all figures and stats
@@ -111,6 +118,9 @@ class FigurePipeline:
         # Check circuit breaker before starting
         circuit_breaker = get_circuit_breaker()
         circuit_breaker.check()  # Raises if open
+
+        # Get concurrency from env var (for GitHub Actions) or use default
+        max_concurrent = int(os.environ.get("FIGURE_CONCURRENT", max_concurrent_figures))
 
         result = FigureProcessingResult(paper_id=paper_id)
 
@@ -143,13 +153,13 @@ class FigurePipeline:
                     fig.status = ProcessingStatus.VALIDATED
                     result.validated += 1
 
-        # Step 3: Translate figures with Chinese text
+        # Step 3: Translate figures with Chinese text (PARALLEL)
         figures_to_translate = [
             f for f in figures
             if f.status == ProcessingStatus.VALIDATED
             and (f.qa_has_chinese or not self.config.skip_translation_if_no_chinese)
         ]
-        log(f"Translating {len(figures_to_translate)} figures...")
+        log(f"Translating {len(figures_to_translate)} figures (max {max_concurrent} concurrent)...")
 
         # Define QA check function for multi-pass iteration
         def check_has_chinese(image_path: str) -> bool:
@@ -157,21 +167,23 @@ class FigurePipeline:
             validation = self.validator.validate(image_path)
             return validation.get("has_chinese", False)
 
-        for fig in figures_to_translate:
-            try:
-                translated_path = self.translator.translate(
-                    fig.original_path,
-                    fig.figure_number,
-                    paper_id,
-                    qa_check=check_has_chinese,  # Enable multi-pass iteration
-                )
-                if translated_path:
-                    fig.translated_path = translated_path
-                    fig.status = ProcessingStatus.TRANSLATED
-                    result.translated += 1
-            except Exception as e:
+        # Translate figures in parallel
+        translation_results = self._translate_figures_parallel(
+            figures_to_translate,
+            paper_id,
+            check_has_chinese,
+            max_concurrent,
+        )
+
+        # Apply results to figures
+        for fig, translated_path, error in translation_results:
+            if translated_path:
+                fig.translated_path = translated_path
+                fig.status = ProcessingStatus.TRANSLATED
+                result.translated += 1
+            elif error:
                 fig.status = ProcessingStatus.FAILED
-                fig.error_message = str(e)
+                fig.error_message = error
                 result.failed += 1
 
         # Step 4: QA the translations
@@ -270,6 +282,98 @@ class FigurePipeline:
         """
         # TODO: Load from manifest or B2
         raise NotImplementedError("Status retrieval not yet implemented")
+
+    def _translate_figures_parallel(
+        self,
+        figures: List[Figure],
+        paper_id: str,
+        check_has_chinese,
+        max_concurrent: int,
+    ) -> List[tuple]:
+        """
+        Translate multiple figures in parallel using ThreadPoolExecutor.
+
+        Uses AdaptiveRateLimiter to handle 429 errors gracefully.
+
+        Args:
+            figures: List of Figure objects to translate
+            paper_id: Paper ID for output directory
+            check_has_chinese: Callback to check if Chinese remains (for multi-pass)
+            max_concurrent: Maximum concurrent translation workers
+
+        Returns:
+            List of (figure, translated_path, error) tuples
+        """
+        import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from .rate_limiter import get_rate_limiter, is_rate_limit_error
+
+        rate_limiter = get_rate_limiter()
+
+        def translate_one(fig: Figure) -> tuple:
+            """Translate a single figure, returning (figure, path, error)."""
+            try:
+                if not fig.original_path:
+                    return (fig, None, "No original_path set")
+
+                translated_path = self.translator.translate(
+                    image_path=fig.original_path,
+                    figure_number=fig.figure_number,
+                    paper_id=paper_id,
+                    qa_check=check_has_chinese,
+                )
+
+                # Record success for adaptive rate limiting
+                rate_limiter.on_success()
+
+                return (fig, translated_path, None)
+            except Exception as e:
+                error_str = str(e)
+
+                # Check if this is a rate limit error (429)
+                if is_rate_limit_error(None, error_str):
+                    delay = rate_limiter.on_rate_limit(error_str)
+                    log(f"Rate limit hit, sleeping {delay}s before retry...")
+                    time.sleep(delay)
+                    # Note: The translator already has retry logic, so we just
+                    # record the backoff here. Future calls will use lower concurrency.
+
+                log(f"Error translating figure {fig.figure_number}: {e}")
+                return (fig, None, error_str)
+
+        results = []
+
+        # Use rate limiter's current concurrency (may be lower after 429s)
+        effective_concurrent = min(max_concurrent, rate_limiter.get_concurrent())
+        log(f"Using {effective_concurrent} concurrent workers (rate limiter: {rate_limiter.get_concurrent()})")
+
+        # Use ThreadPoolExecutor for parallel translation
+        # (translator.translate is synchronous, so we parallelize with threads)
+        with ThreadPoolExecutor(max_workers=effective_concurrent) as executor:
+            # Submit all translation jobs
+            future_to_fig = {
+                executor.submit(translate_one, fig): fig
+                for fig in figures
+            }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_fig):
+                fig = future_to_fig[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as e:
+                    log(f"Unexpected error for figure {fig.figure_number}: {e}")
+                    results.append((fig, None, str(e)))
+
+        # Log rate limiter stats at end
+        stats = rate_limiter.get_stats()
+        if stats["total_rate_limits"] > 0:
+            log(f"Rate limiter stats: {stats['total_successes']} successes, "
+                f"{stats['total_rate_limits']} rate limits, "
+                f"current concurrency: {stats['current_concurrent']}")
+
+        return results
 
     def _find_pdf(self, paper_id: str) -> Optional[str]:
         """Find PDF path for a paper ID."""

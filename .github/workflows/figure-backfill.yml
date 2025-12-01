@@ -7,9 +7,13 @@ on:
         description: 'Month to process figures for (YYYYMM)'
         required: true
       workers:
-        description: 'Parallel figure processing workers'
+        description: 'Parallel paper workers (default: 8)'
         required: false
-        default: '4'
+        default: '8'
+      figure_concurrent:
+        description: 'Concurrent figures per paper (default: 8)'
+        required: false
+        default: '8'
       limit:
         description: 'Max papers to process (0 = all)'
         required: false
@@ -176,11 +180,13 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
+          FIGURE_CONCURRENT: ${{ inputs.figure_concurrent }}
         run: |
           set -e
 
           echo "🎨 Processing figures for month ${{ inputs.month }}..."
-          echo "Workers: ${{ inputs.workers }}"
+          echo "Paper workers: ${{ inputs.workers }}"
+          echo "Figure concurrent: ${{ inputs.figure_concurrent }}"
           echo "Limit: ${{ inputs.limit }}"
 
           # Run the figure pipeline
