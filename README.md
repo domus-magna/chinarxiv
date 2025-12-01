@@ -1,6 +1,7 @@
 # ChinaRxiv
 
-[![Daily Build](https://github.com/domus-magna/chinarxiv/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinarxiv/actions/workflows/build.yml)
+[![CI](https://github.com/domus-magna/chinaxiv-english/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinaxiv-english/actions/workflows/ci.yml)
+[![Daily Pipeline](https://github.com/domus-magna/chinaxiv-english/actions/workflows/daily-pipeline.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinaxiv-english/actions/workflows/daily-pipeline.yml)
 [![Preflight Checks](https://github.com/domus-magna/chinarxiv/actions/workflows/preflight.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinarxiv/actions/workflows/preflight.yml)
 [![Render Gate](https://github.com/domus-magna/chinarxiv/actions/workflows/render-gate.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinarxiv/actions/workflows/render-gate.yml)
 [![Translation Gate](https://github.com/domus-magna/chinarxiv/actions/workflows/translation-gate.yml/badge.svg?branch=main)](https://github.com/domus-magna/chinarxiv/actions/workflows/translation-gate.yml)
