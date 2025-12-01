@@ -23,6 +23,14 @@ on:
         description: 'Matrix parallelism (number of parallel jobs)'
         required: false
         default: '3'
+      figure_concurrent:
+        description: 'Concurrent figures per paper (figure stage only)'
+        required: false
+        default: '8'
+      cs_ai_only:
+        description: 'Filter to CS/AI papers only for figures (true/false)'
+        required: false
+        default: 'true'
 
 jobs:
   orchestrate:
@@ -56,10 +64,14 @@ jobs:
           WORKERS="${{ github.event.inputs.workers || '20' }}"
           MATRIX_SIZE="${{ github.event.inputs.matrix_size || '3' }}"
           MONTH="${{ github.event.inputs.month || '' }}"
+          FIGURE_CONCURRENT="${{ github.event.inputs.figure_concurrent || '8' }}"
+          CS_AI_ONLY="${{ github.event.inputs.cs_ai_only || 'true' }}"
           echo "batch-size=$BATCH_SIZE" >> $GITHUB_OUTPUT
           echo "workers=$WORKERS" >> $GITHUB_OUTPUT
           echo "matrix-size=$MATRIX_SIZE" >> $GITHUB_OUTPUT
           echo "month=$MONTH" >> $GITHUB_OUTPUT
+          echo "figure-concurrent=$FIGURE_CONCURRENT" >> $GITHUB_OUTPUT
+          echo "cs-ai-only=$CS_AI_ONLY" >> $GITHUB_OUTPUT
 
       - name: Export orchestrator inputs
         run: |
@@ -68,6 +80,8 @@ jobs:
           echo "WORKERS=${{ steps.parse-stages.outputs['workers'] }}" >> $GITHUB_ENV
           echo "MATRIX_SIZE=${{ steps.parse-stages.outputs['matrix-size'] }}" >> $GITHUB_ENV
           echo "MONTH=${{ steps.parse-stages.outputs['month'] }}" >> $GITHUB_ENV
+          echo "FIGURE_CONCURRENT=${{ steps.parse-stages.outputs['figure-concurrent'] }}" >> $GITHUB_ENV
+          echo "CS_AI_ONLY=${{ steps.parse-stages.outputs['cs-ai-only'] }}" >> $GITHUB_ENV
 
       - name: Initialize stage tracking
         run: |
@@ -183,7 +197,7 @@ jobs:
           ref: ${{ github.ref }}
           head-branch: ${{ steps.parse-stages.outputs['head-branch'] }}
           inputs-json: >-
-            {"month":"${{ env.MONTH }}","workers":"${{ env.WORKERS }}","figure_concurrent":"8","cs_ai_only":"true"}
+            {"month":"${{ env.MONTH }}","workers":"${{ env.WORKERS }}","figure_concurrent":"${{ env.FIGURE_CONCURRENT }}","cs_ai_only":"${{ env.CS_AI_ONLY }}"}
 
       - name: Record figures completion
         if: success() && contains(steps.parse-stages.outputs.stages, 'figures') && steps.check-month.outputs.skip != 'true'
@@ -213,9 +227,12 @@ jobs:
         run: |
           echo "Pipeline orchestration complete"
           echo "Stages requested: ${{ steps.parse-stages.outputs.stages }}"
-          echo "Matrix size: ${{ github.event.inputs.matrix_size || '3' }}"
-          echo "Batch size: ${{ github.event.inputs.batch_size || '100' }}"
-          echo "Workers: ${{ github.event.inputs.workers || '20' }}"
+          echo "Matrix size: ${{ env.MATRIX_SIZE }}"
+          echo "Batch size: ${{ env.BATCH_SIZE }}"
+          echo "Workers: ${{ env.WORKERS }}"
+          echo "Month: ${{ env.MONTH || '(not set)' }}"
+          echo "Figure concurrent: ${{ env.FIGURE_CONCURRENT }}"
+          echo "CS/AI only: ${{ env.CS_AI_ONLY }}"
 
       - name: Notify orchestrator failure
         if: failure() && secrets.DISCORD_WEBHOOK_URL != ''
