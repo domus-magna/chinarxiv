@@ -1,19 +1,9 @@
 <!DOCTYPE html>
 <!--
-  TODO: Monitor Page Rework
+  ChinaXiv Pipeline Monitor Dashboard
 
-  COSMETIC:
-  - [ ] Remove emojis from headers
-  - [ ] Move inline styles to assets/style.css
-  - [ ] Extend base.html for consistent header/footer
-  - [ ] Fix hardcoded URL (chinarxiv.org)
-
-  FUNCTIONAL:
-  - [ ] Connect to real backend API for job statistics
-  - [ ] Implement actual authentication (not just a warning)
-  - [ ] Fetch real logs from translation pipeline
-  - [ ] Add WebSocket for real-time updates
-  - [ ] Store/retrieve actual job state from database or KV store
+  Connects to B2 status manifests for real pipeline progress.
+  Configuration injected via Jinja template rendering.
 -->
 <html lang="en">
 <head>
@@ -54,11 +44,11 @@
     </div>
     
     <div class="container">
-        <div class="auth-section">
-            <h3>🔐 Authentication Required</h3>
-            <p>This monitoring dashboard requires authentication. Please contact the administrator for access credentials.</p>
+        <div id="status-warning" class="auth-section" style="display: none;">
+            <h3>Status Warning</h3>
+            <p id="status-warning-text">Unable to load status</p>
         </div>
-        
+
         <div style="text-align: center; margin-bottom: 2rem;">
             <button class="refresh-btn" onclick="refreshData()">Refresh</button>
             <label class="auto-refresh">
@@ -118,6 +108,7 @@
                     <div class="stat">
                         <span>GitHub Actions:</span>
                         <span class="status" id="githubStatus">-</span>
+                        <a id="runLink" href="#" target="_blank" style="display: none; margin-left: 0.5rem; font-size: 0.8rem;">View Run</a>
                     </div>
                     <div class="stat">
                         <span>Cloudflare:</span>
@@ -135,79 +126,13 @@
         </div>
     </div>
     
+    <!-- Config block rendered by Jinja - no hardcoded URLs in JS -->
     <script>
-        let autoRefreshInterval;
-        
-        function refreshData() {
-            // Simulate data for demo purposes
-            const now = new Date();
-            const stats = {
-                total: 50,
-                completed: Math.floor(Math.random() * 20) + 10,
-                pending: 50 - Math.floor(Math.random() * 20) - 10,
-                failed: Math.floor(Math.random() * 3),
-                progress_percent: 0,
-                estimated_completion: new Date(now.getTime() + 3600000).toLocaleString()
-            };
-            
-            stats.progress_percent = (stats.completed / stats.total) * 100;
-            
-            // Update job stats
-            document.getElementById('totalJobs').textContent = stats.total;
-            document.getElementById('completedJobs').textContent = stats.completed;
-            document.getElementById('pendingJobs').textContent = stats.pending;
-            document.getElementById('failedJobs').textContent = stats.failed;
-            document.getElementById('progressPercent').textContent = stats.progress_percent.toFixed(1) + '%';
-            document.getElementById('progressBar').style.width = stats.progress_percent + '%';
-            document.getElementById('estimatedCompletion').textContent = stats.estimated_completion;
-            
-            // Update system stats
-            document.getElementById('uptime').textContent = 'Running';
-            document.getElementById('lastUpdate').textContent = now.toLocaleString();
-            document.getElementById('siteUrl').textContent = 'https://chinarxiv.org';
-            
-            const githubStatus = document.getElementById('githubStatus');
-            githubStatus.textContent = 'Active';
-            githubStatus.className = 'status online';
-            
-            const cloudflareStatus = document.getElementById('cloudflareStatus');
-            cloudflareStatus.textContent = 'Online';
-            cloudflareStatus.className = 'status online';
-            
-            // Update logs
-            const logs = [
-                { timestamp: now.toLocaleString(), message: 'Translation job completed successfully', source: 'batch_translate.log' },
-                { timestamp: new Date(now.getTime() - 300000).toLocaleString(), message: 'Worker process started', source: 'worker.log' },
-                { timestamp: new Date(now.getTime() - 600000).toLocaleString(), message: 'Batch translation initialized', source: 'batch_translate.log' },
-                { timestamp: new Date(now.getTime() - 900000).toLocaleString(), message: 'Site deployed to Cloudflare Pages', source: 'deploy.log' },
-                { timestamp: new Date(now.getTime() - 1200000).toLocaleString(), message: 'GitHub Actions workflow completed', source: 'github.log' }
-            ];
-            
-            const logsContainer = document.getElementById('logs');
-            logsContainer.innerHTML = '';
-            
-            logs.forEach(log => {
-                const logEntry = document.createElement('div');
-                logEntry.className = 'log-entry';
-                logEntry.innerHTML = `
-                    <div class="log-timestamp">${log.timestamp}</div>
-                    <div>${log.message}</div>
-                `;
-                logsContainer.appendChild(logEntry);
-            });
-        }
-        
-        function toggleAutoRefresh() {
-            const checkbox = document.getElementById('autoRefresh');
-            if (checkbox.checked) {
-                autoRefreshInterval = setInterval(refreshData, 30000); // 30 seconds
-            } else {
-                clearInterval(autoRefreshInterval);
-            }
-        }
-        
-        // Initial load
-        refreshData();
+        const MANIFEST_CONFIG = {
+            base: "{{ manifest_base_url | default('https://f004.backblazeb2.com/file/chinaxiv') }}",
+            repoPublic: true
+        };
     </script>
+    <script src="{{ root }}/assets/monitor.js"></script>
 </body>
 </html>
