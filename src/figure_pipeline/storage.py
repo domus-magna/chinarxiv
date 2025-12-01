@@ -5,8 +5,10 @@ Handles upload/download of figure images to cloud storage.
 """
 from __future__ import annotations
 
+import json
 import os
-from typing import Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from .models import PipelineConfig
 
@@ -163,3 +165,106 @@ class FigureStorage:
             print(f"[storage] Delete failed for {paper_id}: {e}")
 
         return deleted
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Figure Manifest Management
+    # ─────────────────────────────────────────────────────────────────────────
+
+    MANIFEST_KEY = "figures/manifest.json"
+
+    def download_manifest(self) -> Optional[Dict[str, Any]]:
+        """
+        Download the figure manifest from B2.
+
+        Returns:
+            Manifest dict or None if not found/error
+        """
+        import tempfile
+
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+                tmp_path = tmp.name
+
+            downloaded = self.bucket.download_file_by_name(self.MANIFEST_KEY)
+            downloaded.save_to(tmp_path)
+
+            with open(tmp_path, "r") as f:
+                manifest = json.load(f)
+
+            os.unlink(tmp_path)
+            return manifest
+
+        except Exception as e:
+            print(f"[storage] Manifest download failed: {e}")
+            return None
+
+    def upload_manifest(self, manifest: Dict[str, Any]) -> bool:
+        """
+        Upload the figure manifest to B2.
+
+        Args:
+            manifest: Manifest dict to upload
+
+        Returns:
+            True if successful
+        """
+        import tempfile
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False
+            ) as tmp:
+                json.dump(manifest, tmp, indent=2)
+                tmp_path = tmp.name
+
+            self.bucket.upload_local_file(
+                local_file=tmp_path,
+                file_name=self.MANIFEST_KEY,
+            )
+
+            os.unlink(tmp_path)
+            print(f"[storage] Manifest uploaded with {len(manifest.get('papers', {}))} papers")
+            return True
+
+        except Exception as e:
+            print(f"[storage] Manifest upload failed: {e}")
+            return False
+
+    def update_manifest(
+        self, paper_id: str, figures: List[Dict[str, Any]]
+    ) -> bool:
+        """
+        Update the B2 manifest with translated figure URLs for a paper.
+
+        This is called after successfully translating figures for a paper.
+        It downloads the current manifest, adds/updates the paper entry,
+        and uploads the updated manifest.
+
+        Args:
+            paper_id: Paper ID (e.g., "chinaxiv-202201.00012")
+            figures: List of figure dicts with keys:
+                - number: Figure number (e.g., "1", "2")
+                - url: Public URL to translated figure
+
+        Returns:
+            True if successful
+        """
+        # Download existing manifest or create new one
+        manifest = self.download_manifest()
+        if manifest is None:
+            manifest = {"updated_at": "", "papers": {}}
+
+        # Update timestamp
+        manifest["updated_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Add/update paper entry
+        manifest["papers"][paper_id] = {
+            "figure_count": len(figures),
+            "figures": [
+                {"number": fig.get("number", str(i + 1)), "url": fig.get("url", "")}
+                for i, fig in enumerate(figures)
+            ],
+        }
+
+        # Upload updated manifest
+        return self.upload_manifest(manifest)

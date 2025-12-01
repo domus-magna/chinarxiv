@@ -2,15 +2,86 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
 import shutil
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound, select_autoescape
 import time
 
 from .utils import ensure_dir, log, read_json, write_text, write_json
 from .data_utils import has_full_body_content
+
+
+def load_figure_manifest() -> Dict[str, Any]:
+    """
+    Load the figure manifest from B2 or local cache.
+
+    The manifest contains information about which papers have translated figures
+    and the URLs to those figures. This is used to:
+    1. Set `_has_translated_figures` flag on each paper
+    2. Provide figure URLs for the figure gallery
+
+    Returns:
+        Dict mapping paper_id to figure info, or empty dict if unavailable.
+    """
+    manifest_cache = Path("data/figure_manifest.json")
+    manifest: Dict[str, Any] = {}
+
+    # Try to download from B2 first (in CI), fall back to local cache
+    try:
+        from .b2_utils import download_file_from_b2
+
+        b2_key = "figures/manifest.json"
+        log(f"Downloading figure manifest from B2: {b2_key}")
+
+        if download_file_from_b2(b2_key, str(manifest_cache)):
+            log(f"Figure manifest downloaded to {manifest_cache}")
+
+    except ImportError:
+        log("B2 utils not available, using local manifest cache if present")
+    except Exception as e:
+        log(f"Failed to download figure manifest from B2: {e}")
+
+    # Load from local cache if it exists
+    if manifest_cache.exists():
+        try:
+            with open(manifest_cache) as f:
+                data = json.load(f)
+                manifest = data.get("papers", {})
+                log(
+                    f"Loaded figure manifest: {len(manifest)} papers with translated figures"
+                )
+        except Exception as e:
+            log(f"Failed to load figure manifest: {e}")
+
+    return manifest
+
+
+def enrich_items_with_figures(
+    items: List[Dict[str, Any]], figure_manifest: Dict[str, Any]
+) -> None:
+    """
+    Enrich translation items with figure translation data.
+
+    Sets:
+    - `_has_translated_figures`: bool - whether paper has translated figures
+    - `_translated_figures`: list - figure info dicts with number and url
+
+    Args:
+        items: List of translation items (modified in place)
+        figure_manifest: Dict mapping paper_id to figure info
+    """
+    for item in items:
+        paper_id = item.get("id", "")
+        if paper_id in figure_manifest:
+            item["_has_translated_figures"] = True
+            item["_translated_figures"] = figure_manifest[paper_id].get("figures", [])
+        else:
+            item["_has_translated_figures"] = False
+            item["_translated_figures"] = []
 
 
 def load_translated() -> List[Dict[str, Any]]:
@@ -195,6 +266,12 @@ def render_site(items: List[Dict[str, Any]]) -> None:
     if os.path.exists(admin_templates_src):
         shutil.copytree(admin_templates_src, admin_dst)
         log(f"Copied admin templates → {admin_dst}")
+
+    # Load figure manifest and enrich items with translated figure data
+    figure_translation_manifest = load_figure_manifest()
+    enrich_items_with_figures(items, figure_translation_manifest)
+    figures_with_translations = sum(1 for it in items if it.get("_has_translated_figures"))
+    log(f"Papers with translated figures: {figures_with_translations}/{len(items)}")
 
     build_version = int(time.time())
 

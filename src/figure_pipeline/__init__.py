@@ -203,6 +203,16 @@ class FigurePipeline:
                     fig.status = ProcessingStatus.UPLOADED
                     result.uploaded += 1
 
+            # Step 6: Update manifest with translated figure URLs
+            translated_with_urls = [
+                {"number": fig.figure_number, "url": fig.translated_url}
+                for fig in figures
+                if fig.translated_url
+            ]
+            if translated_with_urls:
+                log(f"Updating manifest with {len(translated_with_urls)} translated figures...")
+                self.storage.update_manifest(paper_id, translated_with_urls)
+
         result.figures = figures
         log(f"Processed {paper_id}: {result.translated}/{result.total_figures} figures translated")
 

@@ -277,6 +277,17 @@ jobs:
             exit 1;
           fi
 
+          # Download figure manifest for translated figure display
+          export AWS_ACCESS_KEY_ID="${BACKBLAZE_KEY_ID}"
+          export AWS_SECRET_ACCESS_KEY="${BACKBLAZE_APPLICATION_KEY}"
+          export AWS_DEFAULT_REGION=us-west-004
+          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
+          echo "📥 Downloading figure manifest from B2..."
+          mkdir -p data
+          aws s3 cp "${DEST}figures/manifest.json" data/figure_manifest.json \
+            --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
+            --only-show-errors || echo "ℹ️ No figure manifest found (figures not yet translated)"
+
       - name: Render site (post-hydration)
         run: |
           set -e

@@ -44,6 +44,13 @@
           {% endif %}
         </div>
 
+        {# Warning banner for papers without translated figures #}
+        {% if not item._has_translated_figures %}
+        <div class="alert alert-warning" role="alert">
+          <strong>Note:</strong> Figures in this paper have not yet been translated.
+        </div>
+        {% endif %}
+
         <h2>Abstract</h2>
         <div class="abstract-blockquote">
           {{ (item.abstract_md or item.abstract_en) | markdown | safe }}
@@ -61,6 +68,23 @@
               <p>{{ p }}</p>
             {% endfor %}
           </div>
+        {% endif %}
+
+        {# Translated figures gallery #}
+        {% if item._has_translated_figures and item._translated_figures %}
+        <section class="figure-gallery">
+          <h2>Translated Figures</h2>
+          <div class="figure-grid">
+            {% for fig in item._translated_figures %}
+            <figure class="translated-figure">
+              <a href="{{ fig.url }}" target="_blank" rel="noopener">
+                <img src="{{ fig.url }}" alt="Figure {{ fig.number }}" loading="lazy">
+              </a>
+              <figcaption>Figure {{ fig.number }}</figcaption>
+            </figure>
+            {% endfor %}
+          </div>
+        </section>
         {% endif %}
 
         {# Submission history (single entry, we do not have versions) #}
