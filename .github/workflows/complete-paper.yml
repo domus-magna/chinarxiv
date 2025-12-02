@@ -38,9 +38,9 @@ on:
         required: false
         default: ''
       with_figures:
-        description: 'Include figure translation'
+        description: 'Include figure translation (requires system deps not installed by this workflow)'
         type: boolean
-        default: true
+        default: false
       upload:
         description: 'Upload results to B2 storage'
         type: boolean
@@ -107,7 +107,10 @@ jobs:
           BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
           BRIGHTDATA_BROWSER_WSS: ${{ secrets.BRIGHTDATA_BROWSER_WSS }}
           BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
         run: |
           errors=0
 
@@ -123,16 +126,32 @@ jobs:
             errors=1
           fi
 
-          # B2 upload credentials (if upload enabled)
-          if [ "${{ inputs.upload }}" = "true" ] && [ -z "$BACKBLAZE_KEY_ID" ]; then
-            echo "::error::BACKBLAZE credentials required when upload=true"
-            errors=1
+          # B2 upload credentials (if upload enabled) - validate ALL required credentials
+          if [ "${{ inputs.upload }}" = "true" ]; then
+            if [ -z "$BACKBLAZE_KEY_ID" ]; then
+              echo "::error::BACKBLAZE_KEY_ID required when upload=true"
+              errors=1
+            fi
+            if [ -z "$BACKBLAZE_APPLICATION_KEY" ]; then
+              echo "::error::BACKBLAZE_APPLICATION_KEY required when upload=true"
+              errors=1
+            fi
+            if [ -z "$BACKBLAZE_BUCKET" ]; then
+              echo "::error::BACKBLAZE_BUCKET required when upload=true"
+              errors=1
+            fi
           fi
 
           # Figure translation credentials (if figures enabled)
-          if [ "${{ inputs.with_figures }}" = "true" ] && [ -z "$GEMINI_API_KEY" ]; then
-            echo "::error::GEMINI_API_KEY required when with_figures=true"
-            errors=1
+          if [ "${{ inputs.with_figures }}" = "true" ]; then
+            if [ -z "$GEMINI_API_KEY" ]; then
+              echo "::error::GEMINI_API_KEY required when with_figures=true"
+              errors=1
+            fi
+            if [ -z "$MOONDREAM_API_KEY" ]; then
+              echo "::error::MOONDREAM_API_KEY required when with_figures=true"
+              errors=1
+            fi
           fi
 
           if [ "$errors" -eq 1 ]; then

@@ -1,6 +1,6 @@
 # GitHub Actions Workflows
 
-This guide describes all 24 workflows in the repo, grouped by purpose with quick expectations, required secrets, and example invocations. Defaults favor the simplest reliable path: B2 is always the source of truth, PDFs are mandatory before translation, and figure translation runs where enabled.
+This guide describes all 25 workflows in the repo, grouped by purpose with quick expectations, required secrets, and example invocations. Defaults favor the simplest reliable path: B2 is always the source of truth, PDFs are mandatory before translation, and figure translation runs where enabled.
 
 ## Required Secrets (by usage)
 
@@ -136,13 +136,14 @@ This guide describes all 24 workflows in the repo, grouped by purpose with quick
 - **Trigger**: Manual.
 - **Purpose**: Process individual papers end-to-end with fresh metadata fetch. Use when harvest data is stale, paper is newly published, or debugging specific papers.
 - **What to expect**: 3–5 minutes per paper (text only), 5–10 minutes with figures.
-- **Inputs**: `paper_id` (single ID), `paper_ids` (comma-separated), `with_figures` (default true), `upload` (default true), `force` (default false).
+- **Inputs**: `paper_id` (single ID), `paper_ids` (comma-separated), `with_figures` (default false), `upload` (default true), `force` (default false).
+- **Note**: Figure translation requires system deps (tesseract, ghostscript, etc.) not installed by this workflow. Use `figure-backfill.yml` for figures.
 - **Examples**:
   ```bash
-  # Single paper, full pipeline (text + figures + B2 upload)
+  # Single paper, text only (default) + B2 upload
   gh workflow run complete-paper.yml -f paper_id=202411.00001
 
-  # Multiple papers, text only, no upload (for testing)
+  # Multiple papers, no upload (for testing)
   gh workflow run complete-paper.yml \
     -f paper_ids="202411.00001,202411.00002" \
     -f with_figures=false \
