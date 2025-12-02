@@ -44,12 +44,13 @@ jobs:
   smoke-test:
     runs-on: ubuntu-latest
     # Only run on main, not PRs (avoids flaky CI + rate limit issues from shared runner IPs)
-    if: github.ref == 'refs/heads/main' && github.repository == 'domus-magna/chinaxiv-english'
+    if: github.ref == 'refs/heads/main' && github.repository == 'domus-magna/chinarxiv'
     needs: [lint-and-test, test-worker]  # Only after tests pass
     steps:
       - name: Smoke test report API
+        id: smoke
         timeout-minutes: 1
-        continue-on-error: true  # Don't block on network flakiness
+        continue-on-error: true  # Don't block merge on network flakiness
         run: |
           for i in 1 2 3; do
             response=$(curl -s --max-time 10 -w "\n%{http_code}" -X POST https://chinarxiv.org/api/report \
@@ -67,3 +68,10 @@ jobs:
           done
           echo "⚠ Smoke test failed after 3 attempts"
           exit 1
+
+      - name: Report smoke test result
+        if: always()
+        run: |
+          if [ "${{ steps.smoke.outcome }}" = "failure" ]; then
+            echo "::warning::Smoke test failed - report API may be down. Check https://chinarxiv.org/api/report"
+          fi
