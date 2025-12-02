@@ -32,6 +32,38 @@ python -m src.figure_pipeline --start 202401 --end 202412
 └──────────────────┘     └──────────────────┘     └──────────────────┘
 ```
 
+### PDF Download Architecture
+
+**ChinaXiv IP-Bound UUIDs**: ChinaXiv generates IP-bound UUIDs for PDF downloads:
+1. Abstract page contains a link with `uuid=...` parameter
+2. This UUID is only valid from the **same IP** that loaded the abstract
+3. If PDF request comes from different IP → 404 "页面不存在"
+
+**BrightData Zone Types**:
+
+| Zone | Session Support | Use Case |
+|------|-----------------|----------|
+| Web Unlocker/SERP (`china_paper_scraper1`) | ❌ No | HTML scraping only |
+| Scraping Browser (`china_browser1`) | ✅ `-session-{id}` in WSS | PDF downloads |
+
+**Download Strategy** (`_headless_pdf_fetch()` in `src/pdf_pipeline.py`):
+
+1. **Connect with session ID** - Inject `-session-{id}` into WSS URL for IP stickiness
+2. **Navigate to abstract** - Get fresh UUID bound to current IP
+3. **Extract PDF link** - Fresh UUID from page (not the stale one passed in)
+4. **JS fetch()** - Download PDF within browser context (same IP)
+5. **Base64 transfer** - Binary PDF from browser to Python
+
+*Why JS fetch() instead of navigation?* BrightData Browser has navigation limits. Using JavaScript `fetch()` API bypasses this while maintaining same IP context.
+
+**Fallback Chain** (in `download_pdf()`):
+```
+download_pdf()
+    ├── Direct request (fast path)
+    ├── _unlocker_raw_fetch() (proxy fallback)
+    └── _headless_pdf_fetch() (browser + JS fetch for IP-bound UUIDs)
+```
+
 ### Text Translation
 - **Location**: `src/translate.py`, `src/pipeline.py`
 - **API**: OpenRouter (DeepSeek V3.2-Exp model)
@@ -301,13 +333,13 @@ s3://chinaxiv/
 | `records/` | Harvested paper metadata | `daily-pipeline.yml` harvest |
 | `selections/` | Papers selected for translation | Pipeline selection step |
 
-### Status Summary (as of Dec 2025)
+### Status Summary (as of Dec 2025 refresh)
 
 | Data | Count | Status |
 |------|-------|--------|
 | Text translations | 3,872+ | ✅ Working |
 | PDFs | In progress | ✅ PDF backfill running |
-| Figures | In progress | ✅ CS/AI filter implemented |
+| Figures | In progress | ✅ Figure pipeline stable; CS/AI filter on |
 | Records | ~50 months | ✅ Working |
 
 **To check current status:** `python scripts/b2_status.py`

@@ -219,6 +219,7 @@ jobs:
           BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
           BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
           BRIGHTDATA_UNLOCKER_PASSWORD: ${{ secrets.BRIGHTDATA_UNLOCKER_PASSWORD }}
+          BRIGHTDATA_BROWSER_WSS: ${{ secrets.BRIGHTDATA_BROWSER_WSS }}
         run: |
           set -e
           export AWS_DEFAULT_REGION=us-west-004
