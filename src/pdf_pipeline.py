@@ -191,7 +191,6 @@ def _headless_pdf_fetch(
     5. Transfer via base64 and save
     """
     import base64
-    import re
 
     endpoint = os.getenv("BRIGHTDATA_BROWSER_WSS")
     if not endpoint:

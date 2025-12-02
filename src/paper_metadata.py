@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 import re
 
 from bs4 import BeautifulSoup
@@ -167,10 +167,7 @@ def parse_metadata_from_html(html: str, paper_id: str) -> PaperMetadata:
     pdf_link = soup.find("a", href=lambda x: x and "filetype=pdf" in x)
     if pdf_link:
         href = pdf_link.get("href", "")
-        if href.startswith("/"):
-            pdf_url = f"https://chinaxiv.org{href}"
-        else:
-            pdf_url = href
+        pdf_url = f"https://chinaxiv.org{href}" if href.startswith("/") else href
     if not pdf_url:
         raise ValueError(f"Missing PDF URL for {paper_id}")
 

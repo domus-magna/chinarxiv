@@ -308,14 +308,12 @@ def process_paper_complete(
         record["files"] = {"pdf_path": str(pdf_path)}
 
         if with_text:
-            translator_fn: Callable[[dict, Path, bool], tuple[Path, QAResult]]
             if text_translator:
-                translator_fn = text_translator
+                translation_path, qa_result = text_translator(record, translated_dir, dry_run)
             else:
-                translator_fn = lambda rec, out_dir, is_dry: _translate_text(
-                    rec, output_dir=out_dir, dry_run=is_dry
+                translation_path, qa_result = _translate_text(
+                    record, output_dir=translated_dir, dry_run=dry_run
                 )
-            translation_path, qa_result = translator_fn(record, translated_dir, dry_run)
             qa_passed = qa_result.status == QAStatus.PASS
             log(
                 f"Translation complete for {full_id}: {translation_path} "
