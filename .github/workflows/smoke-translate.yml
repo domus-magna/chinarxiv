@@ -1,4 +1,30 @@
 name: smoke-translate
+# ============================================================================
+# PURPOSE: Pre-backfill testing at scale using selection-based translation.
+#
+# USE CASES:
+# - Validate pipeline changes before running full backfill
+# - Test translation quality on a sample of papers
+# - Verify parallelism and worker scaling
+# - Optional site deployment after successful run
+#
+# HOW IT WORKS:
+# 1. Uses existing harvested records (or auto-harvests if month specified)
+# 2. Selects N papers via the selection pipeline
+# 3. Translates in parallel using configurable worker count
+# 4. Reports QA results and optionally deploys site
+#
+# COMPARISON TO OTHER WORKFLOWS:
+# - translation-canary: Tests 3 fixed papers with fresh fetch (daily health check)
+# - complete-paper: Processes individual papers with fresh fetch (ad-hoc)
+# - smoke-translate: Tests N papers from selection (pre-backfill validation)
+# - backfill: Full production run with B2 persistence (production)
+#
+# SECRETS REQUIRED:
+# - OPENROUTER_API_KEY: Text translation (required)
+# - BRIGHTDATA_API_KEY: Harvesting if month specified (optional)
+# - DISCORD_WEBHOOK_URL: Alert notifications (optional)
+# ============================================================================
 
 on:
   workflow_dispatch:

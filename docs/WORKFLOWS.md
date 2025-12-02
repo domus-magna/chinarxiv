@@ -1,6 +1,6 @@
 # GitHub Actions Workflows
 
-This guide describes all 23 workflows in the repo, grouped by purpose with quick expectations, required secrets, and example invocations. Defaults favor the simplest reliable path: B2 is always the source of truth, PDFs are mandatory before translation, and figure translation runs where enabled.
+This guide describes all 25 workflows in the repo, grouped by purpose with quick expectations, required secrets, and example invocations. Defaults favor the simplest reliable path: B2 is always the source of truth, PDFs are mandatory before translation, and figure translation runs where enabled.
 
 ## Required Secrets (by usage)
 
@@ -128,8 +128,30 @@ This guide describes all 23 workflows in the repo, grouped by purpose with quick
 
 ### Translation Canary (`.github/workflows/translation-canary.yml`)
 - **Trigger**: 06:00 UTC daily + manual.
-- **Purpose**: Translates fixed sample IDs and enforces QA pass.
-- **What to expect**: ~15–30 minutes; fails on any QA regression.
+- **Purpose**: Daily health check using `complete_paper_processor` for true E2E validation. Tests fresh metadata fetch, PDF download, and translation—catching issues that selection-based workflows would miss.
+- **What to expect**: ~15–30 minutes; fails on any QA regression or if ChinaXiv's HTML structure changes.
+- **Note**: Uses 3 fixed paper IDs with `--no-upload --no-figures --force` for fast, non-destructive testing.
+
+### Complete Paper Processor (`.github/workflows/complete-paper.yml`)
+- **Trigger**: Manual.
+- **Purpose**: Process individual papers end-to-end with fresh metadata fetch. Use when harvest data is stale, paper is newly published, or debugging specific papers.
+- **What to expect**: 3–5 minutes per paper (text only), 5–10 minutes with figures.
+- **Inputs**: `paper_id` (single ID), `paper_ids` (comma-separated), `with_figures` (default false), `upload` (default true), `force` (default false).
+- **Note**: Figure translation requires system deps (tesseract, ghostscript, etc.) not installed by this workflow. Use `figure-backfill.yml` for figures.
+- **Examples**:
+  ```bash
+  # Single paper, text only (default) + B2 upload
+  gh workflow run complete-paper.yml -f paper_id=202411.00001
+
+  # Multiple papers, no upload (for testing)
+  gh workflow run complete-paper.yml \
+    -f paper_ids="202411.00001,202411.00002" \
+    -f with_figures=false \
+    -f upload=false
+
+  # Re-process a paper even if it exists in B2
+  gh workflow run complete-paper.yml -f paper_id=202411.00001 -f force=true
+  ```
 
 ### Smoke Translate (`.github/workflows/smoke-translate.yml`)
 - **Trigger**: Manual.
@@ -167,10 +189,11 @@ This guide describes all 23 workflows in the repo, grouped by purpose with quick
 
 ## Common Commands (quick reference)
 
-- Run tonight’s prod pipeline now: `gh workflow run daily-pipeline.yml`
+- Run tonight's prod pipeline now: `gh workflow run daily-pipeline.yml`
 - Backfill one month end-to-end: `gh workflow run backfill.yml -f month=YYYYMM`
 - Rebuild site from validated translations in B2: `gh workflow run rebuild-from-b2.yml`
 - Fill missing PDFs everywhere: `gh workflow run pdf-backfill.yml -f month=all`
 - Translate figures for a month (CS/AI only): `gh workflow run figure-backfill.yml -f month=YYYYMM`
 - Drain translation queue with batches: `gh workflow run batch-queue-orchestrator.yml -f total_batches=0`
 - Quick health check: `gh workflow run translation-canary.yml`
+- Process a single paper (fresh metadata): `gh workflow run complete-paper.yml -f paper_id=YYYYMM.NNNNN`

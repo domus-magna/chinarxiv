@@ -1,0 +1,263 @@
+name: Complete Paper Processor
+# ============================================================================
+# PURPOSE: Process individual papers end-to-end with fresh metadata fetch.
+#
+# USE CASES:
+# - Paper just published on ChinaXiv (not yet in harvested records)
+# - Harvest data is stale or corrupt for a specific paper
+# - Need to re-translate a specific paper with fresh everything
+# - Debugging pipeline issues with a single paper
+# - Backfilling papers that failed in batch workflows
+#
+# HOW IT WORKS:
+# 1. Fetches fresh metadata directly from ChinaXiv abstract page
+# 2. Downloads PDF via BrightData browser proxy (handles IP-bound UUIDs)
+# 3. Translates text using OpenRouter (DeepSeek model)
+# 4. Optionally translates figures using Gemini
+# 5. Runs QA validation (Chinese leakage check)
+# 6. Optionally uploads results to B2 storage
+#
+# SECRETS REQUIRED:
+# - OPENROUTER_API_KEY: Text translation (required)
+# - BRIGHTDATA_API_KEY: Proxy authentication (required for PDF download)
+# - BRIGHTDATA_BROWSER_WSS: Browser proxy WebSocket (required for PDF download)
+# - BACKBLAZE_*: B2 storage credentials (required if upload=true)
+# - GEMINI_API_KEY: Figure translation (required if with_figures=true)
+# - MOONDREAM_API_KEY: Figure QA validation (required if with_figures=true)
+# ============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      paper_id:
+        description: 'Single paper ID (e.g., 202411.00001)'
+        required: false
+        default: ''
+      paper_ids:
+        description: 'Comma-separated paper IDs (e.g., 202411.00001,202411.00002)'
+        required: false
+        default: ''
+      with_figures:
+        description: 'Include figure translation (requires system deps not installed by this workflow)'
+        type: boolean
+        default: false
+      upload:
+        description: 'Upload results to B2 storage'
+        type: boolean
+        default: true
+      force:
+        description: 'Re-process even if already exists in B2'
+        type: boolean
+        default: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # 2 hours max for multiple papers with figures
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate inputs
+        id: validate
+        run: |
+          # Build paper ID list from inputs
+          ids=""
+
+          if [ -n "${{ inputs.paper_id }}" ]; then
+            ids="${{ inputs.paper_id }}"
+          fi
+
+          if [ -n "${{ inputs.paper_ids }}" ]; then
+            if [ -n "$ids" ]; then
+              ids="$ids,${{ inputs.paper_ids }}"
+            else
+              ids="${{ inputs.paper_ids }}"
+            fi
+          fi
+
+          if [ -z "$ids" ]; then
+            echo "::error::No paper IDs provided. Specify paper_id or paper_ids."
+            exit 1
+          fi
+
+          # Convert comma-separated to newline-separated for file
+          echo "$ids" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' > paper_ids.txt
+
+          count=$(wc -l < paper_ids.txt | tr -d ' ')
+          echo "Processing $count paper(s)"
+          echo "paper_count=$count" >> $GITHUB_OUTPUT
+
+          cat paper_ids.txt
+
+      - name: Preflight credentials check
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_BROWSER_WSS: ${{ secrets.BRIGHTDATA_BROWSER_WSS }}
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
+        run: |
+          errors=0
+
+          # Text translation is always required
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY is required for text translation"
+            errors=1
+          fi
+
+          # PDF download requires BrightData
+          if [ -z "$BRIGHTDATA_API_KEY" ] && [ -z "$BRIGHTDATA_BROWSER_WSS" ]; then
+            echo "::error::BrightData credentials required for PDF download"
+            errors=1
+          fi
+
+          # B2 upload credentials (if upload enabled) - validate ALL required credentials
+          if [ "${{ inputs.upload }}" = "true" ]; then
+            if [ -z "$BACKBLAZE_KEY_ID" ]; then
+              echo "::error::BACKBLAZE_KEY_ID required when upload=true"
+              errors=1
+            fi
+            if [ -z "$BACKBLAZE_APPLICATION_KEY" ]; then
+              echo "::error::BACKBLAZE_APPLICATION_KEY required when upload=true"
+              errors=1
+            fi
+            if [ -z "$BACKBLAZE_BUCKET" ]; then
+              echo "::error::BACKBLAZE_BUCKET required when upload=true"
+              errors=1
+            fi
+          fi
+
+          # Figure translation credentials (if figures enabled)
+          if [ "${{ inputs.with_figures }}" = "true" ]; then
+            if [ -z "$GEMINI_API_KEY" ]; then
+              echo "::error::GEMINI_API_KEY required when with_figures=true"
+              errors=1
+            fi
+            if [ -z "$MOONDREAM_API_KEY" ]; then
+              echo "::error::MOONDREAM_API_KEY required when with_figures=true"
+              errors=1
+            fi
+          fi
+
+          if [ "$errors" -eq 1 ]; then
+            exit 1
+          fi
+
+          echo "All required credentials present"
+
+      - name: Process papers
+        env:
+          # Translation
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # PDF download
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_BROWSER_WSS: ${{ secrets.BRIGHTDATA_BROWSER_WSS }}
+          BRIGHTDATA_UNLOCKER_PASSWORD: ${{ secrets.BRIGHTDATA_UNLOCKER_PASSWORD }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          # B2 storage
+          B2_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          B2_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+          # Figure translation
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
+          # Misc
+          NO_PROXY: openrouter.ai,api.openrouter.ai
+        run: |
+          set -euo pipefail
+
+          # Build command flags
+          flags=""
+
+          if [ "${{ inputs.with_figures }}" != "true" ]; then
+            flags="$flags --no-figures"
+          fi
+
+          if [ "${{ inputs.upload }}" != "true" ]; then
+            flags="$flags --no-upload"
+          fi
+
+          if [ "${{ inputs.force }}" = "true" ]; then
+            flags="$flags --force"
+          fi
+
+          # Process each paper
+          success=0
+          failed=0
+
+          while IFS= read -r paper_id || [ -n "$paper_id" ]; do
+            # Skip empty lines
+            [ -z "$paper_id" ] && continue
+
+            echo "::group::Processing: $paper_id"
+
+            if PYTHONUNBUFFERED=1 python -m src.complete_paper_processor \
+                --paper-id "$paper_id" \
+                --workdir . \
+                --continue-on-error \
+                $flags; then
+              echo "Successfully processed $paper_id"
+              success=$((success + 1))
+            else
+              echo "::warning::Failed to process $paper_id"
+              failed=$((failed + 1))
+            fi
+
+            echo "::endgroup::"
+          done < paper_ids.txt
+
+          echo ""
+          echo "============================================"
+          echo "Summary: $success succeeded, $failed failed"
+          echo "============================================"
+
+          # Fail if any papers failed
+          if [ "$failed" -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Upload translations artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: translations
+          path: |
+            data/translated/*.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload PDFs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfs
+          path: |
+            data/pdfs/*.pdf
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload figures artifact
+        if: always() && inputs.with_figures == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: figures
+          path: |
+            data/figures/
+          if-no-files-found: ignore
+          retention-days: 30
