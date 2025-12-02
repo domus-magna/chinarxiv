@@ -101,7 +101,7 @@
           <div class="banner" role="status">This record includes the abstract only. Full text is not available for this paper.</div>
           {% endif %}
           <ul class="sidebar-actions">
-            {% if item._has_full_text %}
+            {% if item._has_english_pdf %}
             <li><a href="{{ item.id ~ '.pdf' }}" class="sidebar-btn primary" aria-label="Download English translation as PDF">Download PDF (English)</a></li>
             {% endif %}
             {% if item.pdf_url %}

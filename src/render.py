@@ -405,6 +405,10 @@ def render_site(items: List[Dict[str, Any]]) -> None:
             elif it.get("body_en"):
                 it["formatted_body_md"] = format_translation_to_markdown(it)
 
+        # Check if English PDF exists (for template conditional)
+        pdf_path = os.path.join(out_dir, f"{it['id']}.pdf")
+        it['_has_english_pdf'] = os.path.exists(pdf_path)
+
         # Page metadata (arXiv-style polish): use absolute canonical
         title_text = it.get("title_en") or ""
         canonical_abs = f"{site_base}/items/{it['id']}/"
