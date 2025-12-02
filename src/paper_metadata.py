@@ -198,9 +198,17 @@ def fetch_metadata_for_id(paper_id: str, *, timeout: tuple[int, int] = (10, 60))
 
     Returns:
         PaperMetadata object populated from live HTML.
+
+    Raises:
+        ValueError: If paper_id doesn't match expected format (YYYYMM.NNNNN)
     """
 
     clean_id = paper_id.replace("chinaxiv-", "")
+
+    # Validate format: YYYYMM.NNNNN (6 digits, dot, 1+ digits)
+    if not re.match(r"^\d{6}\.\d+$", clean_id):
+        raise ValueError(f"Invalid paper ID format: {clean_id} (expected YYYYMM.NNNNN)")
+
     url = f"https://chinaxiv.org/abs/{clean_id}"
     response = http_get(url, timeout=timeout)
     html = response.text

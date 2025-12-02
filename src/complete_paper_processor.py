@@ -150,6 +150,41 @@ def _build_b2_key(path: str) -> str:
     return path
 
 
+# Cache for B2 bucket connection to avoid re-authorizing per paper
+_b2_bucket_cache: dict = {}
+
+
+def _get_b2_bucket():
+    """Get B2 bucket, caching the connection to avoid re-auth per paper."""
+    if "bucket" in _b2_bucket_cache:
+        return _b2_bucket_cache["bucket"]
+
+    try:
+        import b2sdk.v2 as b2
+    except ImportError:
+        log("b2sdk not installed")
+        return None
+
+    key_id = os.getenv("B2_KEY_ID") or os.getenv("BACKBLAZE_KEY_ID")
+    app_key = os.getenv("B2_APP_KEY") or os.getenv("BACKBLAZE_APPLICATION_KEY")
+    bucket_name = os.getenv("B2_BUCKET") or os.getenv("BACKBLAZE_BUCKET")
+
+    if not all([key_id, app_key, bucket_name]):
+        log("Missing B2 credentials or bucket")
+        return None
+
+    try:
+        info = b2.InMemoryAccountInfo()
+        client = b2.B2Api(info)
+        client.authorize_account("production", key_id, app_key)
+        bucket = client.get_bucket_by_name(bucket_name)
+        _b2_bucket_cache["bucket"] = bucket
+        return bucket
+    except Exception as e:
+        log(f"B2 authorization failed: {e}")
+        return None
+
+
 def _upload_to_b2(
     paper_id: str,
     translation_path: Optional[Path],
@@ -161,37 +196,13 @@ def _upload_to_b2(
     Args:
         qa_passed: If True, upload to validated/. If False, upload to flagged/.
     """
-    try:
-        import b2sdk.v2 as b2
-    except ImportError:
-        log("b2sdk not installed; skipping B2 upload")
-        return False
-
     if not translation_path or not translation_path.exists():
         log(f"No translation to upload for {paper_id}; skipping B2 upload")
         return False
 
-    key_id = (
-        os.getenv("B2_KEY_ID")
-        or os.getenv("BACKBLAZE_KEY_ID")
-    )
-    app_key = (
-        os.getenv("B2_APP_KEY")
-        or os.getenv("BACKBLAZE_APPLICATION_KEY")
-    )
-    bucket_name = os.getenv("B2_BUCKET") or os.getenv("BACKBLAZE_BUCKET")
-
-    if not all([key_id, app_key, bucket_name]):
-        log(f"Skipping B2 upload for {paper_id}: missing B2 credentials or bucket")
-        return False
-
-    try:
-        info = b2.InMemoryAccountInfo()
-        client = b2.B2Api(info)
-        client.authorize_account("production", key_id, app_key)
-        bucket = client.get_bucket_by_name(bucket_name)
-    except Exception as e:
-        log(f"B2 authorization failed: {e}")
+    bucket = _get_b2_bucket()
+    if bucket is None:
+        log(f"Skipping B2 upload for {paper_id}: no bucket connection")
         return False
 
     ok = True
@@ -225,24 +236,11 @@ def _upload_to_b2(
 
 def _check_exists_in_b2(paper_id: str) -> bool:
     """Check if translation already exists in B2 (in validated/ directory)."""
-    try:
-        import b2sdk.v2 as b2
-    except ImportError:
+    bucket = _get_b2_bucket()
+    if bucket is None:
         return False  # Can't check, assume doesn't exist
 
-    key_id = os.getenv("B2_KEY_ID") or os.getenv("BACKBLAZE_KEY_ID")
-    app_key = os.getenv("B2_APP_KEY") or os.getenv("BACKBLAZE_APPLICATION_KEY")
-    bucket_name = os.getenv("B2_BUCKET") or os.getenv("BACKBLAZE_BUCKET")
-
-    if not all([key_id, app_key, bucket_name]):
-        return False  # Can't check without credentials
-
     try:
-        info = b2.InMemoryAccountInfo()
-        client = b2.B2Api(info)
-        client.authorize_account("production", key_id, app_key)
-        bucket = client.get_bucket_by_name(bucket_name)
-        # Use prefix-aware key
         bucket.get_file_info_by_name(
             _build_b2_key(f"validated/translations/{paper_id}.json")
         )
