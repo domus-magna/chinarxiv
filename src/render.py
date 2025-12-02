@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound, select_autoe
 import time
 
 from .utils import ensure_dir, log, read_json, write_text, write_json
-from .data_utils import has_full_body_content
+from .data_utils import has_full_body_content, is_cs_ai_paper
 
 
 def load_figure_manifest() -> Dict[str, Any]:
@@ -85,10 +85,20 @@ def enrich_items_with_figures(
             item["_translated_figures"] = []
 
 
-def load_translated() -> List[Dict[str, Any]]:
+def load_translated(cs_ai_only: bool = False) -> List[Dict[str, Any]]:
+    """
+    Load translated papers from data/translated/.
+
+    Args:
+        cs_ai_only: If True, filter to only CS/AI papers (ML, NLP, CV, etc.)
+
+    Returns:
+        List of translation dicts that pass QA and have full body content.
+    """
     items: List[Dict[str, Any]] = []
     flagged_count = 0
     missing_body: List[Dict[str, Any]] = []
+    non_cs_ai_count = 0
 
     # Check for bypass file first, but only use if explicitly enabled
     bypass_file = os.path.join("data", "translated_bypass.json")
@@ -131,10 +141,20 @@ def load_translated() -> List[Dict[str, Any]]:
             )
             continue
 
+        # Apply CS/AI filter if enabled
+        if cs_ai_only:
+            is_match, _ = is_cs_ai_paper(item)
+            if not is_match:
+                non_cs_ai_count += 1
+                continue
+
         items.append(item)
 
     if flagged_count > 0:
         log(f"Skipped {flagged_count} flagged translations")
+
+    if non_cs_ai_count > 0:
+        log(f"Filtered out {non_cs_ai_count} non-CS/AI papers (--cs-ai-only enabled)")
 
     report_path = os.path.join("reports", "missing_full_body.json")
     if missing_body:
@@ -480,10 +500,18 @@ def run_cli() -> None:
     parser = argparse.ArgumentParser(
         description="Render static site from translated records."
     )
-    parser.parse_args()
-    items = load_translated()
+    parser.add_argument(
+        "--cs-ai-only",
+        action="store_true",
+        help="Only render CS/AI papers (machine learning, NLP, computer vision, etc.)",
+    )
+    args = parser.parse_args()
+
+    items = load_translated(cs_ai_only=args.cs_ai_only)
     render_site(items)
-    log(f"Rendered site with {len(items)} items → site/")
+
+    filter_note = " (CS/AI only)" if args.cs_ai_only else ""
+    log(f"Rendered site with {len(items)} items{filter_note} → site/")
 
 
 if __name__ == "__main__":

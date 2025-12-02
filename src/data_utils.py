@@ -5,7 +5,44 @@ Data processing utilities for ChinaXiv English translation.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+
+# ============================================================================
+# CS/AI Paper Detection Keywords
+# ============================================================================
+
+# English keywords (lowercase for matching)
+CS_AI_ENGLISH_KEYWORDS = [
+    'machine learning', 'deep learning', 'neural network', 'neural net',
+    'artificial intelligence', 'computer vision', 'nlp',
+    'natural language processing', 'transformer', 'attention mechanism',
+    'large language model', 'llm', 'gpt', 'bert', 'diffusion model',
+    'generative model', 'generative ai', 'reinforcement learning',
+    'knowledge graph', 'embedding', 'classification', 'segmentation',
+    'pretrained', 'pre-trained', 'fine-tuning', 'finetuning',
+    'convolutional', 'recurrent', 'lstm', 'rnn', 'cnn',
+    'object detection', 'image recognition', 'speech recognition',
+    'text generation', 'language model', 'chatbot', 'recommendation system',
+    'graph neural', 'autoencoder', 'variational', 'adversarial',
+    'bayesian neural', 'physics-informed neural',
+]
+
+# Chinese keywords
+CS_AI_CHINESE_KEYWORDS = [
+    '机器学习', '深度学习', '神经网络', '人工智能',
+    '大语言模型', '大模型', '预训练', '计算机视觉',
+    '自然语言处理', '知识图谱', '强化学习', '卷积',
+    '生成对抗', '图神经网络', '注意力机制', '目标检测',
+    '图像识别', '语义分割', '文本生成', '语音识别',
+    '推荐系统', '循环神经', '长短期记忆',
+]
+
+# Subject patterns (partial match)
+CS_AI_SUBJECT_PATTERNS = [
+    '计算机', '信息科学', '信息技术',
+    'computer', 'computing', 'informatics',
+]
 
 
 def utc_date_range_str(days_back: int = 1) -> Tuple[str, str]:
@@ -110,3 +147,50 @@ def filter_by_timestamp(
             if keep_invalid:
                 result.append(item)
     return result
+
+
+def is_cs_ai_paper(paper: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    """
+    Check if a paper is CS/AI related based on keywords in title, abstract, subjects.
+
+    Args:
+        paper: Paper dict with title, abstract, subjects fields
+
+    Returns:
+        Tuple of (is_cs_ai, matched_keyword) where matched_keyword shows
+        what triggered the match (e.g., "en:machine learning", "zh:深度学习")
+    """
+    # Get text fields (handle both _en and raw field names)
+    title = (paper.get('title') or paper.get('title_en') or '').lower()
+    abstract = (paper.get('abstract') or paper.get('abstract_en') or '').lower()
+    subjects = paper.get('subjects') or paper.get('subjects_en') or []
+    if isinstance(subjects, str):
+        subjects = [subjects]
+    subjects_text = ' '.join(str(s).lower() for s in subjects)
+
+    # Also check original Chinese fields if present
+    title_zh = paper.get('title_zh') or paper.get('title') or ''
+    abstract_zh = paper.get('abstract_zh') or paper.get('abstract') or ''
+
+    # Combined text for English keyword search
+    text_en = f"{title} {abstract} {subjects_text}"
+
+    # Combined text for Chinese keyword search
+    text_zh = f"{title_zh} {abstract_zh}"
+
+    # Check subject patterns first (fastest)
+    for pattern in CS_AI_SUBJECT_PATTERNS:
+        if pattern.lower() in subjects_text:
+            return True, f"subject:{pattern}"
+
+    # Check English keywords
+    for kw in CS_AI_ENGLISH_KEYWORDS:
+        if kw in text_en:
+            return True, f"en:{kw}"
+
+    # Check Chinese keywords
+    for kw in CS_AI_CHINESE_KEYWORDS:
+        if kw in text_zh:
+            return True, f"zh:{kw}"
+
+    return False, None
