@@ -75,7 +75,7 @@ jobs:
             echo "🎯 Filtering to CS/AI papers only"
           fi
           python -m src.render $RENDER_FLAGS
-          python -m src.search_index
+          python -m src.search_index $RENDER_FLAGS
           python -m src.make_pdf || echo "⚠️ PDF generation failed, continuing without PDFs"
       - name: Deploy to Cloudflare Pages
         env:

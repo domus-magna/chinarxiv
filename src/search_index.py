@@ -6,9 +6,11 @@ import os
 from typing import Any, Dict, List
 import gzip as _gzip
 
+import argparse
+
 from .utils import read_json, log
 from .models import Translation
-from .data_utils import has_full_body_content
+from .data_utils import has_full_body_content, is_cs_ai_paper
 from .render import load_figure_manifest
 
 
@@ -39,6 +41,16 @@ def build_index(items: List[Dict[str, Any]], figure_manifest: Dict[str, Any] = N
 
 
 def run_cli() -> None:
+    parser = argparse.ArgumentParser(
+        description="Build search index from translated records."
+    )
+    parser.add_argument(
+        "--cs-ai-only",
+        action="store_true",
+        help="Only index CS/AI papers (machine learning, NLP, computer vision, etc.)",
+    )
+    args = parser.parse_args()
+
     # Load figure manifest for has_figures flag
     figure_manifest = load_figure_manifest()
     log(f"Loaded figure manifest with {len(figure_manifest)} papers")
@@ -87,6 +99,7 @@ def run_cli() -> None:
         first = True
         flagged_skipped = 0
         missing_body_skipped = 0
+        cs_ai_skipped = 0
         for p in translated_paths:
             try:
                 item_data = read_json(p)
@@ -97,6 +110,12 @@ def run_cli() -> None:
                 if not has_full_body_content(item_data):
                     missing_body_skipped += 1
                     continue
+                # Apply CS/AI filter if enabled
+                if args.cs_ai_only:
+                    is_match, _ = is_cs_ai_paper(item_data)
+                    if not is_match:
+                        cs_ai_skipped += 1
+                        continue
                 entry = Translation.from_dict(item_data).get_search_index_entry()
                 # Add has_figures flag
                 paper_id = item_data.get("id", "")
@@ -154,6 +173,10 @@ def run_cli() -> None:
     if missing_body_skipped:
         log(
             f"Skipped {missing_body_skipped} translations without full body when building search index"
+        )
+    if cs_ai_skipped:
+        log(
+            f"Skipped {cs_ai_skipped} non-CS/AI papers when building search index"
         )
     log(
         f"Compressed index: {compressed_size:,} bytes ({compression_ratio:.1f}% reduction) → {compressed_path}"
