@@ -1,7 +1,12 @@
 name: rebuild-from-b2
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      cs_ai_only:
+        description: 'Only render CS/AI papers (ML, NLP, CV, etc.)'
+        type: boolean
+        default: false
   # schedule:
   #   - cron: '30 9 * * *'  # Optional daily refresh at 09:30 UTC
 
@@ -64,8 +69,13 @@ jobs:
       - name: Render site from hydrated data
         run: |
           set -e
-          python -m src.render
-          python -m src.search_index
+          RENDER_FLAGS=""
+          if [ "${{ inputs.cs_ai_only }}" = "true" ]; then
+            RENDER_FLAGS="--cs-ai-only"
+            echo "🎯 Filtering to CS/AI papers only"
+          fi
+          python -m src.render $RENDER_FLAGS
+          python -m src.search_index $RENDER_FLAGS
           python -m src.make_pdf || echo "⚠️ PDF generation failed, continuing without PDFs"
       - name: Deploy to Cloudflare Pages
         env:
