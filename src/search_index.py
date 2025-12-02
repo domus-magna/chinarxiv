@@ -3,7 +3,7 @@ from __future__ import annotations
 import glob
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import gzip as _gzip
 
 import argparse
@@ -40,7 +40,7 @@ def build_index(items: List[Dict[str, Any]], figure_manifest: Dict[str, Any] = N
     return idx
 
 
-def run_cli() -> None:
+def run_cli(argv: Optional[List[str]] = None) -> None:
     parser = argparse.ArgumentParser(
         description="Build search index from translated records."
     )
@@ -49,7 +49,7 @@ def run_cli() -> None:
         action="store_true",
         help="Only index CS/AI papers (machine learning, NLP, computer vision, etc.)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Load figure manifest for has_figures flag
     figure_manifest = load_figure_manifest()

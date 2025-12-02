@@ -331,7 +331,7 @@ class TestSearchIndexBugs:
                 from src.search_index import run_cli as build_search_index
 
                 # Should not crash
-                build_search_index()
+                build_search_index([])
 
                 # Should create empty search index
                 assert os.path.exists("site/search-index.json")
@@ -366,7 +366,7 @@ class TestSearchIndexBugs:
 
                 from src.search_index import run_cli as build_search_index
 
-                build_search_index()
+                build_search_index([])
 
                 # Check both files exist
                 assert os.path.exists("site/search-index.json")
@@ -457,7 +457,7 @@ class TestIntegrationBugs:
                 # Test search index
                 from src.search_index import run_cli as build_search_index
 
-                build_search_index()
+                build_search_index([])
 
                 assert os.path.exists("site/search-index.json")
 
