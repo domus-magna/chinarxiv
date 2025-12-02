@@ -18,7 +18,7 @@ from typing import Callable, List, Optional, Sequence
 from .file_service import write_json
 from .paper_metadata import PaperMetadata, fetch_metadata_for_id
 from .pdf_pipeline import download_pdf
-from .qa_filter import SynthesisQAFilter
+from .qa_filter import QAResult, QAStatus, SynthesisQAFilter
 from .services.translation_service import TranslationService
 from .utils import log
 
@@ -43,6 +43,7 @@ class PaperProcessResult:
     translation_path: Optional[Path] = None
     figure_result: Optional[FigureProcessingResult] = None
     uploaded: bool = False
+    qa_passed: Optional[bool] = None
     errors: List[str] = field(default_factory=list)
 
 
@@ -84,11 +85,11 @@ def _translate_text(
     output_dir: Path,
     dry_run: bool = False,
     service_factory: Callable[[], TranslationService] = TranslationService,
-) -> Path:
+) -> tuple[Path, QAResult]:
     """
     Translate the paper using synthesis mode and run QA.
 
-    Returns path to the translated JSON file.
+    Returns (path to translated JSON, QA result).
     """
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -107,7 +108,7 @@ def _translate_text(
 
     out_path = output_dir / f"{record['id']}.json"
     write_json(out_path, translation)
-    return out_path
+    return out_path, qa_result
 
 
 def _process_figures(
@@ -135,12 +136,31 @@ def _process_figures(
     return pipeline.process_paper(paper_id)
 
 
+def _get_b2_prefix() -> str:
+    """Get normalized B2 prefix (no leading/trailing slashes)."""
+    prefix = os.getenv("BACKBLAZE_PREFIX", "") or os.getenv("B2_PREFIX", "")
+    return prefix.strip("/")
+
+
+def _build_b2_key(path: str) -> str:
+    """Build full B2 key with prefix."""
+    prefix = _get_b2_prefix()
+    if prefix:
+        return f"{prefix}/{path}"
+    return path
+
+
 def _upload_to_b2(
     paper_id: str,
     translation_path: Optional[Path],
     pdf_path: Optional[Path],
+    qa_passed: bool = True,
 ) -> bool:
-    """Upload translation and PDF to B2 via b2sdk. Best-effort."""
+    """Upload translation and PDF to B2 via b2sdk.
+
+    Args:
+        qa_passed: If True, upload to validated/. If False, upload to flagged/.
+    """
     try:
         import b2sdk.v2 as b2
     except ImportError:
@@ -176,23 +196,24 @@ def _upload_to_b2(
 
     ok = True
 
-    # Upload translation
+    # Upload translation to validated/ or flagged/ based on QA status
+    translation_dir = "validated/translations" if qa_passed else "flagged/translations"
     try:
         bucket.upload_local_file(
             local_file=str(translation_path),
-            file_name=f"validated/translations/{translation_path.name}",
+            file_name=_build_b2_key(f"{translation_dir}/{translation_path.name}"),
         )
-        log(f"Uploaded translation: {translation_path.name}")
+        log(f"Uploaded translation to {translation_dir}: {translation_path.name}")
     except Exception as e:
         log(f"Upload failed for {paper_id} translation: {e}")
         ok = False
 
-    # Upload PDF if present
+    # Upload PDF if present (always to pdfs/)
     if pdf_path and pdf_path.exists():
         try:
             bucket.upload_local_file(
                 local_file=str(pdf_path),
-                file_name=f"pdfs/{pdf_path.name}",
+                file_name=_build_b2_key(f"pdfs/{pdf_path.name}"),
             )
             log(f"Uploaded PDF: {pdf_path.name}")
         except Exception as e:
@@ -203,7 +224,7 @@ def _upload_to_b2(
 
 
 def _check_exists_in_b2(paper_id: str) -> bool:
-    """Check if translation already exists in B2."""
+    """Check if translation already exists in B2 (in validated/ directory)."""
     try:
         import b2sdk.v2 as b2
     except ImportError:
@@ -221,7 +242,10 @@ def _check_exists_in_b2(paper_id: str) -> bool:
         client = b2.B2Api(info)
         client.authorize_account("production", key_id, app_key)
         bucket = client.get_bucket_by_name(bucket_name)
-        bucket.get_file_info_by_name(f"validated/translations/{paper_id}.json")
+        # Use prefix-aware key
+        bucket.get_file_info_by_name(
+            _build_b2_key(f"validated/translations/{paper_id}.json")
+        )
         return True
     except Exception:
         return False
@@ -239,9 +263,9 @@ def process_paper_complete(
     dry_run: bool = False,
     metadata_fetcher: Callable[[str], PaperMetadata] = fetch_metadata_for_id,
     pdf_downloader: Callable[[PaperMetadata, str, Path], Path] | None = None,
-    text_translator: Callable[[dict, Path, bool], Path] | None = None,
+    text_translator: Callable[[dict, Path, bool], tuple[Path, QAResult]] | None = None,
     figure_runner: Optional[Callable[[str, Path], Optional[FigureProcessingResult]]] = None,
-    uploader: Callable[[str, Optional[Path], Optional[Path]], bool] = _upload_to_b2,
+    uploader: Callable[[str, Optional[Path], Optional[Path], bool], bool] = _upload_to_b2,
 ) -> PaperProcessResult:
     """
     Process a paper end-to-end. Raises unless continue_on_error is True.
@@ -272,6 +296,7 @@ def process_paper_complete(
     translation_path: Optional[Path] = None
     figure_result: Optional[FigureProcessingResult] = None
     uploaded = False
+    qa_passed: Optional[bool] = None
 
     try:
         metadata = metadata_fetcher(raw_id)
@@ -285,31 +310,39 @@ def process_paper_complete(
         record["files"] = {"pdf_path": str(pdf_path)}
 
         if with_text:
-            translator_fn: Callable[[dict, Path, bool], Path]
+            translator_fn: Callable[[dict, Path, bool], tuple[Path, QAResult]]
             if text_translator:
                 translator_fn = text_translator
             else:
                 translator_fn = lambda rec, out_dir, is_dry: _translate_text(
                     rec, output_dir=out_dir, dry_run=is_dry
                 )
-            translation_path = translator_fn(record, translated_dir, dry_run)
-            log(f"Translation complete for {full_id}: {translation_path}")
+            translation_path, qa_result = translator_fn(record, translated_dir, dry_run)
+            qa_passed = qa_result.status == QAStatus.PASS
+            log(
+                f"Translation complete for {full_id}: {translation_path} "
+                f"(QA: {qa_result.status.value}, score: {qa_result.score:.2f})"
+            )
 
         if with_figures:
             runner = figure_runner or (lambda pid, pdir: _process_figures(pid, pdir))
             figure_result = runner(full_id, pdf_dir)
 
         if upload:
-            uploaded = uploader(full_id, translation_path, pdf_path)
+            # Pass qa_passed to route to validated/ or flagged/
+            uploaded = uploader(full_id, translation_path, pdf_path, qa_passed if qa_passed is not None else True)
+            if not uploaded:
+                errors.append("B2 upload failed")
 
         return PaperProcessResult(
             paper_id=full_id,
-            success=True,
+            success=len(errors) == 0,
             metadata=metadata,
             pdf_path=pdf_path,
             translation_path=translation_path,
             figure_result=figure_result,
             uploaded=uploaded,
+            qa_passed=qa_passed,
             errors=errors,
         )
 
@@ -326,6 +359,7 @@ def process_paper_complete(
             translation_path=translation_path,
             figure_result=figure_result,
             uploaded=uploaded,
+            qa_passed=qa_passed,
             errors=errors,
         )
 

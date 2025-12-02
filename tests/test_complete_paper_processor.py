@@ -2,6 +2,7 @@ from pathlib import Path
 
 from src.complete_paper_processor import process_paper_complete
 from src.paper_metadata import PaperMetadata
+from src.qa_filter import QAResult, QAStatus
 
 
 def test_process_paper_complete_uses_injected_components(tmp_path):
@@ -27,12 +28,21 @@ def test_process_paper_complete_uses_injected_components(tmp_path):
         pdf_path.write_bytes(b"%PDF-1.4 test")
         return pdf_path
 
-    def fake_translate(record: dict, out_dir: Path, dry_run: bool) -> Path:
+    def fake_translate(record: dict, out_dir: Path, dry_run: bool) -> tuple[Path, QAResult]:
         calls.append(("translate", record["id"], dry_run))
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"{record['id']}.json"
         out_path.write_text("{}", encoding="utf-8")
-        return out_path
+        # Return a passing QA result
+        qa_result = QAResult(
+            status=QAStatus.PASS,
+            score=1.0,
+            issues=[],
+            chinese_chars=[],
+            chinese_ratio=0.0,
+            flagged_fields=[],
+        )
+        return out_path, qa_result
 
     def fake_figures(pid: str, pdf_dir: Path):
         calls.append(("figures", pid, pdf_dir))
@@ -40,8 +50,8 @@ def test_process_paper_complete_uses_injected_components(tmp_path):
 
     uploaded = {}
 
-    def fake_upload(pid: str, translation_path: Path | None, pdf_path: Path | None) -> bool:
-        calls.append(("upload", pid, translation_path, pdf_path))
+    def fake_upload(pid: str, translation_path: Path | None, pdf_path: Path | None, qa_passed: bool) -> bool:
+        calls.append(("upload", pid, translation_path, pdf_path, qa_passed))
         uploaded[pid] = True
         return True
 
@@ -60,6 +70,7 @@ def test_process_paper_complete_uses_injected_components(tmp_path):
     )
 
     assert result.success
+    assert result.qa_passed is True
     assert result.pdf_path == tmp_path / "data" / "pdfs" / "chinaxiv-202411.00001.pdf"
     assert result.translation_path == tmp_path / "data" / "translated" / "chinaxiv-202411.00001.json"
     assert uploaded.get("chinaxiv-202411.00001") is True
@@ -67,6 +78,9 @@ def test_process_paper_complete_uses_injected_components(tmp_path):
     assert calls[0][0] == "fetch"
     assert any(call[0] == "figures" for call in calls)
     assert any(call[0] == "upload" for call in calls)
+    # Verify qa_passed was passed to uploader
+    upload_call = next(c for c in calls if c[0] == "upload")
+    assert upload_call[4] is True  # qa_passed
 
 
 def test_pdf_path_matches_figure_pipeline_expectations():
