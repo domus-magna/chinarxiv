@@ -25,3 +25,53 @@ jobs:
         run: ruff check src tests
       - name: Test
         run: python -m pytest tests/ -q
+
+  test-worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workers/report-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: workers/report-api/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    # Only run on main, not PRs (avoids flaky CI + rate limit issues from shared runner IPs)
+    if: github.ref == 'refs/heads/main' && github.repository == 'domus-magna/chinarxiv'
+    needs: [lint-and-test, test-worker]  # Only after tests pass
+    steps:
+      - name: Smoke test report API
+        id: smoke
+        timeout-minutes: 1
+        continue-on-error: true  # Don't block merge on network flakiness
+        run: |
+          for i in 1 2 3; do
+            response=$(curl -s --max-time 10 -w "\n%{http_code}" -X POST https://chinarxiv.org/api/report \
+              -H "Content-Type: application/json" \
+              -H "Origin: https://chinarxiv.org" \
+              -H "X-Dry-Run: true" \
+              -d '{"type":"site-bug","description":"CI smoke test - validation only","context":{"url":"https://chinarxiv.org/ci","paperId":null,"paperTitle":null,"consoleLogs":[],"userAgent":"GitHub-CI","viewport":{"w":0,"h":0},"timestamp":"2025-01-01T00:00:00Z","referrer":""}}')
+            http_code=$(echo "$response" | tail -n1)
+            if [ "$http_code" = "200" ]; then
+              echo "✓ Smoke test passed"
+              exit 0
+            fi
+            echo "Attempt $i failed (HTTP $http_code), retrying..."
+            sleep 5
+          done
+          echo "⚠ Smoke test failed after 3 attempts"
+          exit 1
+
+      - name: Report smoke test result
+        if: always()
+        run: |
+          if [ "${{ steps.smoke.outcome }}" = "failure" ]; then
+            echo "::warning::Smoke test failed - report API may be down. Check https://chinarxiv.org/api/report"
+          fi

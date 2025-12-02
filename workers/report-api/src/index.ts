@@ -5,13 +5,17 @@
  * in the private chinarxiv-reports repository.
  */
 
-interface Env {
+// ============================================================================
+// Types (exported for testing)
+// ============================================================================
+
+export interface Env {
   TURNSTILE_SECRET?: string;  // Optional for local dev
   GITHUB_TOKEN: string;
   GITHUB_REPO: string;
 }
 
-interface ReportPayload {
+export interface ReportPayload {
   type: string;
   description: string;
   context: {
@@ -27,32 +31,61 @@ interface ReportPayload {
   turnstileToken?: string;
 }
 
-interface TurnstileResponse {
+export interface TurnstileResponse {
   success: boolean;
   'error-codes'?: string[];
 }
 
-// Constants
-const ALLOWED_ORIGINS = ['https://chinarxiv.org'];
-const VALID_TYPES = ['translation', 'figure', 'site-bug', 'feature', 'other'] as const;
-const RATE_LIMIT = 5;  // requests per window
-const RATE_WINDOW_MS = 60 * 60 * 1000;  // 1 hour
-const API_TIMEOUT_MS = 10000;  // 10 second timeout for external APIs
-const MIN_DESCRIPTION_LENGTH = 10;
-const MAX_DESCRIPTION_LENGTH = 5000;
-const MAX_CONSOLE_LOGS = 10;
-const MAX_LOG_MESSAGE_LENGTH = 500;
-const MAX_TITLE_LENGTH = 60;
+export interface RateLimitRecord {
+  count: number;
+  resetTime: number;
+}
 
-// Simple in-memory rate limiting (resets on worker restart)
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+export type RateLimitStore = Map<string, RateLimitRecord>;
 
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const record = rateLimitMap.get(ip);
+export interface ValidationResult {
+  valid: boolean;
+  error?: string;
+  statusCode?: number;
+}
+
+export interface SanitizedLog {
+  level: string;
+  msg: string;
+  ts: number;
+}
+
+// ============================================================================
+// Constants (exported for testing)
+// ============================================================================
+
+export const ALLOWED_ORIGINS = ['https://chinarxiv.org'];
+export const VALID_TYPES = ['translation', 'figure', 'site-bug', 'feature', 'other'] as const;
+export const RATE_LIMIT = 5;  // requests per window
+export const RATE_WINDOW_MS = 60 * 60 * 1000;  // 1 hour
+export const API_TIMEOUT_MS = 10000;  // 10 second timeout for external APIs
+export const MIN_DESCRIPTION_LENGTH = 10;
+export const MAX_DESCRIPTION_LENGTH = 5000;
+export const MAX_CONSOLE_LOGS = 10;
+export const MAX_LOG_MESSAGE_LENGTH = 500;
+export const MAX_TITLE_LENGTH = 60;
+
+// ============================================================================
+// Rate Limiting (injectable store for testing)
+// ============================================================================
+
+// Default global store (resets on worker restart)
+const defaultRateLimitStore: RateLimitStore = new Map();
+
+export function checkRateLimit(
+  ip: string,
+  store: RateLimitStore = defaultRateLimitStore,
+  now: number = Date.now()
+): boolean {
+  const record = store.get(ip);
 
   if (!record || now > record.resetTime) {
-    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_WINDOW_MS });
+    store.set(ip, { count: 1, resetTime: now + RATE_WINDOW_MS });
     return true;
   }
 
@@ -64,8 +97,84 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-// Fetch with timeout wrapper
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = API_TIMEOUT_MS): Promise<Response> {
+// ============================================================================
+// Validation (pure function, exported for testing)
+// ============================================================================
+
+export function validatePayload(body: unknown): ValidationResult {
+  if (!body || typeof body !== 'object') {
+    return { valid: false, error: 'Invalid request body', statusCode: 400 };
+  }
+
+  const payload = body as Partial<ReportPayload>;
+
+  // Required top-level fields
+  if (!payload.type || !payload.description || !payload.context) {
+    return { valid: false, error: 'Missing required fields', statusCode: 400 };
+  }
+
+  // Type whitelist
+  if (!VALID_TYPES.includes(payload.type as typeof VALID_TYPES[number])) {
+    return { valid: false, error: 'Invalid issue type', statusCode: 400 };
+  }
+
+  // Description length
+  if (payload.description.length < MIN_DESCRIPTION_LENGTH) {
+    return { valid: false, error: 'Description too short. Please provide more details.', statusCode: 400 };
+  }
+
+  if (payload.description.length > MAX_DESCRIPTION_LENGTH) {
+    return { valid: false, error: `Description too long. Please keep it under ${MAX_DESCRIPTION_LENGTH} characters.`, statusCode: 400 };
+  }
+
+  // Validate required context properties (to prevent runtime errors in formatIssueBody)
+  const ctx = payload.context;
+
+  // url: required string, must be https
+  if (typeof ctx.url !== 'string' || ctx.url.length === 0) {
+    return { valid: false, error: 'Missing required context field: url', statusCode: 400 };
+  }
+  if (!ctx.url.startsWith('https://')) {
+    return { valid: false, error: 'Invalid context: url must be https', statusCode: 400 };
+  }
+
+  // userAgent: required string
+  if (typeof ctx.userAgent !== 'string') {
+    return { valid: false, error: 'Missing required context field: userAgent', statusCode: 400 };
+  }
+
+  // consoleLogs: required array
+  if (!Array.isArray(ctx.consoleLogs)) {
+    return { valid: false, error: 'Missing required context field: consoleLogs', statusCode: 400 };
+  }
+
+  // timestamp: required string
+  if (typeof ctx.timestamp !== 'string') {
+    return { valid: false, error: 'Missing required context field: timestamp', statusCode: 400 };
+  }
+
+  // viewport: required object with numeric w and h
+  if (!ctx.viewport || typeof ctx.viewport.w !== 'number' || typeof ctx.viewport.h !== 'number') {
+    return { valid: false, error: 'Missing required context field: viewport', statusCode: 400 };
+  }
+
+  // referrer: required string (can be empty)
+  if (typeof ctx.referrer !== 'string') {
+    return { valid: false, error: 'Missing required context field: referrer', statusCode: 400 };
+  }
+
+  return { valid: true };
+}
+
+// ============================================================================
+// Fetch with timeout (exported for testing)
+// ============================================================================
+
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number = API_TIMEOUT_MS
+): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -80,7 +189,11 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
   }
 }
 
-function escapeMarkdown(text: string): string {
+// ============================================================================
+// Markdown escaping (exported for testing)
+// ============================================================================
+
+export function escapeMarkdown(text: string): string {
   // Escape markdown special characters to prevent injection
   return text
     .replace(/\\/g, '\\\\')
@@ -96,7 +209,48 @@ function escapeMarkdown(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
-function formatIssueBody(report: ReportPayload): string {
+// ============================================================================
+// Console log sanitization (exported for testing)
+// ============================================================================
+
+export function sanitizeConsoleLogs(
+  logs: Array<{ level: string; msg: unknown[]; ts: number }>
+): SanitizedLog[] {
+  return logs
+    .slice(-MAX_CONSOLE_LOGS)
+    .map(log => ({
+      level: String(log.level || '').slice(0, 10),
+      msg: JSON.stringify(log.msg).slice(0, MAX_LOG_MESSAGE_LENGTH).replace(/`/g, "'"),
+      ts: log.ts
+    }));
+}
+
+// ============================================================================
+// Issue formatting (exported for testing)
+// ============================================================================
+
+export function createIssueTitle(report: ReportPayload): string {
+  const typeMap: Record<string, string> = {
+    translation: 'Translation',
+    figure: 'Figure',
+    'site-bug': 'Bug',
+    feature: 'Feature',
+    other: 'Other'
+  };
+
+  const typeLabel = typeMap[report.type] || 'Report';
+
+  // Sanitize and truncate description for title
+  const sanitizedDesc = report.description
+    .replace(/[\r\n]+/g, ' ')  // Remove newlines
+    .replace(/[<>]/g, '')      // Remove angle brackets
+    .slice(0, MAX_TITLE_LENGTH)
+    .trim();
+
+  return `[${typeLabel}] ${sanitizedDesc}${report.description.length > MAX_TITLE_LENGTH ? '...' : ''}`;
+}
+
+export function formatIssueBody(report: ReportPayload): string {
   const escapedType = escapeMarkdown(report.type);
   const escapedDesc = escapeMarkdown(report.description);
   const escapedUrl = escapeMarkdown(report.context.url);
@@ -105,14 +259,8 @@ function formatIssueBody(report: ReportPayload): string {
   const escapedUserAgent = escapeMarkdown(report.context.userAgent);
   const escapedReferrer = report.context.referrer ? escapeMarkdown(report.context.referrer) : 'N/A';
 
-  // Sanitize console logs (limit size and escape)
-  const sanitizedLogs = report.context.consoleLogs
-    .slice(-MAX_CONSOLE_LOGS)
-    .map(log => ({
-      level: String(log.level || '').slice(0, 10),
-      msg: JSON.stringify(log.msg).slice(0, MAX_LOG_MESSAGE_LENGTH).replace(/`/g, "'"),
-      ts: log.ts
-    }));
+  // Sanitize console logs
+  const sanitizedLogs = sanitizeConsoleLogs(report.context.consoleLogs);
   // Escape backticks in final JSON to prevent code block breakout
   const logsJson = JSON.stringify(sanitizedLogs, null, 2).replace(/`/g, "'");
 
@@ -152,26 +300,9 @@ ${logsJson}
 `;
 }
 
-function createIssueTitle(report: ReportPayload): string {
-  const typeMap: Record<string, string> = {
-    translation: 'Translation',
-    figure: 'Figure',
-    'site-bug': 'Bug',
-    feature: 'Feature',
-    other: 'Other'
-  };
-
-  const typeLabel = typeMap[report.type] || 'Report';
-
-  // Sanitize and truncate description for title
-  const sanitizedDesc = report.description
-    .replace(/[\r\n]+/g, ' ')  // Remove newlines
-    .replace(/[<>]/g, '')      // Remove angle brackets
-    .slice(0, MAX_TITLE_LENGTH)
-    .trim();
-
-  return `[${typeLabel}] ${sanitizedDesc}${report.description.length > MAX_TITLE_LENGTH ? '...' : ''}`;
-}
+// ============================================================================
+// Main handler
+// ============================================================================
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -218,50 +349,38 @@ export default {
         );
       }
 
-      const body = await request.json() as ReportPayload;
+      const body = await request.json();
 
-      // Validate required fields
-      if (!body.type || !body.description || !body.context) {
+      // Validate payload
+      const validation = validatePayload(body);
+      if (!validation.valid) {
         return new Response(
-          JSON.stringify({ success: false, error: 'Missing required fields' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ success: false, error: validation.error }),
+          { status: validation.statusCode || 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Validate type is in whitelist
-      if (!VALID_TYPES.includes(body.type as typeof VALID_TYPES[number])) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Invalid issue type' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      const payload = body as ReportPayload;
 
-      // Validate description length
-      if (body.description.length < MIN_DESCRIPTION_LENGTH) {
+      // ========================================
+      // DRY-RUN MODE: Skip Turnstile + GitHub
+      // Used by CI smoke tests to verify deployment without side effects
+      // ========================================
+      const isDryRun = request.headers.get('X-Dry-Run') === 'true';
+      if (isDryRun) {
         return new Response(
-          JSON.stringify({ success: false, error: 'Description too short. Please provide more details.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      if (body.description.length > MAX_DESCRIPTION_LENGTH) {
-        return new Response(
-          JSON.stringify({ success: false, error: `Description too long. Please keep it under ${MAX_DESCRIPTION_LENGTH} characters.` }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Validate context URL format (basic check)
-      if (body.context.url && !body.context.url.startsWith('https://')) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Invalid context' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({
+            success: true,
+            dryRun: true,
+            message: 'Validation passed (dry-run mode)'
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
       // Validate Turnstile token - REQUIRED when secret is configured
       if (env.TURNSTILE_SECRET) {
-        if (!body.turnstileToken) {
+        if (!payload.turnstileToken) {
           return new Response(
             JSON.stringify({ success: false, error: 'Verification required. Please try again.' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -274,7 +393,7 @@ export default {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               secret: env.TURNSTILE_SECRET,
-              response: body.turnstileToken,
+              response: payload.turnstileToken,
               remoteip: ip
             })
           });
@@ -297,8 +416,8 @@ export default {
       }
 
       // Create GitHub Issue
-      const issueTitle = createIssueTitle(body);
-      const issueBody = formatIssueBody(body);
+      const issueTitle = createIssueTitle(payload);
+      const issueBody = formatIssueBody(payload);
 
       try {
         const ghRes = await fetchWithTimeout(`https://api.github.com/repos/${env.GITHUB_REPO}/issues`, {
