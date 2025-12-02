@@ -131,7 +131,63 @@ describe('validatePayload', () => {
     payload.context.url = 'http://insecure.com/page';
     const result = validatePayload(payload);
     expect(result.valid).toBe(false);
-    expect(result.error).toBe('Invalid context');
+    expect(result.error).toBe('Invalid context: url must be https');
+  });
+
+  it('rejects empty URL', () => {
+    const payload = createValidPayload();
+    payload.context.url = '';
+    const result = validatePayload(payload);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('url');
+  });
+
+  it('rejects missing userAgent', () => {
+    const payload = createValidPayload();
+    delete (payload.context as Record<string, unknown>).userAgent;
+    const result = validatePayload(payload);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('userAgent');
+  });
+
+  it('rejects missing consoleLogs', () => {
+    const payload = createValidPayload();
+    delete (payload.context as Record<string, unknown>).consoleLogs;
+    const result = validatePayload(payload);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('consoleLogs');
+  });
+
+  it('rejects missing timestamp', () => {
+    const payload = createValidPayload();
+    delete (payload.context as Record<string, unknown>).timestamp;
+    const result = validatePayload(payload);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('timestamp');
+  });
+
+  it('rejects missing viewport', () => {
+    const payload = createValidPayload();
+    delete (payload.context as Record<string, unknown>).viewport;
+    const result = validatePayload(payload);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('viewport');
+  });
+
+  it('rejects invalid viewport (non-numeric)', () => {
+    const payload = createValidPayload();
+    (payload.context.viewport as Record<string, unknown>).w = 'wide';
+    const result = validatePayload(payload);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('viewport');
+  });
+
+  it('rejects missing referrer', () => {
+    const payload = createValidPayload();
+    delete (payload.context as Record<string, unknown>).referrer;
+    const result = validatePayload(payload);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('referrer');
   });
 
   it('accepts https URL', () => {

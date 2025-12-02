@@ -108,7 +108,7 @@ export function validatePayload(body: unknown): ValidationResult {
 
   const payload = body as Partial<ReportPayload>;
 
-  // Required fields
+  // Required top-level fields
   if (!payload.type || !payload.description || !payload.context) {
     return { valid: false, error: 'Missing required fields', statusCode: 400 };
   }
@@ -127,9 +127,40 @@ export function validatePayload(body: unknown): ValidationResult {
     return { valid: false, error: `Description too long. Please keep it under ${MAX_DESCRIPTION_LENGTH} characters.`, statusCode: 400 };
   }
 
-  // URL format (basic check)
-  if (payload.context.url && !payload.context.url.startsWith('https://')) {
-    return { valid: false, error: 'Invalid context', statusCode: 400 };
+  // Validate required context properties (to prevent runtime errors in formatIssueBody)
+  const ctx = payload.context;
+
+  // url: required string, must be https
+  if (typeof ctx.url !== 'string' || ctx.url.length === 0) {
+    return { valid: false, error: 'Missing required context field: url', statusCode: 400 };
+  }
+  if (!ctx.url.startsWith('https://')) {
+    return { valid: false, error: 'Invalid context: url must be https', statusCode: 400 };
+  }
+
+  // userAgent: required string
+  if (typeof ctx.userAgent !== 'string') {
+    return { valid: false, error: 'Missing required context field: userAgent', statusCode: 400 };
+  }
+
+  // consoleLogs: required array
+  if (!Array.isArray(ctx.consoleLogs)) {
+    return { valid: false, error: 'Missing required context field: consoleLogs', statusCode: 400 };
+  }
+
+  // timestamp: required string
+  if (typeof ctx.timestamp !== 'string') {
+    return { valid: false, error: 'Missing required context field: timestamp', statusCode: 400 };
+  }
+
+  // viewport: required object with numeric w and h
+  if (!ctx.viewport || typeof ctx.viewport.w !== 'number' || typeof ctx.viewport.h !== 'number') {
+    return { valid: false, error: 'Missing required context field: viewport', statusCode: 400 };
+  }
+
+  // referrer: required string (can be empty)
+  if (typeof ctx.referrer !== 'string') {
+    return { valid: false, error: 'Missing required context field: referrer', statusCode: 400 };
   }
 
   return { valid: true };
