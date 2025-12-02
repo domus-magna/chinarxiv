@@ -1,6 +1,7 @@
 name = "chinarxiv-report-api"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
 
 # Environment variables (secrets set via wrangler secret put)
 # TURNSTILE_SECRET - Cloudflare Turnstile secret key
