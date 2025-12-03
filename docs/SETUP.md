@@ -15,6 +15,24 @@
 - OpenRouter API key
 - BrightData account (Web Unlocker) with zone configured
 
+### PDF Generation (Optional)
+To generate English PDF versions of papers locally, install pandoc and LaTeX:
+
+```bash
+# macOS
+brew install pandoc
+brew install --cask mactex-no-gui  # or: brew install texlive
+
+# Ubuntu/Debian
+sudo apt-get install pandoc texlive-latex-base texlive-fonts-recommended texlive-latex-recommended
+
+# Verify installation
+pandoc --version
+pdflatex --version
+```
+
+Note: CI workflows already include these dependencies. This is only needed for local development.
+
 ### Installation
 ```bash
 # Clone repository

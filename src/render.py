@@ -23,12 +23,16 @@ from .utils import ensure_dir, log, read_json, write_text, write_json
 MAX_FIGURES_PER_PDF = 15  # Cap to prevent slow/flaky PDF builds
 
 
-def inject_figures_into_markdown(body_md: str, figures: List[Dict[str, Any]]) -> str:
+def inject_figures_into_markdown(
+    body_md: str,
+    figures: List[Dict[str, Any]],
+    max_figures: int | None = None,
+) -> str:
     """
     Inject translated figures into markdown body.
 
     Strategy:
-    1. Cap figures to MAX_FIGURES_PER_PDF to prevent slow builds
+    1. Optionally cap figures (for PDF builds) to prevent slow/flaky generation
     2. Replace [FIGURE:N] markers with ![Figure N](url) for inline placement
     3. Handle duplicate figure numbers (multiple images for same number)
     4. Append any figures without markers at the end in a Figures section
@@ -36,6 +40,8 @@ def inject_figures_into_markdown(body_md: str, figures: List[Dict[str, Any]]) ->
     Args:
         body_md: Markdown body text (may contain [FIGURE:N] markers)
         figures: List of figure dicts with 'number' and 'url' keys
+        max_figures: If set, cap figures and add truncation note (for PDF builds).
+                     None = unlimited (for HTML).
 
     Returns:
         Markdown with figures embedded
@@ -43,11 +49,11 @@ def inject_figures_into_markdown(body_md: str, figures: List[Dict[str, Any]]) ->
     if not figures:
         return body_md
 
-    # Cap figures to prevent slow/flaky PDF builds
+    # Optionally cap figures (only for PDF builds)
     truncated_count = 0
-    if len(figures) > MAX_FIGURES_PER_PDF:
-        truncated_count = len(figures) - MAX_FIGURES_PER_PDF
-        figures = figures[:MAX_FIGURES_PER_PDF]
+    if max_figures is not None and len(figures) > max_figures:
+        truncated_count = len(figures) - max_figures
+        figures = figures[:max_figures]
 
     # Build figure lookup - list per number to handle duplicates
     figure_urls: Dict[str, List[str]] = defaultdict(list)
@@ -674,17 +680,18 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         # Must happen before HTML render so we can generate PDF and set flag
         abstract_md = it.get("abstract_md") or (it.get("abstract_en") or "")
         if it.get("body_md"):
-            full_body_md = it["body_md"]
+            original_body_md = it["body_md"]
         elif it.get("body_en"):
             # fallback: derive from heuristics
-            full_body_md = format_translation_to_markdown(it)
+            original_body_md = format_translation_to_markdown(it)
         else:
-            full_body_md = ""
+            original_body_md = ""
 
-        # Inject translated figures into markdown (inline + fallback appendix)
+        # For HTML/web markdown: inject ALL figures (unlimited)
+        html_body_md = original_body_md
         if it.get("_has_translated_figures") and it.get("_translated_figures"):
-            full_body_md = inject_figures_into_markdown(
-                full_body_md, it["_translated_figures"]
+            html_body_md = inject_figures_into_markdown(
+                original_body_md, it["_translated_figures"]
             )
 
         md_parts = [
@@ -693,9 +700,9 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
             f"**Date:** {it.get('date') or ''}",
             f"## Abstract\n\n{abstract_md}",
         ]
-        if full_body_md:
+        if html_body_md:
             md_parts.append("## Full Text\n")
-            md_parts.append(full_body_md)
+            md_parts.append(html_body_md)
         md_parts.append(
             "\n_Source: ChinaXiv — Machine translation. Verify with original._"
         )
@@ -706,12 +713,55 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         # Generate PDF from markdown with branding header/footer
         pdf_path = os.path.join(out_dir, f"{it['id']}.pdf")
         if can_generate_pdf:
+            # For PDF: inject figures with cap to prevent slow/flaky builds
+            pdf_body_md = original_body_md
+            if it.get("_has_translated_figures") and it.get("_translated_figures"):
+                pdf_body_md = inject_figures_into_markdown(
+                    original_body_md,
+                    it["_translated_figures"],
+                    max_figures=MAX_FIGURES_PER_PDF,
+                )
+
             # Build PDF-specific markdown with header/footer branding
-            pdf_md = build_pdf_markdown(it, md)
+            pdf_md_parts = [
+                f"# {it.get('title_en') or ''}",
+                f"**Authors:** {', '.join(it.get('creators') or [])}",
+                f"**Date:** {it.get('date') or ''}",
+                f"## Abstract\n\n{abstract_md}",
+            ]
+            if pdf_body_md:
+                pdf_md_parts.append("## Full Text\n")
+                pdf_md_parts.append(pdf_body_md)
+            pdf_md_parts.append(
+                "\n_Source: ChinaXiv — Machine translation. Verify with original._"
+            )
+            pdf_content = "\n\n".join(pdf_md_parts) + "\n"
+            pdf_md = build_pdf_markdown(it, pdf_content)
             pdf_md_path = os.path.join(out_dir, f"{it['id']}_pdf.md")
             write_text(pdf_md_path, pdf_md)
 
             success = md_to_pdf(pdf_md_path, pdf_path, pdf_engine=pdf_engine)
+
+            # Fallback: retry without figures if PDF generation failed
+            if not success and it.get("_translated_figures"):
+                log(f"PDF with figures failed for {it['id']}, retrying text-only")
+                pdf_md_parts_fallback = [
+                    f"# {it.get('title_en') or ''}",
+                    f"**Authors:** {', '.join(it.get('creators') or [])}",
+                    f"**Date:** {it.get('date') or ''}",
+                    f"## Abstract\n\n{abstract_md}",
+                ]
+                if original_body_md:
+                    pdf_md_parts_fallback.append("## Full Text\n")
+                    pdf_md_parts_fallback.append(original_body_md)
+                pdf_md_parts_fallback.append(
+                    "\n_Source: ChinaXiv — Machine translation. Verify with original._"
+                )
+                pdf_content_fallback = "\n\n".join(pdf_md_parts_fallback) + "\n"
+                pdf_md_fallback = build_pdf_markdown(it, pdf_content_fallback)
+                write_text(pdf_md_path, pdf_md_fallback)
+                success = md_to_pdf(pdf_md_path, pdf_path, pdf_engine=pdf_engine)
+
             it['_has_english_pdf'] = success
 
             # Clean up temp PDF markdown file
