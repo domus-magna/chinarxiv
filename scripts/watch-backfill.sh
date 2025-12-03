@@ -37,8 +37,9 @@ gh_retry() {
     return 1
 }
 
-# Initialize state file if not exists
+# Initialize state file if not exists, deduplicate on startup
 touch "$STATE_FILE"
+sort -u "$STATE_FILE" -o "$STATE_FILE"
 
 log "Starting backfill watcher"
 log "Watching months: $MONTHS"
@@ -49,13 +50,20 @@ log "Poll interval: ${POLL_INTERVAL}s"
 while true; do
     log "--- Polling cycle start ---"
 
-    # Get all backfill runs
-    RUNS_JSON=$(gh_retry gh run list --workflow backfill.yml --limit 20 \
-        --json databaseId,displayTitle,status,conclusion) || {
+    # Get all backfill runs (include headBranch for filtering)
+    RUNS_JSON=$(gh_retry gh run list --workflow backfill.yml --limit 50 \
+        --json databaseId,displayTitle,status,conclusion,headBranch) || {
         log "ERROR: Failed to fetch run list, will retry next cycle"
         sleep $POLL_INTERVAL
         continue
     }
+
+    # Validate JSON output
+    if ! echo "$RUNS_JSON" | jq -e '.' >/dev/null 2>&1; then
+        log "ERROR: Invalid JSON response, will retry next cycle"
+        sleep $POLL_INTERVAL
+        continue
+    fi
 
     all_done=true
 
@@ -68,9 +76,10 @@ while true; do
 
         all_done=false
 
-        # Find run for this month (displayTitle contains "backfill-NNNNNN")
+        # Find run for this month on main branch (displayTitle = "backfill-NNNNNN")
         run_info=$(echo "$RUNS_JSON" | jq -r --arg m "$month" '
-            .[] | select(.displayTitle | contains("backfill-" + $m)) |
+            .[] | select(.headBranch == "main") |
+            select(.displayTitle == ("backfill-" + $m)) |
             "\(.status)|\(.conclusion)|\(.databaseId)"
         ' | head -1)
 
@@ -102,9 +111,8 @@ while true; do
             fi
         else
             log "FAILED: $month text backfill concluded with: $conclusion"
-            log "SKIP: Not triggering figure-backfill for failed month"
-            # Record as processed to avoid re-checking
-            echo "$month" >> "$STATE_FILE"
+            log "WARN: Will keep polling - a new successful run may appear"
+            # Do NOT record failed months - keep polling until success or manual intervention
         fi
     done
 
