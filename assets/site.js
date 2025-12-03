@@ -89,6 +89,7 @@ function searchSubject(subject) {
   // Handle index load failure
   function onIndexFailed() {
     indexLoadState = 'failed';
+    toggleArticleList(false);  // Restore article list if hidden during loading
     results.innerHTML = '<div class="res"><div>Failed to load search index.</div></div>';
   }
 
@@ -191,6 +192,10 @@ function searchSubject(subject) {
   }
 
   function performSearch(query) {
+    // If index load failed, preserve failure message
+    if (indexLoadState === 'failed') {
+      return;
+    }
     currentQuery = (query || '').trim();
     if (!currentQuery) {
       lastSearchResults = [];
