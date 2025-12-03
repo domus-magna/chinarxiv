@@ -14,13 +14,25 @@ def has_binary(name: str) -> bool:
 
 
 def md_to_pdf(md_path: str, pdf_path: str, pdf_engine: str | None = None) -> bool:
+    """Convert markdown to PDF using pandoc.
+
+    Returns True on success, False on failure. Logs error details for debugging.
+    """
     try:
         cmd = ["pandoc", md_path, "-o", pdf_path]
         if pdf_engine:
             cmd.extend(["--pdf-engine", pdf_engine])
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
         return True
-    except Exception:
+    except subprocess.CalledProcessError as e:
+        stderr_snippet = (e.stderr[:500] + "...") if e.stderr and len(e.stderr) > 500 else (e.stderr or "no stderr")
+        log(f"PDF generation failed for {md_path}: {stderr_snippet}")
+        return False
+    except FileNotFoundError as e:
+        log(f"PDF tool not found: {e}")
+        return False
+    except Exception as e:
+        log(f"Unexpected error generating PDF for {md_path}: {e}")
         return False
 
 

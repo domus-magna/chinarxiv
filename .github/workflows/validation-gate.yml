@@ -85,7 +85,10 @@ jobs:
             ghostscript \
             pngquant \
             qpdf \
-            unpaper
+            unpaper \
+            pandoc \
+            texlive-latex-base \
+            texlive-fonts-recommended
 
       - name: Install Python dependencies
         run: |
