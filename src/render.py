@@ -241,6 +241,26 @@ def generate_figure_manifest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
+    """Render the static site from translated items.
+
+    Generates HTML pages for each paper, plus index, sitemap, and auxiliary pages.
+
+    PDF Generation:
+        Each paper gets an English PDF generated via pandoc during render.
+        This happens inline (after .md write, before HTML render) so that the
+        `_has_english_pdf` flag is accurate when the template renders.
+
+        Requirements:
+        - pandoc (required)
+        - pdflatex OR tectonic (for LaTeX → PDF conversion)
+
+        The template conditionally shows "Download PDF (English)" link based on
+        `item._has_english_pdf` which reflects actual PDF generation success.
+
+    Args:
+        items: List of translated paper dicts from load_translated()
+        skip_pdf: If True, skip PDF generation (faster for testing/validation)
+    """
     from .format_translation import format_translation_to_markdown
 
     # Hoist PDF engine detection once at start (not per-paper)
