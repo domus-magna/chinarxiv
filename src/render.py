@@ -174,18 +174,25 @@ def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List
     from collections import Counter
 
     category_counts: Counter = Counter()
+    canonical_form: Dict[str, str] = {}
     for item in items:
         subjects = item.get("subjects_en") or item.get("subjects") or []
         for subject in subjects:
             if subject and subject.strip():
-                category_counts[subject.strip()] += 1
+                cleaned = subject.strip()
+                key = cleaned.lower()
+                category_counts[key] += 1
+                if key not in canonical_form:
+                    canonical_form[key] = cleaned.title()
 
-    # Filter to categories with at least min_count papers, sort by count desc
-    categories = [
-        (name, count)
-        for name, count in category_counts.most_common()
-        if count >= min_count
-    ]
+    categories = sorted(
+        [
+            (canonical_form[key], count)
+            for key, count in category_counts.items()
+            if count >= min_count
+        ],
+        key=lambda x: x[0].lower(),
+    )
     return categories
 
 
