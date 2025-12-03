@@ -194,8 +194,8 @@ def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List
         normalized = normalize_subject(raw_name)
         key = normalized.lower()  # case-insensitive key
 
-        if key not in normalized_labels:
-            normalized_labels[key] = normalized
+        # Always use the normalized form (deterministic, not first-seen)
+        normalized_labels[key] = normalized
         normalized_counts[key] = normalized_counts.get(key, 0) + count
 
     # Filter by min_count, sort alphabetically by normalized label

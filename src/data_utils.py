@@ -54,13 +54,61 @@ SUBJECT_ACRONYMS = {
     'LSTM', 'RNN', 'CNN', 'GAN', 'VAE', 'GPT', 'BERT', 'IT', 'CS',
 }
 
+# Words that should remain lowercase in titles (except at start of string)
+LOWERCASE_WORDS = {'and', 'or', 'of', 'in', 'on', 'at', 'the', 'a', 'an', 'with', 'for', 'to'}
+
+
+def _normalize_word(word: str, is_first: bool) -> str:
+    """
+    Normalize a single word, handling punctuation and acronyms.
+
+    Args:
+        word: Single word to normalize
+        is_first: True if this is the first word in the string
+
+    Returns:
+        Normalized word
+    """
+    if not word:
+        return word
+
+    # Strip leading/trailing punctuation for checking
+    prefix = ''
+    suffix = ''
+    core = word
+
+    while core and not core[0].isalnum():
+        prefix += core[0]
+        core = core[1:]
+    while core and not core[-1].isalnum():
+        suffix = core[-1] + suffix
+        core = core[:-1]
+
+    if not core:
+        return word  # All punctuation, return unchanged
+
+    # Check if it's an acronym
+    if core.upper() in SUBJECT_ACRONYMS:
+        return prefix + core.upper() + suffix
+
+    # Check if it's a lowercase word (not at start)
+    if not is_first and core.lower() in LOWERCASE_WORDS:
+        return prefix + core.lower() + suffix
+
+    # Default: capitalize first letter
+    return prefix + core.capitalize() + suffix
+
 
 def normalize_subject(subject: str) -> str:
     """
     Normalize subject string for consistent display and matching.
 
-    - Title case for English text (preserving known acronyms)
-    - Chinese text is returned as-is (no case transformation needed)
+    - Title case for English text (preserving known acronyms like AI, ML, NLP)
+    - Lowercase for articles/conjunctions (and, or, of, the, etc.) except at start
+    - Chinese text/words are preserved as-is
+    - Handles punctuation around words: "(AI)" -> "(AI)", not "(ai)"
+    - Handles hyphenated words: "pre-BERT" -> "Pre-BERT"
+    - Handles mixed English/Chinese: "ai (人工智能)" -> "AI (人工智能)"
 
     Args:
         subject: Raw subject string
@@ -72,19 +120,29 @@ def normalize_subject(subject: str) -> str:
     if not s:
         return s
 
-    # If contains Chinese characters, return as-is (Chinese has no case)
-    if any('\u4e00' <= c <= '\u9fff' for c in s):
-        return s
-
-    # Title case with acronym preservation
+    # Process each word individually (handles mixed English/Chinese)
     words = s.split()
     result = []
-    for word in words:
-        upper = word.upper()
-        if upper in SUBJECT_ACRONYMS:
-            result.append(upper)
-        else:
-            result.append(word.capitalize())
+
+    for i, word in enumerate(words):
+        # Check if word is entirely Chinese characters (plus common Chinese punctuation)
+        chinese_chars = [c for c in word if c.isalpha()]
+        if chinese_chars and all('\u4e00' <= c <= '\u9fff' for c in chinese_chars):
+            result.append(word)
+            continue
+
+        # Handle hyphenated words
+        if '-' in word:
+            parts = word.split('-')
+            normalized_parts = []
+            for j, part in enumerate(parts):
+                # First part of first word is "first", otherwise not
+                normalized_parts.append(_normalize_word(part, i == 0 and j == 0))
+            result.append('-'.join(normalized_parts))
+            continue
+
+        result.append(_normalize_word(word, i == 0))
+
     return ' '.join(result)
 
 
