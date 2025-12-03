@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import time
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -19,13 +20,18 @@ from .make_pdf import md_to_pdf, has_binary
 from .utils import ensure_dir, log, read_json, write_text, write_json
 
 
+MAX_FIGURES_PER_PDF = 15  # Cap to prevent slow/flaky PDF builds
+
+
 def inject_figures_into_markdown(body_md: str, figures: List[Dict[str, Any]]) -> str:
     """
     Inject translated figures into markdown body.
 
     Strategy:
-    1. Replace [FIGURE:N] markers with ![Figure N](url) for inline placement
-    2. Append any figures without markers at the end in a Figures section
+    1. Cap figures to MAX_FIGURES_PER_PDF to prevent slow builds
+    2. Replace [FIGURE:N] markers with ![Figure N](url) for inline placement
+    3. Handle duplicate figure numbers (multiple images for same number)
+    4. Append any figures without markers at the end in a Figures section
 
     Args:
         body_md: Markdown body text (may contain [FIGURE:N] markers)
@@ -37,26 +43,42 @@ def inject_figures_into_markdown(body_md: str, figures: List[Dict[str, Any]]) ->
     if not figures:
         return body_md
 
-    # Build figure lookup by number (as string)
-    figure_urls = {str(fig["number"]): fig["url"] for fig in figures}
+    # Cap figures to prevent slow/flaky PDF builds
+    truncated_count = 0
+    if len(figures) > MAX_FIGURES_PER_PDF:
+        truncated_count = len(figures) - MAX_FIGURES_PER_PDF
+        figures = figures[:MAX_FIGURES_PER_PDF]
+
+    # Build figure lookup - list per number to handle duplicates
+    figure_urls: Dict[str, List[str]] = defaultdict(list)
+    for fig in figures:
+        figure_urls[str(fig["number"])].append(fig["url"])
+
     placed: set = set()
 
     def replace_marker(match: re.Match) -> str:
         num = match.group(1)
         if num in figure_urls:
             placed.add(num)
-            return f"\n\n![Figure {num}]({figure_urls[num]})\n\n"
+            # Render ALL figures for this number (handles duplicates)
+            imgs = "\n\n".join(f"![Figure {num}]({url})" for url in figure_urls[num])
+            return f"\n\n{imgs}\n\n"
         return match.group(0)  # Keep marker if no translated figure
 
     # Replace inline markers
     result = re.sub(r"\[FIGURE:(\d+)\]", replace_marker, body_md)
 
-    # Append unplaced figures at the end
-    unplaced = [fig for fig in figures if str(fig["number"]) not in placed]
-    if unplaced:
+    # Append ALL unplaced figures at the end
+    unplaced_nums = [n for n in figure_urls if n not in placed]
+    if unplaced_nums:
         result += "\n\n---\n\n## Figures\n\n"
-        for fig in unplaced:
-            result += f"![Figure {fig['number']}]({fig['url']})\n\n"
+        for num in sorted(unplaced_nums, key=lambda x: int(x) if x.isdigit() else 0):
+            for url in figure_urls[num]:
+                result += f"![Figure {num}]({url})\n\n"
+
+    # Add truncation note if figures were capped
+    if truncated_count > 0:
+        result += f"\n\n_Note: {truncated_count} additional figures available online._\n"
 
     return result
 
@@ -68,6 +90,7 @@ def build_pdf_markdown(item: Dict[str, Any], body_md: str) -> str:
     Adds:
     - YAML front matter for pandoc with fancyhdr footer settings
     - First-page header with ChinaRxiv branding and paper URL
+    - Clickable hyperlinks using hyperref package
 
     Args:
         item: Paper item dict (needs 'id' key)
@@ -77,16 +100,19 @@ def build_pdf_markdown(item: Dict[str, Any], body_md: str) -> str:
         Markdown with PDF branding metadata prepended
     """
     paper_id = item.get("id", "")
-    chinarxiv_url = f"chinarxiv.org/items/{paper_id}"
+    chinarxiv_url = f"https://chinarxiv.org/items/{paper_id}"
+    display_url = f"chinarxiv.org/items/{paper_id}"
 
     # YAML front matter for pandoc with LaTeX header-includes
+    # hyperref provides clickable links in PDF
     yaml_header = f"""---
 header-includes:
   - \\usepackage{{fancyhdr}}
+  - \\usepackage{{hyperref}}
   - \\pagestyle{{fancy}}
   - \\fancyhead{{}}
   - \\fancyfoot{{}}
-  - \\fancyfoot[L]{{\\small {chinarxiv_url}}}
+  - \\fancyfoot[L]{{\\small \\href{{{chinarxiv_url}}}{{{display_url}}}}}
   - \\fancyfoot[R]{{\\small Machine Translation}}
   - \\renewcommand{{\\headrulewidth}}{{0pt}}
   - \\renewcommand{{\\footrulewidth}}{{0.4pt}}
@@ -97,7 +123,7 @@ header-includes:
 
 {{\\large\\textbf{{CHINARXIV.ORG}}}}
 
-{{\\small AI translation · View original \\& related papers at {chinarxiv_url}}}
+{{\\small AI translation · View original \\& related papers at \\href{{{chinarxiv_url}}}{{{display_url}}}}}
 
 \\rule{{\\textwidth}}{{0.5pt}}
 \\end{{center}}
