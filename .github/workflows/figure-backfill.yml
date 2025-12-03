@@ -110,14 +110,17 @@ jobs:
           echo "🔍 Checking for validated translations for ${MONTH}..."
 
           # Count translations (use pre-installed aws cli, grep for .json files)
-          # B2 access is MANDATORY per CLAUDE.md - fail hard on errors
-          if ! LIST_OUTPUT=$(aws s3 ls "${DEST}validated/translations/chinaxiv-${MONTH}" \
-              --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" 2>&1); then
+          # Note: aws s3 ls returns non-zero when no files match prefix, so use || true
+          # and check for actual error messages to distinguish auth failures from empty results
+          LIST_OUTPUT=$(aws s3 ls "${DEST}validated/translations/chinaxiv-${MONTH}" \
+              --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" 2>&1 || true)
+
+          # Check for actual B2 access errors (auth, endpoint, etc.)
+          if echo "$LIST_OUTPUT" | grep -qiE "(AccessDenied|InvalidAccessKeyId|SignatureDoesNotMatch|NoSuchBucket|Unable to locate credentials)"; then
             echo "❌ B2 ACCESS FAILED (MANDATORY per CLAUDE.md):"
             echo "$LIST_OUTPUT"
             echo ""
             echo "Check BACKBLAZE_KEY_ID, BACKBLAZE_APPLICATION_KEY, BACKBLAZE_S3_ENDPOINT secrets."
-            echo "NOT triggering backfill - fix credentials first."
             exit 1
           fi
 
