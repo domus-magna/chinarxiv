@@ -88,6 +88,7 @@ jobs:
             unpaper \
             pandoc \
             texlive-latex-base \
+            texlive-latex-recommended \
             texlive-fonts-recommended
 
       - name: Install Python dependencies
