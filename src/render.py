@@ -182,7 +182,6 @@ def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List
     Normalizes subject names (title case for English, preserves Chinese),
     deduplicates case-insensitively, and returns alphabetically sorted list.
     """
-    import string
     from collections import Counter
     from .data_utils import normalize_subject
 
@@ -200,8 +199,8 @@ def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List
 
     for raw_name, count in raw_counts.items():
         normalized = normalize_subject(raw_name)
-        # Strip trailing punctuation for better dedup (handles "AI," vs "AI")
-        clean = normalized.rstrip(string.punctuation)
+        # Strip trailing punctuation for dedup (narrow set to preserve C++, C#, etc.)
+        clean = normalized.rstrip('.,;:!?')
         key = clean.lower()  # case-insensitive key
 
         # Always use the cleaned normalized form (deterministic)
