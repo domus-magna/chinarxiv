@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -74,6 +75,28 @@ class FigureStorage:
                 )
         return self._bucket
 
+    def _get_public_base_url(self) -> str:
+        """
+        Get the public B2 base URL for file downloads.
+
+        Derives the region from BACKBLAZE_S3_ENDPOINT to avoid hardcoding.
+        e.g., https://s3.us-west-004.backblazeb2.com → https://f004.backblazeb2.com/file/{bucket}
+        """
+        b2_endpoint = os.environ.get(
+            "BACKBLAZE_S3_ENDPOINT", "https://s3.us-west-004.backblazeb2.com"
+        )
+
+        # Extract region suffix from S3 endpoint
+        if "s3." in b2_endpoint and "backblazeb2.com" in b2_endpoint:
+            match = re.search(r"s3\.([^.]+)\.backblazeb2\.com", b2_endpoint)
+            if match:
+                region = match.group(1)  # e.g., "us-west-004"
+                region_suffix = region.split("-")[-1]  # "004"
+                return f"https://f{region_suffix}.backblazeb2.com/file/{self.bucket.name}"
+
+        # Fallback to f004 (us-west-004)
+        return f"https://f004.backblazeb2.com/file/{self.bucket.name}"
+
     def upload(self, local_path: str, remote_key: str) -> Optional[str]:
         """
         Upload file to B2.
@@ -96,10 +119,9 @@ class FigureStorage:
                 file_name=remote_key,
             )
 
-            # Generate public URL using friendly format (requires bucket to be public)
-            # B2 public URL format: https://f004.backblazeb2.com/file/{bucket}/{key}
-            download_url = f"https://f004.backblazeb2.com/file/{self.bucket.name}/{remote_key}"
-            return download_url
+            # Generate public URL (requires bucket to be set to allPublic)
+            base_url = self._get_public_base_url()
+            return f"{base_url}/{remote_key}"
 
         except Exception as e:
             print(f"[storage] Upload failed for {local_path}: {e}")
@@ -149,9 +171,9 @@ class FigureStorage:
         result = {"original": [], "translated": []}
 
         try:
+            base_url = self._get_public_base_url()
             for file_info, _ in self.bucket.ls(folder_to_list=prefix):
-                # Generate public URL using friendly format
-                url = f"https://f004.backblazeb2.com/file/{self.bucket.name}/{file_info.file_name}"
+                url = f"{base_url}/{file_info.file_name}"
                 if "/original/" in file_info.file_name:
                     result["original"].append(url)
                 elif "/translated/" in file_info.file_name:

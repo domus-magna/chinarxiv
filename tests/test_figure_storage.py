@@ -177,23 +177,27 @@ class TestFigureStorageUpload:
         assert result is None
 
     def test_upload_success(self):
-        """Verify successful upload returns URL."""
+        """Verify successful upload returns public URL derived from S3 endpoint."""
         with patch.dict(
-            os.environ, {"B2_KEY_ID": "key", "B2_APP_KEY": "secret"}, clear=True
+            os.environ,
+            {
+                "B2_KEY_ID": "key",
+                "B2_APP_KEY": "secret",
+                "BACKBLAZE_S3_ENDPOINT": "https://s3.us-west-004.backblazeb2.com",
+            },
+            clear=True,
         ):
-            with patch("b2sdk.v2.InMemoryAccountInfo") , \
+            with patch("b2sdk.v2.InMemoryAccountInfo"), \
                  patch("b2sdk.v2.B2Api") as mock_api_class:
                 mock_api = MagicMock()
                 mock_bucket = MagicMock()
+                mock_bucket.name = "chinaxiv"
                 mock_file_info = MagicMock()
                 mock_file_info.id_ = "file_123"
 
                 mock_api_class.return_value = mock_api
                 mock_api.get_bucket_by_name.return_value = mock_bucket
                 mock_bucket.upload_local_file.return_value = mock_file_info
-                mock_api.get_download_url_for_fileid.return_value = (
-                    "https://b2.example.com/file_123"
-                )
 
                 from src.figure_pipeline.storage import FigureStorage
 
@@ -207,7 +211,8 @@ class TestFigureStorageUpload:
 
                 try:
                     result = storage.upload(temp_path, "figures/test/fig_1.png")
-                    assert result == "https://b2.example.com/file_123"
+                    # URL should use public format derived from S3 endpoint
+                    assert result == "https://f004.backblazeb2.com/file/chinaxiv/figures/test/fig_1.png"
                     mock_bucket.upload_local_file.assert_called_once()
                 finally:
                     os.unlink(temp_path)
