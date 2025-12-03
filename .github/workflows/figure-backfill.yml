@@ -103,20 +103,21 @@ jobs:
           BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
         run: |
           set -euo pipefail
-          export AWS_DEFAULT_REGION=us-west-004
           MONTH="${{ inputs.month }}"
           DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
+          RUN_NAME="backfill-${MONTH}"
 
           echo "🔍 Checking for validated translations for ${MONTH}..."
 
           # Count translations (use pre-installed aws cli, grep for .json files)
-          # Handle aws errors explicitly - don't trigger backfill on auth/network failure
+          # B2 access is MANDATORY per CLAUDE.md - fail hard on errors
           if ! LIST_OUTPUT=$(aws s3 ls "${DEST}validated/translations/chinaxiv-${MONTH}" \
               --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" 2>&1); then
-            echo "❌ AWS S3 list failed:"
+            echo "❌ B2 ACCESS FAILED (MANDATORY per CLAUDE.md):"
             echo "$LIST_OUTPUT"
             echo ""
-            echo "This may be a credentials or network issue - NOT triggering backfill."
+            echo "Check BACKBLAZE_KEY_ID, BACKBLAZE_APPLICATION_KEY, BACKBLAZE_S3_ENDPOINT secrets."
+            echo "NOT triggering backfill - fix credentials first."
             exit 1
           fi
 
@@ -129,33 +130,41 @@ jobs:
             echo "║  ⚡ NO TRANSLATIONS FOR ${MONTH} - CHECKING FOR EXISTING BACKFILL ║"
             echo "╚══════════════════════════════════════════════════════════════════╝"
 
-            # Idempotency: Check if backfill is already running for this month
-            RUNNING=$(gh run list --workflow=backfill.yml --status=in_progress \
-              --json headBranch,displayTitle --jq ".[] | select(.displayTitle | contains(\"${MONTH}\"))" 2>/dev/null || echo "")
+            # Idempotency: Check if backfill is already queued or running for this month
+            # Uses run-name (backfill-YYYYMM) which is set in backfill.yml
+            EXISTING=$(gh run list --workflow=backfill.yml \
+              --json status,name,url \
+              --jq ".[] | select(.name == \"${RUN_NAME}\") | select(.status == \"queued\" or .status == \"in_progress\")" \
+              2>/dev/null || echo "")
 
-            if [ -n "$RUNNING" ]; then
-              echo "⏳ Backfill already in progress for ${MONTH}:"
-              gh run list --workflow=backfill.yml --status=in_progress --limit 3
+            if [ -n "$EXISTING" ]; then
+              echo "⏳ Backfill already queued or in progress for ${MONTH}:"
+              gh run list --workflow=backfill.yml --limit 5 \
+                --json status,name,url --jq ".[] | select(.name == \"${RUN_NAME}\") | \"\(.status): \(.url)\""
               echo ""
               echo "Wait for it to complete, then re-run figure-backfill."
               exit 1
             fi
 
             echo "🚀 Triggering text backfill for ${MONTH}..."
-            RUN_OUTPUT=$(gh workflow run backfill.yml -f month=${MONTH} 2>&1) || {
-              echo "❌ Failed to trigger backfill:"
-              echo "$RUN_OUTPUT"
+            if ! gh workflow run backfill.yml -f month=${MONTH} 2>&1; then
+              echo "❌ Failed to trigger backfill. Check GH_TOKEN permissions (needs actions:write)."
               exit 1
-            }
+            fi
 
-            # Give GitHub a moment to register the run, then fetch the URL
-            sleep 2
-            RUN_INFO=$(gh run list --workflow=backfill.yml --limit 1 --json databaseId,url --jq '.[0]')
-            RUN_URL=$(echo "$RUN_INFO" | jq -r '.url // empty')
+            # Wait for GitHub to register the run, then fetch URL by run-name
+            sleep 5
+            RUN_URL=$(gh run list --workflow=backfill.yml --limit 5 \
+              --json name,url --jq ".[] | select(.name == \"${RUN_NAME}\") | .url" \
+              2>/dev/null | head -1 || echo "")
 
             echo ""
             echo "✅ Text backfill triggered for ${MONTH}"
-            [ -n "$RUN_URL" ] && echo "   📎 $RUN_URL"
+            if [ -n "$RUN_URL" ]; then
+              echo "   📎 $RUN_URL"
+            else
+              echo "   (Run URL not yet available - check: gh run list --workflow=backfill.yml)"
+            fi
             echo ""
             echo "📋 Next steps:"
             echo "   1. Wait for text backfill to complete (~1-2 hours)"
