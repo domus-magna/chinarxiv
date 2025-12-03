@@ -28,6 +28,7 @@ function searchSubject(subject) {
 (() => {
   const input = document.getElementById('search-input');
   const results = document.getElementById('search-results');
+  const articleList = document.getElementById('articles');
   const categoryFilter = document.getElementById('category-filter');
   const dateFilter = document.getElementById('date-filter');
   const figuresFilter = document.getElementById('figures-filter');
@@ -35,6 +36,7 @@ function searchSubject(subject) {
   if (!input || !results) return;
 
   let miniSearch = null;
+  let allDocs = [];
   let lastSearchResults = [];
   let currentQuery = '';
 
@@ -71,8 +73,24 @@ function searchSubject(subject) {
   // Load index (try compressed first)
   fetch('search-index.json.gz')
     .then(r => r.ok ? r.arrayBuffer().then(buf => JSON.parse(pako.inflate(new Uint8Array(buf), { to: 'string' }))) : fetch('search-index.json').then(r => r.json()))
-    .then(data => { initMiniSearch(data); if (urlQuery) performSearch(urlQuery); })
-    .catch(() => fetch('search-index.json').then(r => r.json()).then(data => { initMiniSearch(data); if (urlQuery) performSearch(urlQuery); })
+    .then(data => {
+      allDocs = data;
+      initMiniSearch(data);
+      if (urlQuery) {
+        performSearch(urlQuery);
+      } else if (categoryFilter?.value || dateFilter?.value || figuresFilter?.checked) {
+        applyFiltersAndRender();
+      }
+    })
+    .catch(() => fetch('search-index.json').then(r => r.json()).then(data => {
+      allDocs = data;
+      initMiniSearch(data);
+      if (urlQuery) {
+        performSearch(urlQuery);
+      } else if (categoryFilter?.value || dateFilter?.value || figuresFilter?.checked) {
+        applyFiltersAndRender();
+      }
+    })
       .catch(() => { results.innerHTML = '<div class="res"><div>Failed to load search index.</div></div>'; }));
 
   // Apply filters and render
@@ -80,8 +98,24 @@ function searchSubject(subject) {
     const cat = categoryFilter?.value || '';
     const dateRange = dateFilter?.value || '';
     const figuresOnly = figuresFilter?.checked || false;
+    const hasFilters = Boolean(currentQuery || cat || dateRange || figuresOnly);
 
-    const filtered = lastSearchResults.filter(hit => {
+    // No active search/filters → show the default list
+    if (!hasFilters) {
+      toggleArticleList(false);
+      results.innerHTML = '';
+      return;
+    }
+
+    // Use all docs when filters are applied without a query
+    const baseResults = currentQuery ? lastSearchResults : allDocs;
+    if (!baseResults.length && !allDocs.length) {
+      results.innerHTML = '<div class="res"><div>Loading search index...</div></div>';
+      toggleArticleList(true);
+      return;
+    }
+
+    const filtered = baseResults.filter(hit => {
       // Category filter - exact match (subjects is comma-separated string like "Physics, Nuclear Physics")
       if (cat) {
         const subjects = (hit.subjects || '').split(',').map(s => s.trim().toLowerCase());
@@ -101,7 +135,16 @@ function searchSubject(subject) {
       return true;
     });
 
-    renderResults(filtered, cat || dateRange || figuresOnly);
+    // If no query is present, mirror homepage ordering (newest first)
+    if (!currentQuery) {
+      const toTimestamp = (hit) => {
+        const t = Date.parse(hit.date || '');
+        return Number.isNaN(t) ? 0 : t;
+      };
+      filtered.sort((a, b) => toTimestamp(b) - toTimestamp(a) || String(a.id || '').localeCompare(String(b.id || '')));
+    }
+
+    renderResults(filtered, hasFilters);
   }
 
   // Highlight search terms (using function replacement for safety)
@@ -116,6 +159,7 @@ function searchSubject(subject) {
 
   // Render results
   function renderResults(hits, hasFilters) {
+    toggleArticleList(hasFilters);
     if (!hits.length) {
       const msg = hasFilters ? 'No papers match with selected filters. Try adjusting them.' : 'No papers found. Try different keywords.';
       results.innerHTML = `<div class="res"><div>${msg}</div></div>`;
@@ -131,8 +175,12 @@ function searchSubject(subject) {
   }
 
   function performSearch(query) {
-    currentQuery = query.trim();
-    if (!currentQuery) { results.innerHTML = ''; lastSearchResults = []; return; }
+    currentQuery = (query || '').trim();
+    if (!currentQuery) {
+      lastSearchResults = [];
+      applyFiltersAndRender();
+      return;
+    }
     if (!miniSearch) { results.innerHTML = '<div class="res search-loading"><div>Loading search index...</div></div>'; return; }
     lastSearchResults = miniSearch.search(currentQuery, { limit: 100 });
     applyFiltersAndRender();
@@ -141,7 +189,12 @@ function searchSubject(subject) {
   let timer = null;
   input.addEventListener('input', () => {
     clearTimeout(timer);
-    if (!input.value.trim()) { results.innerHTML = ''; return; }
+    if (!input.value.trim()) {
+      currentQuery = '';
+      lastSearchResults = [];
+      applyFiltersAndRender();
+      return;
+    }
     timer = setTimeout(() => performSearch(input.value), 120);
   });
 
@@ -152,6 +205,11 @@ function searchSubject(subject) {
 
   function escapeHtml(s) {
     return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function toggleArticleList(hide) {
+    if (!articleList) return;
+    articleList.style.display = hide ? 'none' : '';
   }
 })();
 
