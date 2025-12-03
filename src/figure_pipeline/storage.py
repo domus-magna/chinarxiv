@@ -96,9 +96,9 @@ class FigureStorage:
                 file_name=remote_key,
             )
 
-            # Generate public URL
-            # B2 public URL format: https://f002.backblazeb2.com/file/{bucket}/{key}
-            download_url = self._client.get_download_url_for_fileid(file_info.id_)
+            # Generate public URL using friendly format (requires bucket to be public)
+            # B2 public URL format: https://f004.backblazeb2.com/file/{bucket}/{key}
+            download_url = f"https://f004.backblazeb2.com/file/{self.bucket.name}/{remote_key}"
             return download_url
 
         except Exception as e:
@@ -150,7 +150,8 @@ class FigureStorage:
 
         try:
             for file_info, _ in self.bucket.ls(folder_to_list=prefix):
-                url = self._client.get_download_url_for_fileid(file_info.id_)
+                # Generate public URL using friendly format
+                url = f"https://f004.backblazeb2.com/file/{self.bucket.name}/{file_info.file_name}"
                 if "/original/" in file_info.file_name:
                     result["original"].append(url)
                 elif "/translated/" in file_info.file_name:
