@@ -115,13 +115,14 @@ class Translation:
         return ", ".join(self.creators)
 
     def get_subjects_string(self) -> str:
-        """Get subjects as a comma-separated string (prefers English)."""
+        """Get subjects as a comma-separated string (normalized, prefers English)."""
+        from ..data_utils import normalize_subject
+
         # Prefer English translation if available
-        if self.subjects_en:
-            return ", ".join(self.subjects_en)
-        if not self.subjects:
+        subjects = self.subjects_en if self.subjects_en else self.subjects
+        if not subjects:
             return ""
-        return ", ".join(self.subjects)
+        return ", ".join(normalize_subject(s) for s in subjects if s)
 
     def is_derivatives_allowed(self) -> bool:
         """Check if derivatives are allowed based on license."""

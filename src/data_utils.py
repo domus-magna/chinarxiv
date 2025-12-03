@@ -44,6 +44,49 @@ CS_AI_SUBJECT_PATTERNS = [
     'computer', 'computing', 'informatics',
 ]
 
+# ============================================================================
+# Subject Normalization
+# ============================================================================
+
+# Acronyms to preserve in uppercase when normalizing subject names
+SUBJECT_ACRONYMS = {
+    'AI', 'ML', 'NLP', 'CV', 'GPU', 'CPU', 'DNA', 'RNA', 'IOT', 'API', 'LLM',
+    'LSTM', 'RNN', 'CNN', 'GAN', 'VAE', 'GPT', 'BERT', 'IT', 'CS',
+}
+
+
+def normalize_subject(subject: str) -> str:
+    """
+    Normalize subject string for consistent display and matching.
+
+    - Title case for English text (preserving known acronyms)
+    - Chinese text is returned as-is (no case transformation needed)
+
+    Args:
+        subject: Raw subject string
+
+    Returns:
+        Normalized subject string
+    """
+    s = subject.strip()
+    if not s:
+        return s
+
+    # If contains Chinese characters, return as-is (Chinese has no case)
+    if any('\u4e00' <= c <= '\u9fff' for c in s):
+        return s
+
+    # Title case with acronym preservation
+    words = s.split()
+    result = []
+    for word in words:
+        upper = word.upper()
+        if upper in SUBJECT_ACRONYMS:
+            result.append(upper)
+        else:
+            result.append(word.capitalize())
+    return ' '.join(result)
+
 
 def utc_date_range_str(days_back: int = 1) -> Tuple[str, str]:
     """
