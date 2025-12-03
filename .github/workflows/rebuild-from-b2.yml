@@ -32,7 +32,7 @@ jobs:
       - name: Install pandoc for PDF generation
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc texlive-latex-base texlive-fonts-recommended
+          sudo apt-get install -y pandoc texlive-latex-base texlive-latex-recommended texlive-fonts-recommended
           which pandoc || { echo "❌ pandoc installation failed"; exit 1; }
           pandoc --version | head -1
       - name: Hydrate validated translations from B2
