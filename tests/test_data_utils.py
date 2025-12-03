@@ -229,3 +229,8 @@ class TestStableIdFromOai:
         """Handles simple format without prefix."""
         result = stable_id_from_oai("2024-12345")
         assert result == "2024-12345"
+
+    def test_handles_chinaxiv_prefix_format(self):
+        """Handles chinaxiv- prefix format used in B2 storage."""
+        result = stable_id_from_oai("oai:chinaxiv.org:chinaxiv-202401.00001")
+        assert result == "chinaxiv-202401.00001"
