@@ -86,7 +86,7 @@ header-includes:
   - \\pagestyle{{fancy}}
   - \\fancyhead{{}}
   - \\fancyfoot{{}}
-  - \\fancyfoot[L]{{\\small ChinaRxiv.org}}
+  - \\fancyfoot[L]{{\\small {chinarxiv_url}}}
   - \\fancyfoot[R]{{\\small Machine Translation}}
   - \\renewcommand{{\\headrulewidth}}{{0pt}}
   - \\renewcommand{{\\footrulewidth}}{{0.4pt}}
