@@ -17,9 +17,9 @@ jobs:
         else
           echo "ℹ️ Backblaze credentials not provided; using fixtures only."
         fi
+        # PDF generation is now integrated into render.py
         python -m src.render
         python -m src.search_index
-        python -m src.make_pdf || true
       command: |
         set -e
         python -m src.validators.render_gate

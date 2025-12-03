@@ -14,6 +14,7 @@ import time
 
 from .utils import ensure_dir, log, read_json, write_text, write_json
 from .data_utils import has_full_body_content, is_cs_ai_paper
+from .make_pdf import md_to_pdf, has_binary
 
 
 def load_figure_manifest() -> Dict[str, Any]:
@@ -173,18 +174,25 @@ def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List
     from collections import Counter
 
     category_counts: Counter = Counter()
+    canonical_form: Dict[str, str] = {}
     for item in items:
         subjects = item.get("subjects_en") or item.get("subjects") or []
         for subject in subjects:
             if subject and subject.strip():
-                category_counts[subject.strip()] += 1
+                cleaned = subject.strip()
+                key = cleaned.lower()
+                category_counts[key] += 1
+                if key not in canonical_form:
+                    canonical_form[key] = cleaned.title()
 
-    # Filter to categories with at least min_count papers, sort by count desc
-    categories = [
-        (name, count)
-        for name, count in category_counts.most_common()
-        if count >= min_count
-    ]
+    categories = sorted(
+        [
+            (canonical_form[key], count)
+            for key, count in category_counts.items()
+            if count >= min_count
+        ],
+        key=lambda x: x[0].lower(),
+    )
     return categories
 
 
@@ -241,6 +249,12 @@ def generate_figure_manifest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def render_site(items: List[Dict[str, Any]]) -> None:
     from .format_translation import format_translation_to_markdown
+
+    # Check PDF generation capability once at start
+    if not has_binary("pandoc"):
+        log("WARNING: pandoc not found - English PDFs will not be generated")
+    elif not has_binary("pdflatex") and not has_binary("tectonic"):
+        log("WARNING: pdflatex/tectonic not found - PDF generation may fail")
 
     env = Environment(
         loader=FileSystemLoader(os.path.join("src", "templates")),
@@ -405,25 +419,8 @@ def render_site(items: List[Dict[str, Any]]) -> None:
             elif it.get("body_en"):
                 it["formatted_body_md"] = format_translation_to_markdown(it)
 
-        # Check if English PDF exists (for template conditional)
-        pdf_path = os.path.join(out_dir, f"{it['id']}.pdf")
-        it['_has_english_pdf'] = os.path.exists(pdf_path)
-
-        # Page metadata (arXiv-style polish): use absolute canonical
-        title_text = it.get("title_en") or ""
-        canonical_abs = f"{site_base}/items/{it['id']}/"
-        html = tmpl_item.render(
-            item=it,
-            root="../..",
-            build_version=build_version,
-            title=f"{title_text} — ChinaXiv {it['id']}",
-            canonical_url=canonical_abs,
-            og_title=title_text,
-            og_description=(it.get("abstract_en") or "")[:200],
-            og_url=canonical_abs,
-        )
-        write_text(os.path.join(out_dir, "index.html"), html)
         # Markdown export (prefer formatted body/abstract if present)
+        # Must happen before HTML render so we can generate PDF and set flag
         abstract_md = it.get("abstract_md") or (it.get("abstract_en") or "")
         if it.get("body_md"):
             full_body_md = it["body_md"]
@@ -446,7 +443,34 @@ def render_site(items: List[Dict[str, Any]]) -> None:
             "\n_Source: ChinaXiv — Machine translation. Verify with original._"
         )
         md = "\n\n".join(md_parts) + "\n"
-        write_text(os.path.join(out_dir, f"{it['id']}.md"), md)
+        md_path = os.path.join(out_dir, f"{it['id']}.md")
+        write_text(md_path, md)
+
+        # Generate PDF from markdown and set flag based on result
+        pdf_path = os.path.join(out_dir, f"{it['id']}.pdf")
+        if has_binary("pandoc"):
+            pdf_engine = "tectonic" if not has_binary("pdflatex") and has_binary("tectonic") else None
+            success = md_to_pdf(md_path, pdf_path, pdf_engine=pdf_engine)
+            it['_has_english_pdf'] = success
+            if not success:
+                log(f"PDF generation failed: {it['id']}")
+        else:
+            it['_has_english_pdf'] = False
+
+        # Page metadata (arXiv-style polish): use absolute canonical
+        title_text = it.get("title_en") or ""
+        canonical_abs = f"{site_base}/items/{it['id']}/"
+        html = tmpl_item.render(
+            item=it,
+            root="../..",
+            build_version=build_version,
+            title=f"{title_text} — ChinaXiv {it['id']}",
+            canonical_url=canonical_abs,
+            og_title=title_text,
+            og_description=(it.get("abstract_en") or "")[:200],
+            og_url=canonical_abs,
+        )
+        write_text(os.path.join(out_dir, "index.html"), html)
 
         # Optional arXiv-style alias: /abs/<id>/ in addition to /items/<id>/
         abs_dir = os.path.join(base_out, "abs", it["id"])
