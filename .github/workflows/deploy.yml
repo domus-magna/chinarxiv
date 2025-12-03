@@ -91,6 +91,21 @@ jobs:
           npm install -g wrangler
           wrangler pages deploy site --project-name chinarxiv
 
+      - name: Purge Cloudflare cache
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+        run: |
+          if [ -z "${CF_ZONE_ID}" ]; then
+            echo "⚠️ CF_ZONE_ID not set - skipping cache purge"
+            exit 0
+          fi
+          echo "🧹 Purging Cloudflare cache..."
+          curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}' | jq -r '.success // "failed"'
+
       - name: Flush B2 alert buffer (if any)
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
