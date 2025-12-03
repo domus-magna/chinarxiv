@@ -320,6 +320,9 @@ jobs:
           # Count generated PDFs
           PDF_COUNT=$(find site/items -name "*.pdf" 2>/dev/null | wc -l | tr -d ' ')
           echo "📄 Generated ${PDF_COUNT} English PDFs"
+          if [ "${PDF_COUNT}" = "0" ]; then
+            echo "⚠️ WARNING: Zero English PDFs generated - check pandoc/pdflatex availability"
+          fi
       - name: Publish run summary
         if: ${{ github.event_name != 'pull_request' }}
         env:

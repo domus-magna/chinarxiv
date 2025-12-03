@@ -240,14 +240,23 @@ def generate_figure_manifest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     return manifest
 
 
-def render_site(items: List[Dict[str, Any]]) -> None:
+def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
     from .format_translation import format_translation_to_markdown
 
-    # Check PDF generation capability once at start
-    if not has_binary("pandoc"):
+    # Hoist PDF engine detection once at start (not per-paper)
+    can_generate_pdf = False
+    pdf_engine: str | None = None
+    if skip_pdf:
+        log("PDF generation skipped (--skip-pdf)")
+    elif not has_binary("pandoc"):
         log("WARNING: pandoc not found - English PDFs will not be generated")
     elif not has_binary("pdflatex") and not has_binary("tectonic"):
         log("WARNING: pdflatex/tectonic not found - PDF generation may fail")
+    else:
+        can_generate_pdf = True
+        pdf_engine = "tectonic" if not has_binary("pdflatex") and has_binary("tectonic") else None
+        if pdf_engine:
+            log("Using tectonic as PDF engine (pdflatex not found)")
 
     env = Environment(
         loader=FileSystemLoader(os.path.join("src", "templates")),
@@ -441,8 +450,7 @@ def render_site(items: List[Dict[str, Any]]) -> None:
 
         # Generate PDF from markdown and set flag based on result
         pdf_path = os.path.join(out_dir, f"{it['id']}.pdf")
-        if has_binary("pandoc"):
-            pdf_engine = "tectonic" if not has_binary("pdflatex") and has_binary("tectonic") else None
+        if can_generate_pdf:
             success = md_to_pdf(md_path, pdf_path, pdf_engine=pdf_engine)
             it['_has_english_pdf'] = success
             if not success:
@@ -526,10 +534,15 @@ def run_cli() -> None:
         action="store_true",
         help="Only render CS/AI papers (machine learning, NLP, computer vision, etc.)",
     )
+    parser.add_argument(
+        "--skip-pdf",
+        action="store_true",
+        help="Skip PDF generation (faster renders for testing/validation)",
+    )
     args = parser.parse_args()
 
     items = load_translated(cs_ai_only=args.cs_ai_only)
-    render_site(items)
+    render_site(items, skip_pdf=args.skip_pdf)
 
     filter_note = " (CS/AI only)" if args.cs_ai_only else ""
     log(f"Rendered site with {len(items)} items{filter_note} → site/")
