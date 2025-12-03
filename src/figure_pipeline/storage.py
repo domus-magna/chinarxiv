@@ -91,7 +91,7 @@ class FigureStorage:
 
         try:
             # Upload file
-            file_info = self.bucket.upload_local_file(
+            self.bucket.upload_local_file(
                 local_file=local_path,
                 file_name=remote_key,
             )
