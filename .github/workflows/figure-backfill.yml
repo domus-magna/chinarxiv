@@ -124,7 +124,10 @@ jobs:
             exit 1
           fi
 
-          COUNT=$(echo "$LIST_OUTPUT" | grep -c '\.json$' || echo "0")
+          # Count .json files - use wc -l instead of grep -c to avoid multi-line COUNT issue
+          # (grep -c outputs "0" then || echo "0" adds another, making COUNT="0\n0")
+          # Note: grep || true needed because set -o pipefail would fail on no matches
+          COUNT=$(echo "$LIST_OUTPUT" | { grep '\.json$' || true; } | wc -l | tr -d ' ')
           echo "Found ${COUNT} validated translations for ${MONTH}"
 
           if [ "${COUNT}" = "0" ]; then
