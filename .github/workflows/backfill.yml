@@ -1,5 +1,7 @@
 name: backfill-month
 
+run-name: backfill-${{ inputs.month }}
+
 on:
   workflow_dispatch:
     inputs:
