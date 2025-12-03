@@ -149,6 +149,13 @@ def load_translated(cs_ai_only: bool = False) -> List[Dict[str, Any]]:
                 non_cs_ai_count += 1
                 continue
 
+        # Normalize subjects for consistent display (badges match dropdown)
+        from .data_utils import normalize_subject
+        if item.get('subjects_en'):
+            item['subjects_en'] = [normalize_subject(s) for s in item['subjects_en']]
+        if item.get('subjects'):
+            item['subjects'] = [normalize_subject(s) for s in item['subjects']]
+
         items.append(item)
 
     if flagged_count > 0:
@@ -175,6 +182,7 @@ def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List
     Normalizes subject names (title case for English, preserves Chinese),
     deduplicates case-insensitively, and returns alphabetically sorted list.
     """
+    import string
     from collections import Counter
     from .data_utils import normalize_subject
 
@@ -192,10 +200,12 @@ def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List
 
     for raw_name, count in raw_counts.items():
         normalized = normalize_subject(raw_name)
-        key = normalized.lower()  # case-insensitive key
+        # Strip trailing punctuation for better dedup (handles "AI," vs "AI")
+        clean = normalized.rstrip(string.punctuation)
+        key = clean.lower()  # case-insensitive key
 
-        # Always use the normalized form (deterministic, not first-seen)
-        normalized_labels[key] = normalized
+        # Always use the cleaned normalized form (deterministic)
+        normalized_labels[key] = clean
         normalized_counts[key] = normalized_counts.get(key, 0) + count
 
     # Filter by min_count, sort alphabetically by normalized label

@@ -62,6 +62,11 @@ def _normalize_word(word: str, is_first: bool) -> str:
     """
     Normalize a single word, handling punctuation and acronyms.
 
+    Preserves:
+    - Known acronyms (AI, ML, NLP, etc.) → uppercase
+    - Words with digits (3D, COVID-19, H2O) → unchanged
+    - Words with 2+ capitals (NLP-based) → unchanged
+
     Args:
         word: Single word to normalize
         is_first: True if this is the first word in the string
@@ -90,6 +95,15 @@ def _normalize_word(word: str, is_first: bool) -> str:
     # Check if it's an acronym
     if core.upper() in SUBJECT_ACRONYMS:
         return prefix + core.upper() + suffix
+
+    # Preserve words with digits (e.g., "3D", "COVID-19", "H2O")
+    if any(c.isdigit() for c in core):
+        return prefix + core + suffix
+
+    # Preserve words with multiple capitals (e.g., "NLP-based" already capitalized)
+    upper_count = sum(1 for c in core if c.isupper())
+    if upper_count >= 2:
+        return prefix + core + suffix
 
     # Check if it's a lowercase word (not at start)
     if not is_first and core.lower() in LOWERCASE_WORDS:
