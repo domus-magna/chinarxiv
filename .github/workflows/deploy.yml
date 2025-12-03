@@ -1,0 +1,66 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Set Backblaze region
+        run: echo "AWS_DEFAULT_REGION=us-west-004" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Hydrate translations from B2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ] || [ -z "${BACKBLAZE_S3_ENDPOINT}" ] || [ -z "${BACKBLAZE_BUCKET}" ]; then
+            echo "::error::Missing B2 credentials"
+            exit 1
+          fi
+          pip install awscli >/dev/null 2>&1
+          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
+          rm -rf data/translated && mkdir -p data/translated
+          echo "Syncing ${DEST}validated/translations -> data/translated"
+          aws s3 sync "${DEST}validated/translations" data/translated --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors
+          COUNT=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
+          echo "Found ${COUNT} validated translation files"
+          if [ "${COUNT}" = "0" ]; then
+            echo "::error::No translations found"
+            exit 1
+          fi
+          # Download figure manifest
+          echo "Downloading figure manifest"
+          aws s3 cp "${DEST}figures/manifest.json" data/figure_manifest.json --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" || echo "No figure manifest found"
+
+      - name: Render site
+        run: |
+          python -m src.render
+          python -m src.search_index
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          npm install -g wrangler
+          wrangler pages deploy site --project-name chinarxiv
