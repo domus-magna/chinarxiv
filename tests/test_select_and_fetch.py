@@ -50,12 +50,12 @@ def test_select_and_fetch_marks_seen(tmp_path, monkeypatch):
     assert seen_path.exists()
     seen = json.loads(seen_path.read_text())
     assert "R1" in seen.get("ids", []) and "R2" in seen.get("ids", [])
-    # Check files paths captured
-    assert out[0]["files"]["pdf_path"].endswith("R1.pdf")
+    # pdf_path is None because PDFs are downloaded separately by download_missing_pdfs.py
+    assert out[0]["files"]["pdf_path"] is None
 
 
-def test_download_skips_non_pdf(tmp_path, monkeypatch):
-    # Prepare one record with a fake pdf URL
+def test_pdf_path_always_none(tmp_path, monkeypatch):
+    """pdf_path is always None because PDFs are downloaded separately."""
     records = [
         {
             "id": "R3",

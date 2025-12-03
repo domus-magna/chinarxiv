@@ -78,14 +78,9 @@ def process_records(
         if not rid or rid in (seen.get("ids") or []):
             continue
 
-        # Download PDF via direct PDF URL if provided
-        pdf_path = None
-        pdf_url = rec.get("pdf_url")
-        if pdf_url:
-            fname = sanitize_filename(f"{rid}.pdf")
-            target = os.path.join("data", "pdfs", fname)
-            result = download_file(pdf_url, target)
-            pdf_path = result if result else None
+        # NOTE: PDF downloads are handled separately by download_missing_pdfs.py
+        # or on-demand by translate_paper. This avoids the slow retry path
+        # that was causing backfill-month to hang for 4+ hours.
 
         # Try to discover LaTeX source archive from landing page
         latex_path = None
@@ -102,7 +97,7 @@ def process_records(
                 log(f"source discovery failed: {e}")
 
         rec["files"] = {
-            "pdf_path": pdf_path,
+            "pdf_path": None,  # PDFs downloaded by download_missing_pdfs.py
             "latex_source_path": latex_path,
             "has_latex_source": bool(latex_path),
         }
@@ -120,7 +115,8 @@ def process_records(
 
 def run_cli() -> None:
     parser = argparse.ArgumentParser(
-        description="Select new records and fetch PDFs/sources."
+        description="Select new records and discover LaTeX sources. "
+        "PDFs are downloaded separately by download_missing_pdfs.py."
     )
     parser.add_argument(
         "--records", required=True, help="Path to normalized records JSON"

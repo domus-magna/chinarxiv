@@ -95,7 +95,7 @@ def main() -> int:
 
     selected_path = REPO_ROOT / "data" / "selected.json"
 
-    # Selection (also fetches PDFs and updates seen.json to ensure dedupe)
+    # Selection (updates seen.json to ensure dedupe)
     sel_rc = run(
         f"{PY} -m src.select_and_fetch --records {records_path} --limit {args.limit} --output {selected_path}"
     )
@@ -105,6 +105,11 @@ def main() -> int:
         if alerts:
             alerts.send_alert("error", "Smoke selection failed", description=msg)
         return 1
+
+    # Download PDFs (select_and_fetch no longer does this)
+    pdf_rc = run(f"{PY} scripts/download_missing_pdfs.py --limit {args.limit}")
+    if pdf_rc != 0:
+        print(f"Warning: Some PDF downloads failed (rc={pdf_rc})")
 
     # Read selected list and extract IDs
     try:

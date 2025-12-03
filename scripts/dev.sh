@@ -129,7 +129,11 @@ run_pipeline() {
     else
         echo '[]' > data/selected.json
     fi
-    
+
+    # Download PDFs (select_and_fetch no longer does this)
+    print_status "Downloading PDFs..."
+    python3 scripts/download_missing_pdfs.py --limit $limit || print_warning "Some PDF downloads failed"
+
     # Translate
     python3 -m src.pipeline --limit $limit
     
