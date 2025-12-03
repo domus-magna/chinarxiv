@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import glob
 import json
 import os
@@ -58,6 +59,53 @@ def inject_figures_into_markdown(body_md: str, figures: List[Dict[str, Any]]) ->
             result += f"![Figure {fig['number']}]({fig['url']})\n\n"
 
     return result
+
+
+def build_pdf_markdown(item: Dict[str, Any], body_md: str) -> str:
+    """
+    Build markdown with PDF-specific header and footer branding.
+
+    Adds:
+    - YAML front matter for pandoc with fancyhdr footer settings
+    - First-page header with ChinaRxiv branding and paper URL
+
+    Args:
+        item: Paper item dict (needs 'id' key)
+        body_md: The markdown content to wrap
+
+    Returns:
+        Markdown with PDF branding metadata prepended
+    """
+    paper_id = item.get("id", "")
+    chinarxiv_url = f"chinarxiv.org/items/{paper_id}"
+
+    # YAML front matter for pandoc with LaTeX header-includes
+    yaml_header = f"""---
+header-includes:
+  - \\usepackage{{fancyhdr}}
+  - \\pagestyle{{fancy}}
+  - \\fancyhead{{}}
+  - \\fancyfoot{{}}
+  - \\fancyfoot[L]{{\\small ChinaRxiv.org}}
+  - \\fancyfoot[R]{{\\small Machine Translation}}
+  - \\renewcommand{{\\headrulewidth}}{{0pt}}
+  - \\renewcommand{{\\footrulewidth}}{{0.4pt}}
+---
+
+\\begin{{center}}
+\\rule{{\\textwidth}}{{0.5pt}}
+
+{{\\large\\textbf{{CHINARXIV.ORG}}}}
+
+{{\\small AI translation · View original \\& related papers at {chinarxiv_url}}}
+
+\\rule{{\\textwidth}}{{0.5pt}}
+\\end{{center}}
+
+\\vspace{{1em}}
+
+"""
+    return yaml_header + body_md
 
 
 def is_valid_date(date_str: str) -> bool:
@@ -629,11 +677,21 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         md_path = os.path.join(out_dir, f"{it['id']}.md")
         write_text(md_path, md)
 
-        # Generate PDF from markdown and set flag based on result
+        # Generate PDF from markdown with branding header/footer
         pdf_path = os.path.join(out_dir, f"{it['id']}.pdf")
         if can_generate_pdf:
-            success = md_to_pdf(md_path, pdf_path, pdf_engine=pdf_engine)
+            # Build PDF-specific markdown with header/footer branding
+            pdf_md = build_pdf_markdown(it, md)
+            pdf_md_path = os.path.join(out_dir, f"{it['id']}_pdf.md")
+            write_text(pdf_md_path, pdf_md)
+
+            success = md_to_pdf(pdf_md_path, pdf_path, pdf_engine=pdf_engine)
             it['_has_english_pdf'] = success
+
+            # Clean up temp PDF markdown file
+            with contextlib.suppress(OSError):
+                os.remove(pdf_md_path)
+
             if not success:
                 log(f"PDF generation failed: {it['id']}")
         else:
