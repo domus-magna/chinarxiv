@@ -6,15 +6,73 @@ import json
 import os
 import re
 import shutil
+import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound, select_autoescape
-import time
 
-from .utils import ensure_dir, log, read_json, write_text, write_json
 from .data_utils import has_full_body_content, is_cs_ai_paper
 from .make_pdf import md_to_pdf, has_binary
+from .utils import ensure_dir, log, read_json, write_text, write_json
+
+
+def is_valid_date(date_str: str) -> bool:
+    """Check if date_str is a parseable date string."""
+    if not isinstance(date_str, str) or not date_str:
+        return False
+    try:
+        normalized = date_str.replace("Z", "+00:00")
+        datetime.fromisoformat(normalized)
+        return True
+    except ValueError:
+        try:
+            datetime.strptime(date_str[:10], "%Y-%m-%d")
+            return True
+        except ValueError:
+            return False
+
+
+def parse_date_for_sort(date_str: str, fallback_id: str = "") -> Tuple[datetime, str]:
+    """
+    Parse date string to sortable tuple (timestamp, id).
+
+    Handles:
+    - Full ISO: 2024-10-26T22:53:17Z
+    - Date only: 2025-10-03
+    - Timezone offsets: 2024-10-26T22:53:17+08:00
+    - Non-string/None inputs (defensive)
+
+    Returns (timestamp, id) tuple for stable sorting.
+    Secondary key (id) ensures deterministic order for same/missing dates.
+    """
+    # Defensive: ensure inputs are strings to avoid AttributeError on .replace()
+    if not isinstance(date_str, str):
+        date_str = ""
+    # Ensure fallback_id is always a string for total ordering in tuple comparison
+    fallback_id = str(fallback_id) if fallback_id is not None else ""
+
+    if not date_str:
+        return (datetime.min.replace(tzinfo=timezone.utc), fallback_id)
+
+    try:
+        # Handle Z suffix (common in our data)
+        normalized = date_str.replace("Z", "+00:00")
+        # Try full ISO parse
+        dt = datetime.fromisoformat(normalized)
+        # Ensure timezone-aware for comparison
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (dt, fallback_id)
+    except ValueError:
+        try:
+            # Fallback: date-only format
+            dt = datetime.strptime(date_str[:10], "%Y-%m-%d")
+            dt = dt.replace(tzinfo=timezone.utc)
+            return (dt, fallback_id)
+        except ValueError:
+            return (datetime.min.replace(tzinfo=timezone.utc), fallback_id)
 
 
 def load_figure_manifest() -> Dict[str, Any]:
@@ -172,6 +230,32 @@ def load_translated(cs_ai_only: bool = False) -> List[Dict[str, Any]]:
     else:
         if os.path.exists(report_path):
             os.remove(report_path)
+
+    # Step 1: Sort by ID first (approximates harvest order for date carry-forward)
+    # Use str() to handle id=None edge case safely
+    items.sort(key=lambda x: str(x.get("id") or ""))
+
+    # Step 2: Compute _sort_date by carrying forward from previous valid date.
+    # This keeps papers with bad dates near their chronological neighbors in sort order,
+    # WITHOUT mutating the original date field (preserves data integrity for display/SEO).
+    # NOTE: ID order approximates chronological order since IDs are YYYYMM.NNNNN format.
+    last_valid_date = ""
+    for item in items:
+        date_str = item.get("date", "")
+        if is_valid_date(date_str):
+            last_valid_date = date_str
+            item["_sort_date"] = date_str
+        else:
+            # Invalid/missing date - use fallback for sorting only
+            item["_sort_date"] = last_valid_date if last_valid_date else ""
+
+    # Step 3: Sort by _sort_date (newest first), with stable secondary key (id).
+    # NOTE: This affects ALL consumers of load_translated() (homepage, search index,
+    # sitemap) intentionally for site-wide consistency.
+    items.sort(
+        key=lambda x: parse_date_for_sort(x.get("_sort_date", ""), str(x.get("id") or "")),
+        reverse=True
+    )
 
     return items
 
