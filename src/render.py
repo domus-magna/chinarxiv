@@ -149,6 +149,13 @@ def load_translated(cs_ai_only: bool = False) -> List[Dict[str, Any]]:
                 non_cs_ai_count += 1
                 continue
 
+        # Normalize subjects for consistent display (badges match dropdown)
+        from .data_utils import normalize_subject
+        if item.get('subjects_en'):
+            item['subjects_en'] = [normalize_subject(s) for s in item['subjects_en']]
+        if item.get('subjects'):
+            item['subjects'] = [normalize_subject(s) for s in item['subjects']]
+
         items.append(item)
 
     if flagged_count > 0:
@@ -170,22 +177,44 @@ def load_translated(cs_ai_only: bool = False) -> List[Dict[str, Any]]:
 
 
 def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List[tuple]:
-    """Collect unique categories from papers, filtered by minimum count."""
-    from collections import Counter
+    """Collect unique categories from papers, normalized and sorted alphabetically.
 
-    category_counts: Counter = Counter()
+    Normalizes subject names (title case for English, preserves Chinese),
+    deduplicates case-insensitively, and returns alphabetically sorted list.
+    """
+    from collections import Counter
+    from .data_utils import normalize_subject
+
+    # Count raw subjects first
+    raw_counts: Counter = Counter()
     for item in items:
         subjects = item.get("subjects_en") or item.get("subjects") or []
         for subject in subjects:
             if subject and subject.strip():
-                category_counts[subject.strip()] += 1
+                raw_counts[subject.strip()] += 1
 
-    # Filter to categories with at least min_count papers, sort by count desc
+    # Normalize and merge counts (case-insensitive dedup)
+    normalized_counts: Dict[str, int] = {}
+    normalized_labels: Dict[str, str] = {}  # lowercase key -> display label
+
+    for raw_name, count in raw_counts.items():
+        normalized = normalize_subject(raw_name)
+        # Strip trailing punctuation for dedup (narrow set to preserve C++, C#, etc.)
+        clean = normalized.rstrip('.,;:!?')
+        key = clean.lower()  # case-insensitive key
+
+        # Always use the cleaned normalized form (deterministic)
+        normalized_labels[key] = clean
+        normalized_counts[key] = normalized_counts.get(key, 0) + count
+
+    # Filter by min_count, sort alphabetically by normalized label
     categories = [
-        (name, count)
-        for name, count in category_counts.most_common()
+        (normalized_labels[key], count)
+        for key, count in normalized_counts.items()
         if count >= min_count
     ]
+    categories.sort(key=lambda x: x[0].lower())  # alphabetical sort
+
     return categories
 
 
