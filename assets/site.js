@@ -39,6 +39,7 @@ function searchSubject(subject) {
   let allDocs = [];
   let lastSearchResults = [];
   let currentQuery = '';
+  let indexLoadState = 'loading'; // 'loading' | 'success' | 'failed'
 
   // Date filter: days ago lookup
   const dateDays = { today: 0, week: 7, month: 30, year: 365 };
@@ -70,52 +71,63 @@ function searchSubject(subject) {
     }
   }
 
+  // Handle successful index load
+  function onIndexLoaded(data) {
+    indexLoadState = 'success';
+    allDocs = data;
+    initMiniSearch(data);
+    // If user typed a query before index loaded, run the search now
+    if (currentQuery) {
+      performSearch(currentQuery);
+    } else if (urlQuery) {
+      performSearch(urlQuery);
+    } else if (categoryFilter?.value || dateFilter?.value || figuresFilter?.checked) {
+      applyFiltersAndRender();
+    }
+  }
+
+  // Handle index load failure
+  function onIndexFailed() {
+    indexLoadState = 'failed';
+    results.innerHTML = '<div class="res"><div>Failed to load search index.</div></div>';
+  }
+
   // Load index (try compressed first)
   fetch('search-index.json.gz')
     .then(r => r.ok ? r.arrayBuffer().then(buf => JSON.parse(pako.inflate(new Uint8Array(buf), { to: 'string' }))) : fetch('search-index.json').then(r => r.json()))
-    .then(data => {
-      allDocs = data;
-      initMiniSearch(data);
-      if (urlQuery) {
-        performSearch(urlQuery);
-      } else if (categoryFilter?.value || dateFilter?.value || figuresFilter?.checked) {
-        applyFiltersAndRender();
-      }
-    })
-    .catch(() => fetch('search-index.json').then(r => r.json()).then(data => {
-      allDocs = data;
-      initMiniSearch(data);
-      if (urlQuery) {
-        performSearch(urlQuery);
-      } else if (categoryFilter?.value || dateFilter?.value || figuresFilter?.checked) {
-        applyFiltersAndRender();
-      }
-    })
-      .catch(() => { results.innerHTML = '<div class="res"><div>Failed to load search index.</div></div>'; }));
+    .then(onIndexLoaded)
+    .catch(() => fetch('search-index.json').then(r => r.json()).then(onIndexLoaded).catch(onIndexFailed));
 
   // Apply filters and render
   function applyFiltersAndRender() {
+    // If index load failed, preserve failure message and don't hide article list
+    if (indexLoadState === 'failed') {
+      return;
+    }
+
     const cat = categoryFilter?.value || '';
     const dateRange = dateFilter?.value || '';
     const figuresOnly = figuresFilter?.checked || false;
-    const hasFilters = Boolean(currentQuery || cat || dateRange || figuresOnly);
+    const hasQuery = Boolean(currentQuery);
+    const hasActiveFilters = Boolean(cat || dateRange || figuresOnly);
+    const isActive = hasQuery || hasActiveFilters;
 
     // No active search/filters → show the default list
-    if (!hasFilters) {
+    if (!isActive) {
       toggleArticleList(false);
       results.innerHTML = '';
       return;
     }
 
     // Use all docs when filters are applied without a query
-    const baseResults = currentQuery ? lastSearchResults : allDocs;
+    const baseResults = hasQuery ? lastSearchResults : allDocs;
     if (!baseResults.length && !allDocs.length) {
       results.innerHTML = '<div class="res"><div>Loading search index...</div></div>';
       toggleArticleList(true);
       return;
     }
 
-    const filtered = baseResults.filter(hit => {
+    let filtered = baseResults.filter(hit => {
       // Category filter - exact match (subjects is comma-separated string like "Physics, Nuclear Physics")
       if (cat) {
         const subjects = (hit.subjects || '').split(',').map(s => s.trim().toLowerCase());
@@ -135,16 +147,17 @@ function searchSubject(subject) {
       return true;
     });
 
-    // If no query is present, mirror homepage ordering (newest first)
-    if (!currentQuery) {
+    // If no query is present, mirror homepage ordering (newest first) and apply limit
+    if (!hasQuery) {
       const toTimestamp = (hit) => {
         const t = Date.parse(hit.date || '');
         return Number.isNaN(t) ? 0 : t;
       };
       filtered.sort((a, b) => toTimestamp(b) - toTimestamp(a) || String(a.id || '').localeCompare(String(b.id || '')));
+      filtered = filtered.slice(0, 100); // Match search result limit
     }
 
-    renderResults(filtered, hasFilters);
+    renderResults(filtered, hasQuery, hasActiveFilters);
   }
 
   // Highlight search terms (using function replacement for safety)
@@ -158,10 +171,13 @@ function searchSubject(subject) {
   }
 
   // Render results
-  function renderResults(hits, hasFilters) {
-    toggleArticleList(hasFilters);
+  function renderResults(hits, hasQuery, hasActiveFilters) {
+    toggleArticleList(hasQuery || hasActiveFilters);
     if (!hits.length) {
-      const msg = hasFilters ? 'No papers match with selected filters. Try adjusting them.' : 'No papers found. Try different keywords.';
+      // Use filter message only when dropdown filters are active
+      const msg = hasActiveFilters
+        ? 'No papers match with selected filters. Try adjusting them.'
+        : 'No papers found. Try different keywords.';
       results.innerHTML = `<div class="res"><div>${msg}</div></div>`;
     } else {
       const count = `<div class="search-results-count">Found ${hits.length} paper${hits.length > 1 ? 's' : ''}</div>`;
