@@ -18,6 +18,48 @@ from .make_pdf import md_to_pdf, has_binary
 from .utils import ensure_dir, log, read_json, write_text, write_json
 
 
+def inject_figures_into_markdown(body_md: str, figures: List[Dict[str, Any]]) -> str:
+    """
+    Inject translated figures into markdown body.
+
+    Strategy:
+    1. Replace [FIGURE:N] markers with ![Figure N](url) for inline placement
+    2. Append any figures without markers at the end in a Figures section
+
+    Args:
+        body_md: Markdown body text (may contain [FIGURE:N] markers)
+        figures: List of figure dicts with 'number' and 'url' keys
+
+    Returns:
+        Markdown with figures embedded
+    """
+    if not figures:
+        return body_md
+
+    # Build figure lookup by number (as string)
+    figure_urls = {str(fig["number"]): fig["url"] for fig in figures}
+    placed: set = set()
+
+    def replace_marker(match: re.Match) -> str:
+        num = match.group(1)
+        if num in figure_urls:
+            placed.add(num)
+            return f"\n\n![Figure {num}]({figure_urls[num]})\n\n"
+        return match.group(0)  # Keep marker if no translated figure
+
+    # Replace inline markers
+    result = re.sub(r"\[FIGURE:(\d+)\]", replace_marker, body_md)
+
+    # Append unplaced figures at the end
+    unplaced = [fig for fig in figures if str(fig["number"]) not in placed]
+    if unplaced:
+        result += "\n\n---\n\n## Figures\n\n"
+        for fig in unplaced:
+            result += f"![Figure {fig['number']}]({fig['url']})\n\n"
+
+    return result
+
+
 def is_valid_date(date_str: str) -> bool:
     """Check if date_str is a parseable date string."""
     if not isinstance(date_str, str) or not date_str:
@@ -564,6 +606,12 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
             full_body_md = format_translation_to_markdown(it)
         else:
             full_body_md = ""
+
+        # Inject translated figures into markdown (inline + fallback appendix)
+        if it.get("_has_translated_figures") and it.get("_translated_figures"):
+            full_body_md = inject_figures_into_markdown(
+                full_body_md, it["_translated_figures"]
+            )
 
         md_parts = [
             f"# {it.get('title_en') or ''}",
