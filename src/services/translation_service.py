@@ -802,15 +802,14 @@ class TranslationService:
             if sections:
                 marked_sections, marker_map, all_markers = inject_markers_in_sections(sections)
                 extraction_result = {**extraction_result, "sections": marked_sections}
-            elif full_body := extraction_result.get("full_body"):
-                # Fallback: inject markers into full_body text when no sections
-                marked_body, marker_map, all_markers = inject_figure_markers([full_body])
-                if marked_body:
-                    extraction_result = {**extraction_result, "full_body": marked_body[0]}
+            elif raw_paras := extraction_result.get("raw_paragraphs"):
+                # Fallback: inject markers into raw_paragraphs so they flow through _chunk_by_sections
+                marked_paras, marker_map, all_markers = inject_figure_markers(raw_paras)
+                extraction_result = {**extraction_result, "raw_paragraphs": marked_paras}
             if all_markers:
                 log(f"Injected {len(all_markers)} figure/table markers for inline placement")
         except Exception as e:
-            log(f"WARNING: Marker injection failed, continuing without markers: {e}")
+            log(f"WARNING: Marker injection failed ({type(e).__name__}), continuing without markers: {e}")
 
         chunks = self._chunk_by_sections(extraction_result)
         total_chunks = len(chunks)
