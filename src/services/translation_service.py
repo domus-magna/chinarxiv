@@ -26,8 +26,26 @@ from ..token_utils import estimate_tokens
 from ..cost_tracker import compute_cost, append_cost_log
 from ..logging_utils import log
 from ..models import Paper, Translation
-from ..body_extract import inject_markers_in_sections
+from ..body_extract import inject_markers_in_sections, inject_figure_markers
 import re
+
+
+# Regex pattern for figure/table markers
+MARKER_PATTERN = re.compile(r'\[(?:FIGURE|TABLE):\d+[a-z]?\]')
+
+
+def _verify_markers_preserved(input_text: str, output_text: str) -> list:
+    """
+    Verify that figure/table markers survived translation.
+
+    Returns list of markers that were lost (empty if all preserved).
+    """
+    input_markers = set(MARKER_PATTERN.findall(input_text))
+    output_markers = set(MARKER_PATTERN.findall(output_text))
+    lost = list(input_markers - output_markers)
+    if lost:
+        log(f"WARNING: {len(lost)} markers lost in translation: {lost}")
+    return lost
 
 
 SYSTEM_PROMPT = (
@@ -778,13 +796,20 @@ class TranslationService:
 
         # Inject [FIGURE:N] and [TABLE:N] markers into paragraphs before translation
         # This allows figures to be placed inline at their reference points during render
-        sections = extraction_result.get("sections", [])
-        if sections:
-            marked_sections, marker_map, all_markers = inject_markers_in_sections(sections)
-            # Update extraction_result with marked sections
-            extraction_result = {**extraction_result, "sections": marked_sections}
+        all_markers: set = set()
+        try:
+            sections = extraction_result.get("sections", [])
+            if sections:
+                marked_sections, marker_map, all_markers = inject_markers_in_sections(sections)
+                extraction_result = {**extraction_result, "sections": marked_sections}
+            elif raw_paras := extraction_result.get("raw_paragraphs"):
+                # Fallback: inject markers into raw_paragraphs so they flow through _chunk_by_sections
+                marked_paras, marker_map, all_markers = inject_figure_markers(raw_paras)
+                extraction_result = {**extraction_result, "raw_paragraphs": marked_paras}
             if all_markers:
                 log(f"Injected {len(all_markers)} figure/table markers for inline placement")
+        except Exception as e:
+            log(f"WARNING: Marker injection failed ({type(e).__name__}), continuing without markers: {e}")
 
         chunks = self._chunk_by_sections(extraction_result)
         total_chunks = len(chunks)
@@ -836,6 +861,9 @@ Remember: Produce flowing, readable academic English. Merge fragments into compl
 
             # Unmask
             unmasked = unmask_math(translated, mappings)
+
+            # Verify figure/table markers survived translation
+            _verify_markers_preserved(chunk_content, unmasked)
 
             translated_parts.append(unmasked)
 
