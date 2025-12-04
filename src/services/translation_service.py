@@ -26,6 +26,7 @@ from ..token_utils import estimate_tokens
 from ..cost_tracker import compute_cost, append_cost_log
 from ..logging_utils import log
 from ..models import Paper, Translation
+from ..body_extract import inject_markers_in_sections
 import re
 
 
@@ -774,6 +775,16 @@ class TranslationService:
         """
         model = self.model
         glossary = glossary_override if glossary_override is not None else self.glossary
+
+        # Inject [FIGURE:N] and [TABLE:N] markers into paragraphs before translation
+        # This allows figures to be placed inline at their reference points during render
+        sections = extraction_result.get("sections", [])
+        if sections:
+            marked_sections, marker_map, all_markers = inject_markers_in_sections(sections)
+            # Update extraction_result with marked sections
+            extraction_result = {**extraction_result, "sections": marked_sections}
+            if all_markers:
+                log(f"Injected {len(all_markers)} figure/table markers for inline placement")
 
         chunks = self._chunk_by_sections(extraction_result)
         total_chunks = len(chunks)
