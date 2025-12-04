@@ -46,6 +46,10 @@ def inject_figures_into_markdown(
     Returns:
         Markdown with figures embedded
     """
+    # Strip table markers first (we don't translate tables)
+    # Use [A-Za-z]? to handle both upper and lowercase suffixes
+    body_md = re.sub(r"\[TABLE:\d+[A-Za-z]?\]", "", body_md)
+
     if not figures:
         return body_md
 
@@ -73,9 +77,6 @@ def inject_figures_into_markdown(
 
     # Replace inline markers
     result = re.sub(r"\[FIGURE:(\d+)\]", replace_marker, body_md)
-
-    # Strip table markers (we don't translate tables)
-    result = re.sub(r"\[TABLE:\d+[a-z]?\]", "", result)
 
     # Append ALL unplaced figures at the end
     unplaced_nums = [n for n in figure_urls if n not in placed]
