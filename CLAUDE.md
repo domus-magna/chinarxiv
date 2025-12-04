@@ -7,6 +7,23 @@
 2. If figure pipeline fails, the whole job fails - do not continue text-only
 3. Never assume "text-only first, figures later" without EXPLICIT user approval
 
+## ANTI-PATTERN: Never Run Hydrate/Render/Deploy Locally
+
+```
++==============================================================================+
+|  NEVER run hydrate, render, or deploy commands locally!                      |
+|                                                                              |
+|  These operations MUST happen in CI (GitHub Actions):                        |
+|  - hydrate_from_b2.py → runs in deploy.yml                                   |
+|  - src.render → runs in deploy.yml                                           |
+|  - wrangler pages deploy → runs in deploy.yml                                |
+|                                                                              |
+|  If you find yourself downloading thousands of files or running render       |
+|  locally, STOP - you're doing something wrong. Trigger CI instead:           |
+|  gh workflow run deploy.yml                                                  |
++==============================================================================+
+```
+
 ## Quick Reference
 
 ### Full Translation (text + figures)
@@ -119,13 +136,27 @@ python scripts/download_missing_pdfs.py
 python -m src.pipeline --workers 20 --with-qa --with-figures --start YYYYMM --end YYYYMM
 ```
 
-### Step 3: Publish & Deploy
+### Step 3: Publish to B2
 ```bash
-python -m src.tools.b2_publish
-python scripts/hydrate_from_b2.py
-python -m src.render
-wrangler pages deploy site --project-name chinarxiv
+python -m src.tools.b2_publish  # Uploads validated translations to B2
 ```
+
+### Step 4: Deploy via CI (NEVER locally!)
+```bash
+# Trigger the deploy workflow - this hydrates, renders, and deploys
+gh workflow run deploy.yml
+
+# Monitor progress:
+gh run list --workflow=deploy.yml --limit 5
+gh run watch  # Watch latest run
+```
+
+The `deploy.yml` workflow will:
+1. Hydrate translations from B2 → `data/translated/`
+2. Download figure manifest from B2
+3. Render site with translated figures embedded
+4. Deploy to Cloudflare Pages
+5. Purge cache
 
 ## Common Mistakes to Avoid
 
@@ -133,6 +164,7 @@ wrangler pages deploy site --project-name chinarxiv
 2. **Assuming figures can be added later** - While technically possible, it's extra work
 3. **Ignoring circuit breaker errors** - These indicate billing issues, stop and check
 4. **Not checking for GEMINI_API_KEY** - Figure translation requires Google API access
+5. **Running hydrate/render/deploy locally** - ALWAYS use `gh workflow run deploy.yml`
 
 ## Monitoring
 

@@ -17,11 +17,12 @@ def md_to_pdf(md_path: str, pdf_path: str, pdf_engine: str | None = None) -> boo
     """Convert markdown to PDF using pandoc.
 
     Returns True on success, False on failure. Logs error details for debugging.
+    Uses XeLaTeX by default for full Unicode/CJK support.
     """
     try:
-        cmd = ["pandoc", md_path, "-o", pdf_path]
-        if pdf_engine:
-            cmd.extend(["--pdf-engine", pdf_engine])
+        # Default to xelatex for Unicode support (Chinese chars in author names, math symbols)
+        engine = pdf_engine or "xelatex"
+        cmd = ["pandoc", md_path, "-o", pdf_path, "--pdf-engine", engine]
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         return True
     except subprocess.CalledProcessError as e:
@@ -46,12 +47,16 @@ def run_cli() -> None:
         log("pandoc not found; skipping PDF generation")
         return
 
-    pdf_engine = None
-    if not has_binary("pdflatex") and has_binary("tectonic"):
-        pdf_engine = "tectonic"
-        log("pdflatex missing; using tectonic via pandoc --pdf-engine")
-    elif not has_binary("pdflatex"):
-        log("pdflatex missing and no fallback engine detected; PDFs will likely fail")
+    pdf_engine = None  # Will default to xelatex in md_to_pdf
+    if not has_binary("xelatex"):
+        if has_binary("tectonic"):
+            pdf_engine = "tectonic"
+            log("xelatex missing; using tectonic via pandoc --pdf-engine")
+        elif has_binary("pdflatex"):
+            pdf_engine = "pdflatex"
+            log("xelatex missing; falling back to pdflatex (Unicode chars may fail)")
+        else:
+            log("No LaTeX engine found (xelatex, tectonic, pdflatex); PDFs will fail")
 
     count = 0
     for md in glob.glob(os.path.join("site", "items", "*", "*.md")):

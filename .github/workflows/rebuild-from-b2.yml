@@ -29,11 +29,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Install pandoc for PDF generation
+      - name: Install pandoc and XeLaTeX for PDF generation
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc texlive-latex-base texlive-latex-recommended texlive-fonts-recommended
-          which pandoc || { echo "❌ pandoc installation failed"; exit 1; }
+          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended
+          which pandoc || { echo "❌ xelatex installation failed"; exit 1; }
+          which xelatex || { echo "❌ xelatex installation failed"; exit 1; }
           pandoc --version | head -1
       - name: Hydrate validated translations from B2
         env:
