@@ -74,6 +74,9 @@ def inject_figures_into_markdown(
     # Replace inline markers
     result = re.sub(r"\[FIGURE:(\d+)\]", replace_marker, body_md)
 
+    # Strip table markers (we don't translate tables)
+    result = re.sub(r"\[TABLE:\d+[a-z]?\]", "", result)
+
     # Append ALL unplaced figures at the end
     unplaced_nums = [n for n in figure_urls if n not in placed]
     if unplaced_nums:
