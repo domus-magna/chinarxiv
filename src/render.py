@@ -113,9 +113,9 @@ def build_pdf_markdown(item: Dict[str, Any], body_md: str) -> str:
     chinarxiv_url = f"https://chinarxiv.org/items/{paper_id}"
     display_url = f"chinarxiv.org/items/{paper_id}"
 
-    # Compute absolute path to logo (works regardless of cwd)
-    logo_path = Path(__file__).parent.parent / "assets" / "logo-pdf.png"
-    logo_path_str = str(logo_path.resolve())
+    # Compute absolute path to wordmark (works regardless of cwd)
+    wordmark_path = Path(__file__).parent.parent / "assets" / "logo-wordmark.png"
+    wordmark_path_str = str(wordmark_path.resolve())
 
     # YAML front matter for pandoc with LaTeX header-includes
     # hyperref provides clickable links in PDF, graphicx for logo
@@ -125,7 +125,7 @@ header-includes:
   - \\usepackage{{hyperref}}
   - \\usepackage{{graphicx}}
   - \\pagestyle{{fancy}}
-  - \\fancyhead[R]{{\\includegraphics[height=0.8cm]{{{logo_path_str}}}}}
+  - \\fancyhead[R]{{\\includegraphics[height=0.6cm]{{{wordmark_path_str}}}}}
   - \\fancyfoot{{}}
   - \\fancyfoot[L]{{\\small \\href{{{chinarxiv_url}}}{{{display_url}}}}}
   - \\fancyfoot[R]{{\\small Machine Translation}}
@@ -135,8 +135,6 @@ header-includes:
 
 \\begin{{center}}
 \\rule{{\\textwidth}}{{0.5pt}}
-
-\\includegraphics[height=1.2cm]{{{logo_path_str}}}
 
 {{\\small AI translation · View original \\& related papers at \\href{{{chinarxiv_url}}}{{{display_url}}}}}
 
