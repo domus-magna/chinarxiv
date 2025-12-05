@@ -747,8 +747,9 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
     if tmpl_sponsors is not None:
         # Fetch live stats from B2
         sponsor_stats = get_b2_stats()
-        remaining = sponsor_stats["total_papers"] - sponsor_stats["text_translated"]
-        total_cost = int(remaining * sponsor_stats["cost_per_paper"])
+        # Clamp to ≥0 in case B2 count exceeds static total
+        remaining = max(0, sponsor_stats["total_papers"] - sponsor_stats["text_translated"])
+        total_cost = max(0, int(remaining * sponsor_stats["cost_per_paper"]))
         html_sponsors = tmpl_sponsors.render(
             root=".",
             build_version=build_version,

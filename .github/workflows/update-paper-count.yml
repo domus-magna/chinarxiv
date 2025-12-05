@@ -30,9 +30,9 @@ jobs:
           HTML=$(echo "$RESPONSE" | jq -r '.body // empty')
 
           if [ -z "$HTML" ]; then
-            echo "Failed to get HTML body from BrightData response"
+            echo "❌ Failed to get HTML body from BrightData response"
             echo "Response: $RESPONSE"
-            exit 0
+            exit 1
           fi
 
           # Extract paper count: 论文总量 (total papers) followed by <b>NUMBER</b>
@@ -43,9 +43,10 @@ jobs:
             echo "Found paper count: $COUNT"
             echo "count=$COUNT" >> $GITHUB_OUTPUT
           else
-            echo "Could not extract paper count from ChinaXiv homepage"
+            echo "❌ Could not extract paper count from ChinaXiv homepage"
             echo "HTML preview (first 500 chars):"
             echo "$HTML" | head -c 500
+            exit 1
           fi
 
       - name: Update constant if changed
