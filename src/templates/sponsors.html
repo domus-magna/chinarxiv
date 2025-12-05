@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block header_breadcrumbs %}
+  <div class="header-breadcrumbs">
+    <a href="{{ root }}/">Home</a> <span class="sep">&gt;</span> Support
+  </div>
+{% endblock %}
+
+{% block content %}
+<style>
+  /* Support page - uses existing site patterns */
+  .support-lead {
+    font-size: 1.15rem;
+    color: var(--text-muted);
+    max-width: 680px;
+  }
+
+  .support-section {
+    margin: 1.5rem 0;
+  }
+
+  .support-section h2 {
+    margin-top: 0;
+  }
+
+  .donation-box {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    padding: 1.5rem 2rem;
+    border-radius: 6px;
+  }
+
+  .donation-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2rem;
+  }
+
+  .donation-method h3 {
+    font-size: 1.1rem;
+    margin: 0 0 0.75rem 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--primary-color);
+    display: inline-block;
+  }
+
+  .donation-method p {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin: 0 0 1rem 0;
+  }
+
+  .kofi-btn {
+    display: inline-block;
+    background: var(--primary-color);
+    color: #fff;
+    padding: 0.6rem 1.25rem;
+    border-radius: 4px;
+    border: none;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    text-decoration: none;
+  }
+  .kofi-btn:hover {
+    background: #8f1515;
+    color: #fff;
+  }
+
+  .crypto-item {
+    margin-bottom: 1rem;
+  }
+  .crypto-item:last-child {
+    margin-bottom: 0;
+  }
+  .crypto-item label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+    color: var(--secondary-color);
+  }
+  .crypto-address-box {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-light);
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+  }
+  .crypto-address-box code {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-color);
+    flex: 1;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .copy-btn {
+    background: var(--primary-color);
+    color: #fff;
+    border: none;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--font-sans);
+    transition: background 0.2s;
+  }
+  .copy-btn:hover {
+    background: #8f1515;
+  }
+
+  /* Combined stats + costs grid */
+  .stats-costs-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    align-items: start;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  .stat-item {
+    background: var(--bg-light);
+    padding: 0.75rem;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .stat-item .value {
+    font-family: var(--font-mono);
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--secondary-color);
+  }
+  .stat-item .label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .cost-table {
+    width: 100%;
+    font-size: 0.9rem;
+  }
+  .cost-table td {
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .cost-table tr:last-child td {
+    border-bottom: none;
+    font-weight: 600;
+  }
+  .cost-table td:last-child {
+    text-align: right;
+    font-family: var(--font-mono);
+  }
+
+  .disclaimer {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 1.5rem;
+  }
+
+  @media (max-width: 700px) {
+    .stats-costs-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<div class="page-header">
+  <h1>Support This Project</h1>
+  <p class="support-lead">
+    ChinaRxiv is a volunteer project that machine-translates Chinese preprints.
+    Your support directly funds the API costs for translation.
+  </p>
+</div>
+
+<!-- Combined: Progress + Costs side by side -->
+<section class="support-section">
+  <h2>Project by the Numbers</h2>
+  <div class="stats-costs-grid">
+    <div>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="value">{{ "{:,}".format(text_translated) }}</div>
+          <div class="label">translated</div>
+        </div>
+        <div class="stat-item">
+          <div class="value">{{ "{:,}".format(figures_translated) }}</div>
+          <div class="label">with figures</div>
+        </div>
+        <div class="stat-item">
+          <div class="value">~{{ "{:,}".format(remaining) }}</div>
+          <div class="label">remaining</div>
+        </div>
+        <div class="stat-item">
+          <div class="value">~{{ "{:,}".format(total_papers) }}</div>
+          <div class="label">total papers</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <table class="cost-table">
+        <tr>
+          <td>Text translation (Kimi K2)</td>
+          <td>${{ "%.2f"|format(cost_text) }}</td>
+        </tr>
+        <tr>
+          <td>Figure translation (Nano Banana Pro)</td>
+          <td>${{ "%.2f"|format(cost_figures) }}</td>
+        </tr>
+        <tr>
+          <td>Total per paper</td>
+          <td style="color: var(--primary-color);">${{ "%.2f"|format(cost_per_paper) }}</td>
+        </tr>
+      </table>
+      <p style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted);">
+        $100 funds <strong>{{ (100 / cost_per_paper)|int }} papers</strong>.
+        Remaining corpus: <strong>~${{ "{:,}".format(total_cost) }}</strong>.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Donation Options -->
+<section class="support-section">
+  <h2>Contribute</h2>
+  <div class="donation-box">
+    <div class="donation-grid">
+      <!-- Ko-fi -->
+      <div class="donation-method">
+        <h3>Quick Donation</h3>
+        <p>One-click, any amount. No account required.</p>
+        <a href="https://ko-fi.com/seconds0" class="kofi-btn" target="_blank" rel="noopener">
+          Support on Ko-fi
+        </a>
+      </div>
+
+      <!-- Crypto -->
+      <div class="donation-method">
+        <h3>Cryptocurrency</h3>
+        <div class="crypto-item">
+          <label>ETH / USDC (Ethereum)</label>
+          <div class="crypto-address-box">
+            <code id="eth-addr">0x107F501699EFb65562bf97FBE06144Cd431ECc9D</code>
+            <button class="copy-btn" onclick="copyAddr('eth-addr', this)">Copy</button>
+          </div>
+        </div>
+        <div class="crypto-item">
+          <label>BTC</label>
+          <div class="crypto-address-box">
+            <code id="btc-addr">bc1qcxzuuykxx46g6u70fa9sytty53vv74eakch5hk</code>
+            <button class="copy-btn" onclick="copyAddr('btc-addr', this)">Copy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Named Sponsors -->
+<section class="support-section">
+  <h2>Sponsors</h2>
+  <p>
+    We'd love to have you as a named sponsor. Reach out via
+    <a href="mailto:seconds0.005@gmail.com">email</a> or
+    <a href="https://x.com/seconds_0" target="_blank" rel="noopener">DM</a>
+    to get listed here.
+  </p>
+  <div class="search-block" style="margin-top: 0.75rem;">
+    <p style="color: var(--text-muted); font-style: italic; margin: 0;">
+      No sponsors yet. Be the first!
+    </p>
+  </div>
+</section>
+
+<p class="disclaimer">
+  {% if last_updated %}Stats updated {{ last_updated }}. {% endif %}
+  Costs are estimates and may vary based on paper length and figure count.
+</p>
+
+<script>
+function copyAddr(id, btn) {
+  const text = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+  });
+}
+</script>
+{% endblock %}

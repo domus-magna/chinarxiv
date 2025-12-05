@@ -1,0 +1,60 @@
+name: Update ChinaXiv Paper Count
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'  # 1st of each month at midnight UTC
+  workflow_dispatch:  # Manual trigger for testing
+
+jobs:
+  update-count:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch paper count from ChinaXiv via BrightData
+        id: fetch
+        env:
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+        run: |
+          # Use BrightData Web Unlocker to fetch ChinaXiv homepage
+          RESPONSE=$(curl -s --compressed \
+            -H "Authorization: Bearer $BRIGHTDATA_API_KEY" \
+            "https://api.brightdata.com/request?zone=china_paper_scraper1&url=https://www.chinaxiv.org")
+
+          # Extract paper count (pattern like "44917 篇" or "44917篇")
+          COUNT=$(echo "$RESPONSE" | grep -oP '\d{4,6}(?=\s*篇)' | head -1)
+
+          if [ -n "$COUNT" ]; then
+            echo "Found paper count: $COUNT"
+            echo "count=$COUNT" >> $GITHUB_OUTPUT
+          else
+            echo "Could not extract paper count from ChinaXiv homepage"
+            echo "Response preview:"
+            echo "$RESPONSE" | head -50
+          fi
+
+      - name: Update constant if changed
+        if: steps.fetch.outputs.count != ''
+        run: |
+          CURRENT=$(grep 'CHINAXIV_TOTAL_PAPERS' src/render.py | grep -oP '\d+')
+          NEW=${{ steps.fetch.outputs.count }}
+          echo "Current: $CURRENT, New: $NEW"
+          if [ "$CURRENT" != "$NEW" ]; then
+            sed -i "s/CHINAXIV_TOTAL_PAPERS = $CURRENT/CHINAXIV_TOTAL_PAPERS = $NEW/" src/render.py
+            echo "Updated paper count: $CURRENT → $NEW"
+          else
+            echo "No change needed (still $CURRENT)"
+          fi
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git commit -am "chore: update ChinaXiv paper count
+
+            🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+            git push
+          else
+            echo "No changes to commit"
+          fi
