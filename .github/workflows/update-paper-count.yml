@@ -15,22 +15,34 @@ jobs:
         id: fetch
         env:
           BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
         run: |
-          # Use BrightData Web Unlocker to fetch ChinaXiv homepage
-          RESPONSE=$(curl -s --compressed \
+          # Use BrightData Web Unlocker (POST with JSON) to fetch ChinaXiv homepage
+          RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer $BRIGHTDATA_API_KEY" \
-            "https://api.brightdata.com/request?zone=china_paper_scraper1&url=https://www.chinaxiv.org")
+            -H "Content-Type: application/json" \
+            -d "{\"url\": \"https://www.chinaxiv.org/\", \"zone\": \"$BRIGHTDATA_ZONE\", \"method\": \"GET\", \"country\": \"cn\", \"format\": \"json\"}" \
+            "https://api.brightdata.com/request")
 
-          # Extract paper count (pattern like "44917 篇" or "44917篇")
-          COUNT=$(echo "$RESPONSE" | grep -oP '\d{4,6}(?=\s*篇)' | head -1)
+          # Extract HTML body from JSON response
+          HTML=$(echo "$RESPONSE" | jq -r '.body // empty')
+
+          if [ -z "$HTML" ]; then
+            echo "Failed to get HTML body from BrightData response"
+            echo "Response: $RESPONSE"
+            exit 0
+          fi
+
+          # Extract paper count: 论文总量 (total papers) followed by <b>NUMBER</b>
+          COUNT=$(echo "$HTML" | grep -oP '论文总量[\s\S]*?<b>\K\d{4,6}(?=</b>)' | head -1)
 
           if [ -n "$COUNT" ]; then
             echo "Found paper count: $COUNT"
             echo "count=$COUNT" >> $GITHUB_OUTPUT
           else
             echo "Could not extract paper count from ChinaXiv homepage"
-            echo "Response preview:"
-            echo "$RESPONSE" | head -50
+            echo "HTML preview (first 500 chars):"
+            echo "$HTML" | head -c 500
           fi
 
       - name: Update constant if changed
