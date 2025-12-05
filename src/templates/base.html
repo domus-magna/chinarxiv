@@ -13,10 +13,14 @@
     <meta property="og:type" content="{{ og_type or 'website' }}" />
     <meta property="og:url" content="{{ og_url or 'https://chinarxiv.org' }}" />
     <meta property="og:site_name" content="ChinaRxiv" />
-    <meta name="twitter:card" content="{{ twitter_card or 'summary' }}" />
+    <meta property="og:image" content="{{ og_image or 'https://chinarxiv.org/assets/og-image.png' }}" />
+    <meta name="twitter:card" content="{{ twitter_card or 'summary_large_image' }}" />
     <meta name="twitter:title" content="{{ twitter_title or (title or 'ChinaRxiv') }}" />
     <meta name="twitter:description" content="{{ twitter_description or 'Machine-translated preprints from ChinaXiv (Chinese arXiv)' }}" />
+    <meta name="twitter:image" content="{{ twitter_image or og_image or 'https://chinarxiv.org/assets/og-image.png' }}" />
     <link rel="canonical" href="{{ canonical_url or (og_url or 'https://chinarxiv.org') }}" />
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ root }}/assets/favicon.png" />
+    <link rel="icon" type="image/x-icon" href="{{ root }}/assets/favicon.ico" />
     <link rel="stylesheet" href="{{ root }}/assets/style.css?v={{ build_version }}" />
     <script>
       window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
@@ -29,7 +33,10 @@
     <header class="site-header">
       <div class="container">
         <div class="header-main">
-          <a href="{{ root }}/" class="brand">ChinaRxiv</a>
+          <a href="{{ root }}/" class="brand">
+            <img src="{{ root }}/assets/logo-wordmark-white.png" alt="ChinaRxiv" class="brand-logo" />
+            <span class="sr-only">ChinaRxiv</span>
+          </a>
           <div class="header-search">
             <input type="text" id="header-search-input" placeholder="Search papers..." aria-label="Search papers" />
             <button id="header-search-btn" aria-label="Run search">Search</button>
