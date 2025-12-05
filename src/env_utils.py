@@ -83,22 +83,18 @@ def resolve_env_mismatches(
             # Always prefer an explicitly-set shell value
             if mismatch["shell_set"] and not prefer_file:
                 resolved[key] = mismatch["shell"]
-                file_preview = (
-                    mismatch["file"][:20] + "..." if mismatch.get("file") else "None"
-                )
+                file_status = "(set)" if mismatch["file_set"] else "(unset)"
                 log(
-                    f"Resolved {key} mismatch: using shell value (ignoring .env file={file_preview})"
+                    f"Resolved {key} mismatch: using shell value (ignoring .env file {file_status})"
                 )
             elif prefer_file and mismatch["file_set"]:
                 # Prefer .env file value (opt-in)
                 resolved[key] = mismatch["file"]
                 # Update shell environment to match only when preferring file
                 os.environ[key] = mismatch["file"]
-                shell_preview = (
-                    mismatch["shell"][:20] + "..." if mismatch.get("shell") else "None"
-                )
+                shell_status = "(set)" if mismatch["shell_set"] else "(unset)"
                 log(
-                    f"Resolved {key} mismatch: using .env value (was: shell={shell_preview})"
+                    f"Resolved {key} mismatch: using .env value (was: shell {shell_status})"
                 )
             elif mismatch["shell_set"]:
                 # Shell set (no mismatch scenario)
@@ -143,10 +139,9 @@ def ensure_env_consistency(
 
     log(f"Found {len(mismatches)} environment variable mismatches:")
     for key, mismatch in mismatches.items():
-        log(
-            f"  {key}: shell={mismatch['shell'][:20] if mismatch['shell'] else 'None'}... "
-            f"file={mismatch['file'][:20] if mismatch['file'] else 'None'}..."
-        )
+        shell_status = "(set)" if mismatch["shell_set"] else "(unset)"
+        file_status = "(set)" if mismatch["file_set"] else "(unset)"
+        log(f"  {key}: shell {shell_status}, file {file_status}")
 
     # Resolve by preferring selected source (shell by default)
     resolve_env_mismatches(keys, prefer_file=prefer_file, env_file=env_file)

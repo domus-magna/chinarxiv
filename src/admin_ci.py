@@ -133,9 +133,9 @@ def make_app() -> Flask:
             if iso_end:
                 end = dtparser.isoparse(iso_end)
             else:
-                from datetime import datetime as _dt
+                from datetime import datetime as _dt, timezone as _tz
 
-                end = _dt.now(_dt.utcnow().astimezone().tzinfo)
+                end = _dt.now(_tz.utc)
             delta = end - start
             total = int(delta.total_seconds())
             if total < 0:

@@ -468,7 +468,7 @@ def generate_figure_manifest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     papers_with_figures.sort(key=lambda p: -(p["figure_count"] + p["table_count"]))
 
     manifest = {
-        "generated": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "total_papers_scanned": len(items),
         "total_papers_with_figures": len(papers_with_figures),
         "total_figures": total_figures,
@@ -522,26 +522,46 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         autoescape=select_autoescape(["html", "xml"]),
     )
 
-    # Add markdown filter
-    try:
-        import markdown
+    # Add markdown filter with HTML sanitization to prevent XSS
+    # bleach and markdown are REQUIRED - no fallback to avoid XSS vulnerabilities
+    import markdown
+    import bleach
 
-        def markdown_filter(text):
-            return markdown.markdown(text, extensions=["extra", "codehilite"])
+    # Allowed tags for safe academic content rendering
+    BLEACH_ALLOWED_TAGS = [
+        "p", "h1", "h2", "h3", "h4", "h5", "h6",
+        "ul", "ol", "li", "dl", "dt", "dd",
+        "code", "pre", "blockquote",
+        "em", "strong", "a", "br", "hr",
+        "table", "thead", "tbody", "tr", "th", "td",
+        "img", "sup", "sub", "span", "div",
+    ]
+    # Allowed attributes - includes class for code highlighting (codehilite extension)
+    BLEACH_ALLOWED_ATTRS = {
+        "a": ["href", "title"],
+        "img": ["src", "alt", "title"],
+        "th": ["colspan", "rowspan", "class"],
+        "td": ["colspan", "rowspan", "class"],
+        "div": ["class"],
+        "pre": ["class"],
+        "code": ["class"],
+        "span": ["class"],
+        "table": ["class"],
+    }
 
-        env.filters["markdown"] = markdown_filter
-    except ImportError:
-        # Fallback: wrap paragraphs and line breaks for valid HTML
-        def simple_markdown(text: str) -> str:
-            if not text:
-                return ""
-            paragraphs = [p.strip() for p in str(text).split("\n\n")]
-            html = "".join(
-                "<p>{}</p>".format(p.replace("\n", "<br>")) for p in paragraphs if p
-            )
-            return html
+    def markdown_filter(text):
+        if not text:
+            return ""
+        html = markdown.markdown(text, extensions=["extra", "codehilite"])
+        # Sanitize HTML to prevent XSS from LLM/PDF-derived content
+        return bleach.clean(
+            html,
+            tags=BLEACH_ALLOWED_TAGS,
+            attributes=BLEACH_ALLOWED_ATTRS,
+            strip=True,
+        )
 
-        env.filters["markdown"] = simple_markdown
+    env.filters["markdown"] = markdown_filter
 
     base_out = "site"
     ensure_dir(base_out)
@@ -801,7 +821,7 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
     try:
         from datetime import datetime
 
-        lastmod = datetime.utcnow().strftime("%Y-%m-%d")
+        lastmod = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         urls: List[str] = []
         # Static top-level pages that currently exist (only include files we actually generated)
         for rel_path in ("donation.html", "monitor.html"):

@@ -4,6 +4,8 @@ import argparse
 import glob
 import json
 import os
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -150,10 +152,10 @@ def run_cli() -> None:
             rec_arg = rec_paths[0]
 
         log("Select & fetch step…")
-        limit_arg = f" --limit {args.limit}" if args.limit and args.limit > 0 else ""
-        result = os.system(
-            f"python -m src.select_and_fetch --records {rec_arg}{limit_arg} --output {selected_path}"
-        )
+        cmd = [sys.executable, "-m", "src.select_and_fetch", "--records", rec_arg, "--output", selected_path]
+        if args.limit and args.limit > 0:
+            cmd.extend(["--limit", str(args.limit)])
+        result = subprocess.run(cmd, check=False).returncode
         if result != 0:
             summary["selection_status"] = "failed"
             b2_alerts_tool.add_message("selection command failed inside pipeline")
@@ -357,9 +359,9 @@ def run_cli() -> None:
     # Render + index + pdf (skip if cloud mode - will be done after all batches)
     if not args.cloud_mode:
         log("Render step…")
-        os.system("python -m src.render")
-        os.system("python -m src.search_index")
-        os.system("python -m src.make_pdf")
+        subprocess.run([sys.executable, "-m", "src.render"], check=False)
+        subprocess.run([sys.executable, "-m", "src.search_index"], check=False)
+        subprocess.run([sys.executable, "-m", "src.make_pdf"], check=False)
 
         # Send success notification to Discord
         alerts = DiscordAlerts()

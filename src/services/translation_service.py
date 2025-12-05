@@ -5,7 +5,7 @@ Translation service for ChinaXiv English translation.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -315,7 +315,7 @@ class TranslationService:
     ) -> None:
         """Persist malformed OpenRouter payload details for debugging."""
 
-        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         preview = response.text[:MAX_RESPONSE_PREVIEW] if response.text else ""
         metadata = {
             "model": model,
