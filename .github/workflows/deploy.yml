@@ -16,6 +16,15 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # Cache translations to avoid full re-download on every deploy
+      - name: Cache translations
+        uses: actions/cache@v4
+        with:
+          path: data/translated
+          key: translations-${{ github.run_id }}
+          restore-keys: |
+            translations-
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -55,7 +64,7 @@ jobs:
           fi
           pip install awscli >/dev/null 2>&1
           DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
-          rm -rf data/translated && mkdir -p data/translated
+          mkdir -p data/translated
           echo "⬇️  Syncing ${DEST}validated/translations → data/translated ..."
           aws s3 sync "${DEST}validated/translations" data/translated --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors || true
           COUNT=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
