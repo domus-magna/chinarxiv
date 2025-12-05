@@ -37,7 +37,9 @@ jobs:
 
           # Extract paper count: 论文总量 (total papers) followed by <b>NUMBER</b>
           # Use tr to collapse whitespace so grep can match across line boundaries
-          COUNT=$(echo "$HTML" | tr '\n\r' '  ' | grep -oP '论文总量.*?<b>\K\d+(?=</b>)' | head -1)
+          # Match digits with possible comma separators (e.g., 45,123), then strip commas
+          RAW_COUNT=$(echo "$HTML" | tr '\n\r' '  ' | grep -oP '论文总量.*?<b>\K[\d,]+(?=</b>)' | head -1)
+          COUNT=$(echo "$RAW_COUNT" | tr -d ',')
 
           if [ -n "$COUNT" ]; then
             # Sanity check: expect 5-6 digit count (10000-999999)

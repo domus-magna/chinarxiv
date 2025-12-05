@@ -32,9 +32,14 @@ COST_PER_PAPER = COST_TEXT_PER_PAPER + COST_FIGURES_PER_PAPER  # ~$0.51 total
 
 def get_b2_stats() -> Dict[str, Any]:
     """
-    Fetch translation stats from B2 for the sponsors page.
-    Returns dict with text_count, figures_count, etc.
-    Falls back to defaults if B2 unavailable.
+    Get translation stats for the sponsors page.
+
+    Uses locally-hydrated data (data/translated/ and data/figure_manifest.json)
+    instead of querying B2 directly. This avoids:
+    - Duplicate B2 calls (data is already downloaded during hydration)
+    - Render failures when B2 credentials are missing (e.g., local dev)
+
+    Falls back to B2 query only if local data is unavailable.
     """
     stats = {
         "text_translated": 0,
@@ -46,6 +51,34 @@ def get_b2_stats() -> Dict[str, Any]:
         "last_updated": None,
     }
 
+    # Try local data first (preferred - already hydrated from B2)
+    translated_dir = Path("data/translated")
+    manifest_path = Path("data/figure_manifest.json")
+
+    text_count = 0
+    figures_count = 0
+
+    # Count text translations from local hydrated data
+    if translated_dir.exists():
+        text_count = len(list(translated_dir.glob("*.json")))
+
+    # Count figure translations from manifest
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+            figures_count = len(manifest.get("papers", {}))
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    # If we have local data, use it
+    if text_count > 0 or figures_count > 0:
+        stats["text_translated"] = text_count
+        stats["figures_translated"] = figures_count
+        stats["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        log(f"B2 stats: {text_count} text, {figures_count} figures")
+        return stats
+
+    # Fallback: query B2 directly (for non-CI environments without hydrated data)
     try:
         import boto3
         from dotenv import load_dotenv
