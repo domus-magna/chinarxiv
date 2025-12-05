@@ -8,7 +8,6 @@ mocked B2 SDK to avoid actual cloud operations.
 import json
 import os
 import pytest
-from pathlib import Path
 from unittest.mock import patch, MagicMock, PropertyMock
 
 from src.figure_pipeline.storage import FigureStorage

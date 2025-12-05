@@ -5,8 +5,6 @@ These tests verify that the bleach-based sanitization in render.py
 correctly prevents XSS attacks from LLM-generated or PDF-derived content.
 """
 
-import pytest
-
 # Import bleach and markdown with same config as render.py
 import bleach
 import markdown
