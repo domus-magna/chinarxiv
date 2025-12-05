@@ -5,7 +5,7 @@ Sends structured alerts to Discord webhook for monitoring and notifications.
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 # Import requests
@@ -78,7 +78,7 @@ class DiscordAlerts:
             "title": f"{emoji} {title}",
             "description": description,
             "color": color,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "footer": {"text": footer},
         }
 
@@ -99,7 +99,7 @@ class DiscordAlerts:
                 {"name": "Error", "value": error, "inline": False},
                 {
                     "name": "Time",
-                    "value": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    "value": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                     "inline": True,
                 },
             ],
@@ -120,7 +120,7 @@ class DiscordAlerts:
                 {"name": "Cost", "value": f"${cost:.4f}", "inline": True},
                 {
                     "name": "Time",
-                    "value": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    "value": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                     "inline": True,
                 },
             ],
@@ -158,7 +158,7 @@ class DiscordAlerts:
                 },
                 {
                     "name": "Time",
-                    "value": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    "value": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                     "inline": True,
                 },
             ],
@@ -260,7 +260,7 @@ class DiscordAlerts:
                 },
                 {
                     "name": "Time",
-                    "value": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    "value": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                     "inline": True,
                 },
             ],

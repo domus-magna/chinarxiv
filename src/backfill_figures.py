@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .utils import ensure_dir, log, read_json, write_json
@@ -167,7 +167,7 @@ def run_backfill(
 
     # Generate manifest
     manifest = {
-        'generated': datetime.utcnow().isoformat() + 'Z',
+        'generated': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         'total_papers_scanned': len(files),
         'total_papers_with_figures': len(papers_with_figures),
         'total_figures': total_figures,

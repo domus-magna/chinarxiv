@@ -387,7 +387,7 @@ class OptimizedChinaXivScraper:
             "year_month": year_month,
             "last_id_num": last_id_num,
             "papers": papers,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         checkpoint_path = str(checkpoint_dir / f"chinaxiv_opt_{year_month}.json")

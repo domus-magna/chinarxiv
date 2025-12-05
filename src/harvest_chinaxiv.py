@@ -11,7 +11,7 @@ import argparse
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -293,7 +293,7 @@ class ChinaXivScraper:
             "year_month": year_month,
             "last_id_num": last_id_num,
             "papers": papers,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         checkpoint_path = str(checkpoint_dir / f"chinaxiv_{year_month}.json")

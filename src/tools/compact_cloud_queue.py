@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
@@ -40,7 +40,7 @@ def _extend_archive(path: Path, jobs: List[dict]) -> None:
     if isinstance(existing, dict) and isinstance(existing.get("jobs"), list):
         archive_payload["jobs"] = existing["jobs"]
     archive_payload["jobs"].extend(jobs)
-    archive_payload["last_updated"] = datetime.utcnow().isoformat()
+    archive_payload["last_updated"] = datetime.now(timezone.utc).isoformat()
     _write_json(path, archive_payload)
 
 
@@ -112,7 +112,7 @@ def compact_queue(
 
     payload["jobs"] = retained_jobs
     metadata = payload.get("metadata") or {}
-    metadata["last_compacted"] = datetime.utcnow().isoformat()
+    metadata["last_compacted"] = datetime.now(timezone.utc).isoformat()
     payload["metadata"] = metadata
 
     _write_json(queue_path, payload)

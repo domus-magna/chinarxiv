@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .models import PipelineConfig
@@ -294,7 +294,7 @@ class FigureStorage:
             manifest = {"updated_at": "", "papers": {}}
 
         # Update timestamp
-        manifest["updated_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        manifest["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Add/update paper entry
         manifest["papers"][paper_id] = {
