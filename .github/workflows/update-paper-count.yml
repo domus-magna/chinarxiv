@@ -40,7 +40,13 @@ jobs:
           COUNT=$(echo "$HTML" | tr '\n\r' '  ' | grep -oP '论文总量.*?<b>\K\d+(?=</b>)' | head -1)
 
           if [ -n "$COUNT" ]; then
-            echo "Found paper count: $COUNT"
+            # Sanity check: expect 5-6 digit count (10000-999999)
+            if [ "$COUNT" -lt 10000 ] || [ "$COUNT" -gt 999999 ]; then
+              echo "❌ Paper count $COUNT outside expected range (10000-999999)"
+              echo "This may be from an error page or parsing issue"
+              exit 1
+            fi
+            echo "✓ Found paper count: $COUNT"
             echo "count=$COUNT" >> $GITHUB_OUTPUT
           else
             echo "❌ Could not extract paper count from ChinaXiv homepage"

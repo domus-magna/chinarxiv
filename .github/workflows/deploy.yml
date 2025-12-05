@@ -66,7 +66,7 @@ jobs:
           DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
           mkdir -p data/translated
           echo "⬇️  Syncing ${DEST}validated/translations → data/translated ..."
-          aws s3 sync "${DEST}validated/translations" data/translated --delete --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors || true
+          aws s3 sync "${DEST}validated/translations" data/translated --delete --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors
           COUNT=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
           echo "Found ${COUNT} validated translation files"
           if [ "${COUNT}" = "0" ]; then
