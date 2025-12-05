@@ -6,12 +6,8 @@ processing coordination. All file operations use tmp_path fixtures.
 """
 
 import json
-import os
-import signal
-import pytest
 from datetime import datetime, timedelta
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.job_queue import JobQueue
 

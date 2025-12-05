@@ -7,16 +7,13 @@ All external dependencies are mocked for deterministic testing.
 """
 
 import json
-import os
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 
 from src.pipeline import (
     find_latest_records_json,
     _write_summary,
     run_cli,
-    SUMMARY_PATH,
 )
 
 

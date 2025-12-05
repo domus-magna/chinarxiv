@@ -5,7 +5,6 @@ These tests verify webhook payload structure and error handling
 without actually sending webhooks to Discord.
 """
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 from src.discord_alerts import DiscordAlerts, test_discord_webhook

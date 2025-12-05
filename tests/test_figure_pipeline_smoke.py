@@ -8,7 +8,6 @@ requiring actual PDF files, Gemini API, or B2 storage.
 
 import os
 import pytest
-from pathlib import Path
 from unittest.mock import patch, MagicMock, PropertyMock
 
 from src.figure_pipeline import (
