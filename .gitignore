@@ -19,6 +19,7 @@ dist/
 # Project outputs
 data/
 site/
+reports/
 
 smoke_local.log
 
