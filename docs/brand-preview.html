@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ChinaRxiv Brand Assets Preview</title>
-  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="icon" type="image/png" href="../assets/favicon.png">
   <style>
     :root {
       --primary-color: #b31b1b;
@@ -107,61 +107,28 @@
       margin-top: 1rem;
     }
     .dark-bg .brand { color: #fff; }
-
-    /* Light bg preview */
-    .light-bg {
-      background: #fff;
-      padding: 2rem;
-      border-radius: 8px;
-      margin-top: 1rem;
-      border: 1px solid #ddd;
-    }
   </style>
 </head>
 <body>
   <!-- Live Header Preview -->
   <header class="site-header">
     <a href="#" class="brand">
-      <img src="logo-white-bg.png" alt="ChinaRxiv" class="brand-logo">
+      <img src="../assets/logo-white-bg.png" alt="ChinaRxiv" class="brand-logo">
       <span>ChinaRxiv</span>
     </a>
   </header>
 
   <div class="container">
     <h1>ChinaRxiv Brand Assets</h1>
-    <p>Preview of all brand assets for review before merge.</p>
+    <p>Dev-only preview of brand assets. Not deployed to production.</p>
 
     <h2>Logo Assets</h2>
     <div class="asset-grid">
       <div class="asset-card">
-        <h3>logo.svg</h3>
-        <div class="meta">Vector (137KB) - Source</div>
-        <div class="asset-preview">
-          <img src="logo.svg" alt="SVG Logo">
-        </div>
-      </div>
-
-      <div class="asset-card">
         <h3>logo-white-bg.png</h3>
-        <div class="meta">PNG (26KB) - For colored backgrounds</div>
+        <div class="meta">PNG (27KB) - Site header on colored backgrounds</div>
         <div class="asset-preview" style="background: var(--primary-color);">
-          <img src="logo-white-bg.png" alt="White BG PNG">
-        </div>
-      </div>
-
-      <div class="asset-card">
-        <h3>logo-transparent.png</h3>
-        <div class="meta">PNG (296KB) - For PDF headers</div>
-        <div class="asset-preview">
-          <img src="logo-transparent.png" alt="Transparent PNG">
-        </div>
-      </div>
-
-      <div class="asset-card">
-        <h3>logo.png</h3>
-        <div class="meta">PNG - Original source</div>
-        <div class="asset-preview">
-          <img src="logo.png" alt="Original PNG">
+          <img src="../assets/logo-white-bg.png" alt="White BG PNG">
         </div>
       </div>
 
@@ -169,7 +136,7 @@
         <h3>logo-pdf.png</h3>
         <div class="meta">PNG (92KB) - Optimized for PDF headers</div>
         <div class="asset-preview">
-          <img src="logo-pdf.png" alt="PDF Logo">
+          <img src="../assets/logo-pdf.png" alt="PDF Logo">
         </div>
       </div>
     </div>
@@ -178,17 +145,17 @@
     <div class="asset-grid">
       <div class="asset-card">
         <h3>favicon.png</h3>
-        <div class="meta">PNG - Browser favicon</div>
+        <div class="meta">PNG (2KB) - Browser favicon</div>
         <div class="asset-preview">
-          <img src="favicon.png" alt="Favicon PNG" style="width: 64px; height: 64px; image-rendering: pixelated;">
+          <img src="../assets/favicon.png" alt="Favicon PNG" style="width: 64px; height: 64px; image-rendering: pixelated;">
         </div>
         <div class="size-row">
           <div class="size-item">
-            <img src="favicon.png" style="width: 32px; height: 32px; image-rendering: pixelated;">
+            <img src="../assets/favicon.png" style="width: 32px; height: 32px; image-rendering: pixelated;">
             <span>32px</span>
           </div>
           <div class="size-item">
-            <img src="favicon.ico" style="width: 16px; height: 16px; image-rendering: pixelated;">
+            <img src="../assets/favicon.ico" style="width: 16px; height: 16px; image-rendering: pixelated;">
             <span>16px (ICO)</span>
           </div>
         </div>
@@ -197,52 +164,20 @@
 
     <h2>Header Previews</h2>
 
-    <h3>On Primary Red (#b31b1b) - uses logo-white-bg.png</h3>
+    <h3>On Primary Red (#b31b1b)</h3>
     <div class="dark-bg" style="background: var(--primary-color);">
       <a href="#" class="brand">
-        <img src="logo-white-bg.png" alt="ChinaRxiv" class="brand-logo">
+        <img src="../assets/logo-white-bg.png" alt="ChinaRxiv" class="brand-logo">
         <span>ChinaRxiv</span>
       </a>
     </div>
 
-    <h3>On Dark Background - uses logo-white-bg.png</h3>
+    <h3>On Dark Background</h3>
     <div class="dark-bg">
       <a href="#" class="brand">
-        <img src="logo-white-bg.png" alt="ChinaRxiv" class="brand-logo">
+        <img src="../assets/logo-white-bg.png" alt="ChinaRxiv" class="brand-logo">
         <span>ChinaRxiv</span>
       </a>
-    </div>
-
-    <h3>On Light Background - uses logo.svg</h3>
-    <div class="light-bg">
-      <a href="#" class="brand" style="color: #333;">
-        <img src="logo.svg" alt="ChinaRxiv" class="brand-logo">
-        <span>ChinaRxiv</span>
-      </a>
-    </div>
-
-    <h2>SVG at Different Sizes</h2>
-    <div class="size-row" style="background: white; padding: 1rem; border-radius: 8px;">
-      <div class="size-item">
-        <img src="logo.svg" style="width: 128px; height: 128px;">
-        <span>128px</span>
-      </div>
-      <div class="size-item">
-        <img src="logo.svg" style="width: 64px; height: 64px;">
-        <span>64px</span>
-      </div>
-      <div class="size-item">
-        <img src="logo.svg" style="width: 36px; height: 36px;">
-        <span>36px (header)</span>
-      </div>
-      <div class="size-item">
-        <img src="logo.svg" style="width: 24px; height: 24px;">
-        <span>24px</span>
-      </div>
-      <div class="size-item">
-        <img src="logo.svg" style="width: 16px; height: 16px;">
-        <span>16px</span>
-      </div>
     </div>
   </div>
 </body>
