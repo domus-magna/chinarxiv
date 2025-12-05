@@ -99,6 +99,18 @@ a:hover {
   color: #fff;
   text-decoration: none;
   letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.brand-logo {
+  height: 36px;
+  width: auto;
+}
+
+.brand-text {
+  /* Text alongside logo */
 }
 
 .brand:hover {

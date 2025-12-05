@@ -114,11 +114,12 @@ def build_pdf_markdown(item: Dict[str, Any], body_md: str) -> str:
     display_url = f"chinarxiv.org/items/{paper_id}"
 
     # YAML front matter for pandoc with LaTeX header-includes
-    # hyperref provides clickable links in PDF
+    # hyperref provides clickable links in PDF, graphicx for logo
     yaml_header = f"""---
 header-includes:
   - \\usepackage{{fancyhdr}}
   - \\usepackage{{hyperref}}
+  - \\usepackage{{graphicx}}
   - \\pagestyle{{fancy}}
   - \\fancyhead{{}}
   - \\fancyfoot{{}}
@@ -131,7 +132,7 @@ header-includes:
 \\begin{{center}}
 \\rule{{\\textwidth}}{{0.5pt}}
 
-{{\\large\\textbf{{CHINARXIV.ORG}}}}
+\\includegraphics[height=1.2cm]{{assets/logo-transparent.png}}
 
 {{\\small AI translation · View original \\& related papers at \\href{{{chinarxiv_url}}}{{{display_url}}}}}
 
