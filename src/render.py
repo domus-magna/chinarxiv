@@ -929,7 +929,7 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         lastmod = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         urls: List[str] = []
         # Static top-level pages that currently exist (only include files we actually generated)
-        for rel_path in ("donation.html", "monitor.html"):
+        for rel_path in ("donation.html", "monitor.html", "sponsors.html"):
             if os.path.exists(os.path.join(base_out, rel_path)):
                 urls.append(f"{site_base}/{rel_path}")
         # Item pages and /abs aliases
