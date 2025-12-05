@@ -523,6 +523,10 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
     )
 
     # Add markdown filter with HTML sanitization to prevent XSS
+    # bleach and markdown are REQUIRED - no fallback to avoid XSS vulnerabilities
+    import markdown
+    import bleach
+
     # Allowed tags for safe academic content rendering
     BLEACH_ALLOWED_TAGS = [
         "p", "h1", "h2", "h3", "h4", "h5", "h6",
@@ -532,40 +536,30 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         "table", "thead", "tbody", "tr", "th", "td",
         "img", "sup", "sub", "span", "div",
     ]
+    # Allowed attributes - includes class for code highlighting (codehilite extension)
     BLEACH_ALLOWED_ATTRS = {
         "a": ["href", "title"],
         "img": ["src", "alt", "title"],
-        "th": ["colspan", "rowspan"],
-        "td": ["colspan", "rowspan"],
+        "th": ["colspan", "rowspan", "class"],
+        "td": ["colspan", "rowspan", "class"],
+        "div": ["class"],
+        "pre": ["class"],
+        "code": ["class"],
+        "span": ["class"],
+        "table": ["class"],
     }
 
-    try:
-        import markdown
-        import bleach
+    def markdown_filter(text):
+        html = markdown.markdown(text, extensions=["extra", "codehilite"])
+        # Sanitize HTML to prevent XSS from LLM/PDF-derived content
+        return bleach.clean(
+            html,
+            tags=BLEACH_ALLOWED_TAGS,
+            attributes=BLEACH_ALLOWED_ATTRS,
+            strip=True,
+        )
 
-        def markdown_filter(text):
-            html = markdown.markdown(text, extensions=["extra", "codehilite"])
-            # Sanitize HTML to prevent XSS from LLM/PDF-derived content
-            return bleach.clean(
-                html,
-                tags=BLEACH_ALLOWED_TAGS,
-                attributes=BLEACH_ALLOWED_ATTRS,
-                strip=True,
-            )
-
-        env.filters["markdown"] = markdown_filter
-    except ImportError:
-        # Fallback: wrap paragraphs and line breaks for valid HTML
-        def simple_markdown(text: str) -> str:
-            if not text:
-                return ""
-            paragraphs = [p.strip() for p in str(text).split("\n\n")]
-            html = "".join(
-                "<p>{}</p>".format(p.replace("\n", "<br>")) for p in paragraphs if p
-            )
-            return html
-
-        env.filters["markdown"] = simple_markdown
+    env.filters["markdown"] = markdown_filter
 
     base_out = "site"
     ensure_dir(base_out)

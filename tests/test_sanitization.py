@@ -11,7 +11,7 @@ import pytest
 import bleach
 import markdown
 
-# Exact configuration from src/render.py lines 527-540
+# Exact configuration from src/render.py
 BLEACH_ALLOWED_TAGS = [
     "p", "h1", "h2", "h3", "h4", "h5", "h6",
     "ul", "ol", "li", "dl", "dt", "dd",
@@ -20,11 +20,17 @@ BLEACH_ALLOWED_TAGS = [
     "table", "thead", "tbody", "tr", "th", "td",
     "img", "sup", "sub", "span", "div",
 ]
+# Allowed attributes - includes class for code highlighting (codehilite extension)
 BLEACH_ALLOWED_ATTRS = {
     "a": ["href", "title"],
     "img": ["src", "alt", "title"],
-    "th": ["colspan", "rowspan"],
-    "td": ["colspan", "rowspan"],
+    "th": ["colspan", "rowspan", "class"],
+    "td": ["colspan", "rowspan", "class"],
+    "div": ["class"],
+    "pre": ["class"],
+    "code": ["class"],
+    "span": ["class"],
+    "table": ["class"],
 }
 
 
@@ -254,11 +260,20 @@ class TestDisallowedAttributesStripped:
         # div is allowed, just style attr removed
         assert "<div>" in result
 
-    def test_class_attr_stripped(self):
-        """class attributes are stripped (not in whitelist)."""
+    def test_class_attr_preserved_on_allowed_elements(self):
+        """class attributes are preserved on elements in whitelist."""
+        # div with class should be preserved (needed for codehilite)
         text = '<div class="highlight">text</div>'
         result = sanitize_markdown(text)
-        assert 'class="highlight"' not in result
+        assert 'class="highlight"' in result
+
+    def test_class_attr_stripped_on_non_allowed_elements(self):
+        """class attributes are still stripped on elements not in whitelist."""
+        # a tag doesn't allow class attribute
+        text = '<a href="#" class="btn">link</a>'
+        result = sanitize_markdown(text)
+        assert 'class="btn"' not in result
+        assert '<a' in result  # link itself preserved
 
     def test_id_attr_stripped(self):
         """id attributes are stripped."""
@@ -354,49 +369,42 @@ See [Figure 1](#fig1) for details.
         assert result_lower.count("<script>") == 0 or "<code>" in result
 
 
-class TestFallbackSanitization:
-    """Test the simple_markdown fallback (when bleach unavailable)."""
+class TestCodeHighlightingClasses:
+    """Test that code highlighting classes are preserved for codehilite extension."""
 
-    def test_simple_markdown_basic(self):
-        """Test simple_markdown fallback function."""
-        # This replicates the fallback from render.py lines 559-566
-        def simple_markdown(text: str) -> str:
-            if not text:
-                return ""
-            paragraphs = [p.strip() for p in str(text).split("\n\n")]
-            html = "".join(
-                "<p>{}</p>".format(p.replace("\n", "<br>")) for p in paragraphs if p
-            )
-            return html
+    def test_codehilite_div_class_preserved(self):
+        """codehilite div class is preserved."""
+        text = '<div class="codehilite"><pre>code</pre></div>'
+        result = sanitize_markdown(text)
+        assert 'class="codehilite"' in result
 
-        result = simple_markdown("Hello\n\nWorld")
-        assert "<p>Hello</p>" in result
-        assert "<p>World</p>" in result
+    def test_pre_class_preserved(self):
+        """class on pre tags is preserved."""
+        text = '<pre class="language-python">code</pre>'
+        result = sanitize_markdown(text)
+        assert 'class="language-python"' in result
 
-    def test_simple_markdown_empty(self):
-        """Fallback handles empty input."""
-        def simple_markdown(text: str) -> str:
-            if not text:
-                return ""
-            paragraphs = [p.strip() for p in str(text).split("\n\n")]
-            html = "".join(
-                "<p>{}</p>".format(p.replace("\n", "<br>")) for p in paragraphs if p
-            )
-            return html
+    def test_code_class_preserved(self):
+        """class on code tags is preserved."""
+        text = '<code class="python">print</code>'
+        result = sanitize_markdown(text)
+        assert 'class="python"' in result
 
-        assert simple_markdown("") == ""
-        assert simple_markdown(None) == ""
+    def test_span_class_preserved(self):
+        """class on span tags is preserved (for syntax highlighting tokens)."""
+        text = '<span class="keyword">def</span>'
+        result = sanitize_markdown(text)
+        assert 'class="keyword"' in result
 
-    def test_simple_markdown_preserves_linebreaks(self):
-        """Fallback converts single newlines to br."""
-        def simple_markdown(text: str) -> str:
-            if not text:
-                return ""
-            paragraphs = [p.strip() for p in str(text).split("\n\n")]
-            html = "".join(
-                "<p>{}</p>".format(p.replace("\n", "<br>")) for p in paragraphs if p
-            )
-            return html
+    def test_table_class_preserved(self):
+        """class on table tags is preserved."""
+        text = '<table class="data-table"><tr><td>cell</td></tr></table>'
+        result = sanitize_markdown(text)
+        assert 'class="data-table"' in result
 
-        result = simple_markdown("Line1\nLine2")
-        assert "<br>" in result
+    def test_th_td_class_preserved(self):
+        """class on th/td tags is preserved."""
+        text = '<table><tr><th class="header">H</th><td class="cell">C</td></tr></table>'
+        result = sanitize_markdown(text)
+        assert 'class="header"' in result
+        assert 'class="cell"' in result
