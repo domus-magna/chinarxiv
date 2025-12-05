@@ -8,6 +8,8 @@ on:
 jobs:
   update-count:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -34,7 +36,7 @@ jobs:
           fi
 
           # Extract paper count: 论文总量 (total papers) followed by <b>NUMBER</b>
-          COUNT=$(echo "$HTML" | grep -oP '论文总量[\s\S]*?<b>\K\d{4,6}(?=</b>)' | head -1)
+          COUNT=$(echo "$HTML" | grep -oP '论文总量[\s\S]*?<b>\K\d+(?=</b>)' | head -1)
 
           if [ -n "$COUNT" ]; then
             echo "Found paper count: $COUNT"

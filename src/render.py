@@ -23,7 +23,8 @@ from .utils import ensure_dir, log, read_json, write_text, write_json
 MAX_FIGURES_PER_PDF = 15  # Cap to prevent slow/flaky PDF builds
 
 # Constants for sponsors page
-CHINAXIV_TOTAL_PAPERS = 45000  # Approx total from chinaxiv.org homepage
+# Auto-updated monthly by .github/workflows/update-paper-count.yml
+CHINAXIV_TOTAL_PAPERS = 45000
 COST_TEXT_PER_PAPER = 0.08  # USD for text translation (based on historical data)
 COST_FIGURES_PER_PAPER = 0.43  # USD for figures (~3.6 figs × $0.12 with retries)
 COST_PER_PAPER = COST_TEXT_PER_PAPER + COST_FIGURES_PER_PAPER  # ~$0.51 total
@@ -66,20 +67,30 @@ def get_b2_stats() -> Dict[str, Any]:
             aws_secret_access_key=app_key,
         )
 
-        # Count text translations
+        # Build prefix-aware paths
+        prefix = os.environ.get("BACKBLAZE_PREFIX", "").strip("/")
+        text_prefix = f"{prefix}/validated/translations/" if prefix else "validated/translations/"
+        figures_prefix = f"{prefix}/figures/" if prefix else "figures/"
+
+        # Count text translations (separate paginator)
         text_count = 0
-        paginator = s3.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=bucket, Prefix="validated/translations/"):
+        text_paginator = s3.get_paginator("list_objects_v2")
+        for page in text_paginator.paginate(Bucket=bucket, Prefix=text_prefix):
             text_count += len(page.get("Contents", []))
         stats["text_translated"] = text_count
 
-        # Count papers with translated figures
+        # Count papers with translated figures (separate paginator)
         paper_ids = set()
-        for page in paginator.paginate(Bucket=bucket, Prefix="figures/"):
+        fig_paginator = s3.get_paginator("list_objects_v2")
+        for page in fig_paginator.paginate(Bucket=bucket, Prefix=figures_prefix):
             for obj in page.get("Contents", []):
                 parts = obj["Key"].split("/")
-                if len(parts) >= 3 and parts[2] == "translated":
-                    paper_ids.add(parts[1])
+                # Find "translated" folder in path
+                if "translated" in parts:
+                    # Paper ID is the segment before "translated"
+                    idx = parts.index("translated")
+                    if idx > 0:
+                        paper_ids.add(parts[idx - 1])
         stats["figures_translated"] = len(paper_ids)
 
         stats["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
