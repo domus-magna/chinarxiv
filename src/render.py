@@ -125,7 +125,7 @@ header-includes:
   - \\usepackage{{hyperref}}
   - \\usepackage{{graphicx}}
   - \\pagestyle{{fancy}}
-  - \\fancyhead{{}}
+  - \\fancyhead[R]{{\\includegraphics[height=0.8cm]{{{logo_path_str}}}}}
   - \\fancyfoot{{}}
   - \\fancyfoot[L]{{\\small \\href{{{chinarxiv_url}}}{{{display_url}}}}}
   - \\fancyfoot[R]{{\\small Machine Translation}}
