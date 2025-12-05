@@ -113,19 +113,17 @@ def build_pdf_markdown(item: Dict[str, Any], body_md: str) -> str:
     chinarxiv_url = f"https://chinarxiv.org/items/{paper_id}"
     display_url = f"chinarxiv.org/items/{paper_id}"
 
-    # Compute absolute path to wordmark (works regardless of cwd)
-    wordmark_path = Path(__file__).parent.parent / "assets" / "logo-wordmark.png"
-    wordmark_path_str = str(wordmark_path.resolve())
-
     # YAML front matter for pandoc with LaTeX header-includes
     # hyperref provides clickable links in PDF, graphicx for logo
+    # Logo uses relative path - pandoc resolves via --resource-path in make_pdf.py
     yaml_header = f"""---
 header-includes:
   - \\usepackage{{fancyhdr}}
   - \\usepackage{{hyperref}}
   - \\usepackage{{graphicx}}
   - \\pagestyle{{fancy}}
-  - \\fancyhead[R]{{\\includegraphics[height=0.6cm]{{{wordmark_path_str}}}}}
+  - \\fancyhead{{}}
+  - \\fancyhead[R]{{\\includegraphics[height=0.6cm]{{assets/logo-wordmark.png}}}}
   - \\fancyfoot{{}}
   - \\fancyfoot[L]{{\\small \\href{{{chinarxiv_url}}}{{{display_url}}}}}
   - \\fancyfoot[R]{{\\small Machine Translation}}

@@ -5,6 +5,7 @@ import glob
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 from .utils import log
 
@@ -22,7 +23,11 @@ def md_to_pdf(md_path: str, pdf_path: str, pdf_engine: str | None = None) -> boo
     try:
         # Default to xelatex for Unicode support (Chinese chars in author names, math symbols)
         engine = pdf_engine or "xelatex"
-        cmd = ["pandoc", md_path, "-o", pdf_path, "--pdf-engine", engine, "--resource-path=."]
+        # Resource path includes: markdown's directory, assets/, and cwd
+        # This allows pandoc to resolve relative paths like "assets/logo-wordmark.png"
+        md_parent = str(Path(md_path).parent)
+        resource_path = f"{md_parent}:assets:."
+        cmd = ["pandoc", md_path, "-o", pdf_path, "--pdf-engine", engine, f"--resource-path={resource_path}"]
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         return True
     except subprocess.CalledProcessError as e:
