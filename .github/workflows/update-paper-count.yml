@@ -1,0 +1,82 @@
+name: Update ChinaXiv Paper Count
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'  # 1st of each month at midnight UTC
+  workflow_dispatch:  # Manual trigger for testing
+
+jobs:
+  update-count:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch paper count from ChinaXiv via BrightData
+        id: fetch
+        env:
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
+        run: |
+          # Use BrightData Web Unlocker (POST with JSON) to fetch ChinaXiv homepage
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer $BRIGHTDATA_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"url\": \"https://www.chinaxiv.org/\", \"zone\": \"$BRIGHTDATA_ZONE\", \"method\": \"GET\", \"country\": \"cn\", \"format\": \"json\"}" \
+            "https://api.brightdata.com/request")
+
+          # Extract HTML body from JSON response
+          HTML=$(echo "$RESPONSE" | jq -r '.body // empty')
+
+          if [ -z "$HTML" ]; then
+            echo "❌ Failed to get HTML body from BrightData response"
+            echo "Response: $RESPONSE"
+            exit 1
+          fi
+
+          # Extract paper count: 论文总量 (total papers) followed by <b>NUMBER</b>
+          # Use tr to collapse whitespace so grep can match across line boundaries
+          COUNT=$(echo "$HTML" | tr '\n\r' '  ' | grep -oP '论文总量.*?<b>\K\d+(?=</b>)' | head -1)
+
+          if [ -n "$COUNT" ]; then
+            # Sanity check: expect 5-6 digit count (10000-999999)
+            if [ "$COUNT" -lt 10000 ] || [ "$COUNT" -gt 999999 ]; then
+              echo "❌ Paper count $COUNT outside expected range (10000-999999)"
+              echo "This may be from an error page or parsing issue"
+              exit 1
+            fi
+            echo "✓ Found paper count: $COUNT"
+            echo "count=$COUNT" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Could not extract paper count from ChinaXiv homepage"
+            echo "HTML preview (first 500 chars):"
+            echo "$HTML" | head -c 500
+            exit 1
+          fi
+
+      - name: Update constant if changed
+        if: steps.fetch.outputs.count != ''
+        run: |
+          CURRENT=$(grep 'CHINAXIV_TOTAL_PAPERS' src/render.py | grep -oP '\d+')
+          NEW=${{ steps.fetch.outputs.count }}
+          echo "Current: $CURRENT, New: $NEW"
+          if [ "$CURRENT" != "$NEW" ]; then
+            sed -i "s/CHINAXIV_TOTAL_PAPERS = $CURRENT/CHINAXIV_TOTAL_PAPERS = $NEW/" src/render.py
+            echo "Updated paper count: $CURRENT → $NEW"
+          else
+            echo "No change needed (still $CURRENT)"
+          fi
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git commit -am "chore: update ChinaXiv paper count
+
+            🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+            git push
+          else
+            echo "No changes to commit"
+          fi

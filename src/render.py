@@ -22,6 +22,85 @@ from .utils import ensure_dir, log, read_json, write_text, write_json
 
 MAX_FIGURES_PER_PDF = 15  # Cap to prevent slow/flaky PDF builds
 
+# Constants for sponsors page
+# Auto-updated monthly by .github/workflows/update-paper-count.yml
+CHINAXIV_TOTAL_PAPERS = 45000
+COST_TEXT_PER_PAPER = 0.08  # USD for text translation (based on historical data)
+COST_FIGURES_PER_PAPER = 0.43  # USD for figures (~3.6 figs × $0.12 with retries)
+COST_PER_PAPER = COST_TEXT_PER_PAPER + COST_FIGURES_PER_PAPER  # ~$0.51 total
+
+
+def get_b2_stats() -> Dict[str, Any]:
+    """
+    Fetch translation stats from B2 for the sponsors page.
+    Returns dict with text_count, figures_count, etc.
+    Falls back to defaults if B2 unavailable.
+    """
+    stats = {
+        "text_translated": 0,
+        "figures_translated": 0,
+        "total_papers": CHINAXIV_TOTAL_PAPERS,
+        "cost_per_paper": COST_PER_PAPER,
+        "cost_text": COST_TEXT_PER_PAPER,
+        "cost_figures": COST_FIGURES_PER_PAPER,
+        "last_updated": None,
+    }
+
+    try:
+        import boto3
+        from dotenv import load_dotenv
+        load_dotenv()
+
+        endpoint = os.environ.get("BACKBLAZE_S3_ENDPOINT")
+        key_id = os.environ.get("BACKBLAZE_KEY_ID")
+        app_key = os.environ.get("BACKBLAZE_APPLICATION_KEY")
+        bucket = os.environ.get("BACKBLAZE_BUCKET", "chinaxiv")
+
+        if not all([endpoint, key_id, app_key]):
+            log("B2 credentials not available, using default stats")
+            return stats
+
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=key_id,
+            aws_secret_access_key=app_key,
+        )
+
+        # Build prefix-aware paths
+        prefix = os.environ.get("BACKBLAZE_PREFIX", "").strip("/")
+        text_prefix = f"{prefix}/validated/translations/" if prefix else "validated/translations/"
+        figures_prefix = f"{prefix}/figures/" if prefix else "figures/"
+
+        # Count text translations (separate paginator)
+        text_count = 0
+        text_paginator = s3.get_paginator("list_objects_v2")
+        for page in text_paginator.paginate(Bucket=bucket, Prefix=text_prefix):
+            text_count += len(page.get("Contents", []))
+        stats["text_translated"] = text_count
+
+        # Count papers with translated figures (separate paginator)
+        paper_ids = set()
+        fig_paginator = s3.get_paginator("list_objects_v2")
+        for page in fig_paginator.paginate(Bucket=bucket, Prefix=figures_prefix):
+            for obj in page.get("Contents", []):
+                parts = obj["Key"].split("/")
+                # Find "translated" folder in path
+                if "translated" in parts:
+                    # Paper ID is the segment before "translated"
+                    idx = parts.index("translated")
+                    if idx > 0:
+                        paper_ids.add(parts[idx - 1])
+        stats["figures_translated"] = len(paper_ids)
+
+        stats["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        log(f"B2 stats: {text_count} text, {len(paper_ids)} figures")
+
+    except Exception as e:
+        log(f"Failed to fetch B2 stats: {e}")
+
+    return stats
+
 
 def inject_figures_into_markdown(
     body_md: str,
@@ -660,6 +739,32 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         html_donations = tmpl_donations.render(root=".", build_version=build_version)
         write_text(os.path.join(base_out, "donation.html"), html_donations)
 
+    # Sponsors page
+    try:
+        tmpl_sponsors = env.get_template("sponsors.html")
+    except TemplateNotFound:
+        tmpl_sponsors = None
+    if tmpl_sponsors is not None:
+        # Fetch live stats from B2
+        sponsor_stats = get_b2_stats()
+        # Clamp to ≥0 in case B2 count exceeds static total
+        remaining = max(0, sponsor_stats["total_papers"] - sponsor_stats["text_translated"])
+        total_cost = max(0, int(remaining * sponsor_stats["cost_per_paper"]))
+        html_sponsors = tmpl_sponsors.render(
+            root=".",
+            build_version=build_version,
+            total_papers=sponsor_stats["total_papers"],
+            text_translated=sponsor_stats["text_translated"],
+            figures_translated=sponsor_stats["figures_translated"],
+            remaining=remaining,
+            total_cost=total_cost,
+            cost_per_paper=sponsor_stats["cost_per_paper"],
+            cost_text=sponsor_stats["cost_text"],
+            cost_figures=sponsor_stats["cost_figures"],
+            last_updated=sponsor_stats["last_updated"],
+        )
+        write_text(os.path.join(base_out, "sponsors.html"), html_sponsors)
+
     # Item pages
     tmpl_item = env.get_template("item.html")
     site_base = "https://chinarxiv.org"
@@ -825,7 +930,7 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         lastmod = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         urls: List[str] = []
         # Static top-level pages that currently exist (only include files we actually generated)
-        for rel_path in ("donation.html", "monitor.html"):
+        for rel_path in ("donation.html", "monitor.html", "sponsors.html"):
             if os.path.exists(os.path.join(base_out, rel_path)):
                 urls.append(f"{site_base}/{rel_path}")
         # Item pages and /abs aliases

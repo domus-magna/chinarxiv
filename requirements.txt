@@ -20,6 +20,7 @@ google-generativeai>=0.8.0
 moondream>=0.0.5
 imagehash>=4.3.0
 b2sdk>=2.0.0
+boto3>=1.34.0
 
 # Dev / Test
 pytest==8.3.3
