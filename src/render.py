@@ -132,7 +132,7 @@ header-includes:
 \\begin{{center}}
 \\rule{{\\textwidth}}{{0.5pt}}
 
-\\includegraphics[height=1.2cm]{{assets/logo-transparent.png}}
+\\includegraphics[height=1.2cm]{{assets/logo-pdf.png}}
 
 {{\\small AI translation · View original \\& related papers at \\href{{{chinarxiv_url}}}{{{display_url}}}}}
 

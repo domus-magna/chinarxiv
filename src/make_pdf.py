@@ -22,7 +22,7 @@ def md_to_pdf(md_path: str, pdf_path: str, pdf_engine: str | None = None) -> boo
     try:
         # Default to xelatex for Unicode support (Chinese chars in author names, math symbols)
         engine = pdf_engine or "xelatex"
-        cmd = ["pandoc", md_path, "-o", pdf_path, "--pdf-engine", engine]
+        cmd = ["pandoc", md_path, "-o", pdf_path, "--pdf-engine", engine, "--resource-path=."]
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         return True
     except subprocess.CalledProcessError as e:
