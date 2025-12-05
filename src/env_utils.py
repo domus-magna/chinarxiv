@@ -83,7 +83,7 @@ def resolve_env_mismatches(
             # Always prefer an explicitly-set shell value
             if mismatch["shell_set"] and not prefer_file:
                 resolved[key] = mismatch["shell"]
-                file_status = "(set)" if mismatch.get("file") else "(unset)"
+                file_status = "(set)" if mismatch["file_set"] else "(unset)"
                 log(
                     f"Resolved {key} mismatch: using shell value (ignoring .env file {file_status})"
                 )
@@ -92,7 +92,7 @@ def resolve_env_mismatches(
                 resolved[key] = mismatch["file"]
                 # Update shell environment to match only when preferring file
                 os.environ[key] = mismatch["file"]
-                shell_status = "(set)" if mismatch.get("shell") else "(unset)"
+                shell_status = "(set)" if mismatch["shell_set"] else "(unset)"
                 log(
                     f"Resolved {key} mismatch: using .env value (was: shell {shell_status})"
                 )
@@ -139,8 +139,8 @@ def ensure_env_consistency(
 
     log(f"Found {len(mismatches)} environment variable mismatches:")
     for key, mismatch in mismatches.items():
-        shell_status = "(set)" if mismatch["shell"] else "(unset)"
-        file_status = "(set)" if mismatch["file"] else "(unset)"
+        shell_status = "(set)" if mismatch["shell_set"] else "(unset)"
+        file_status = "(set)" if mismatch["file_set"] else "(unset)"
         log(f"  {key}: shell {shell_status}, file {file_status}")
 
     # Resolve by preferring selected source (shell by default)

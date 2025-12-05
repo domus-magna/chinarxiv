@@ -550,6 +550,8 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
     }
 
     def markdown_filter(text):
+        if not text:
+            return ""
         html = markdown.markdown(text, extensions=["extra", "codehilite"])
         # Sanitize HTML to prevent XSS from LLM/PDF-derived content
         return bleach.clean(

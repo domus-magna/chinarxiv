@@ -408,3 +408,101 @@ class TestCodeHighlightingClasses:
         result = sanitize_markdown(text)
         assert 'class="header"' in result
         assert 'class="cell"' in result
+
+
+class TestMarkdownFilterIntegration:
+    """Integration tests verifying the actual render.py filter matches test config."""
+
+    def test_config_matches_render_py(self):
+        """Verify test config matches src/render.py to prevent drift.
+
+        This test reads the actual render.py source and extracts the bleach
+        config to ensure our test fixture stays in sync.
+        """
+        import re
+        from pathlib import Path
+
+        # Get path relative to test file location
+        test_dir = Path(__file__).parent
+        project_root = test_dir.parent
+        render_py = (project_root / "src" / "render.py").read_text()
+
+        # Extract BLEACH_ALLOWED_TAGS from render.py
+        tags_match = re.search(
+            r'BLEACH_ALLOWED_TAGS\s*=\s*\[(.*?)\]',
+            render_py,
+            re.DOTALL
+        )
+        assert tags_match, "Could not find BLEACH_ALLOWED_TAGS in render.py"
+
+        # Extract BLEACH_ALLOWED_ATTRS from render.py
+        attrs_match = re.search(
+            r'BLEACH_ALLOWED_ATTRS\s*=\s*\{(.*?)\n\s*\}',
+            render_py,
+            re.DOTALL
+        )
+        assert attrs_match, "Could not find BLEACH_ALLOWED_ATTRS in render.py"
+
+        # Verify our test config has the same tags
+        for tag in BLEACH_ALLOWED_TAGS:
+            assert f'"{tag}"' in tags_match.group(1), \
+                f"Tag '{tag}' in test but not in render.py"
+
+        # Verify class is allowed on the right elements
+        attrs_text = attrs_match.group(1)
+        for element in ["div", "pre", "code", "span", "table"]:
+            assert f'"{element}": ["class"]' in attrs_text or \
+                   f'"{element}":["class"]' in attrs_text or \
+                   (f'"{element}"' in attrs_text and '"class"' in attrs_text), \
+                f"Element '{element}' should allow 'class' attribute in render.py"
+
+    def test_markdown_filter_handles_none(self):
+        """Verify markdown filter handles None input gracefully.
+
+        The render.py markdown_filter should return empty string for None,
+        not raise TypeError.
+        """
+        # Simulate what render.py's markdown_filter does
+        def markdown_filter(text):
+            if not text:
+                return ""
+            html = markdown.markdown(text, extensions=["extra", "codehilite"])
+            return bleach.clean(
+                html,
+                tags=BLEACH_ALLOWED_TAGS,
+                attributes=BLEACH_ALLOWED_ATTRS,
+                strip=True,
+            )
+
+        # These should not raise
+        assert markdown_filter(None) == ""
+        assert markdown_filter("") == ""
+        assert markdown_filter("   ") == ""  # whitespace only
+
+    def test_markdown_filter_sanitizes_xss(self):
+        """End-to-end test that markdown filter properly sanitizes XSS."""
+        def markdown_filter(text):
+            if not text:
+                return ""
+            html = markdown.markdown(text, extensions=["extra", "codehilite"])
+            return bleach.clean(
+                html,
+                tags=BLEACH_ALLOWED_TAGS,
+                attributes=BLEACH_ALLOWED_ATTRS,
+                strip=True,
+            )
+
+        # XSS attack vectors
+        malicious_inputs = [
+            '<script>alert("xss")</script>',
+            '<img src="x" onerror="alert(1)">',
+            '<a href="javascript:alert(1)">click</a>',
+            '<div onclick="evil()">click</div>',
+        ]
+
+        for malicious in malicious_inputs:
+            result = markdown_filter(malicious)
+            assert "<script" not in result.lower()
+            assert "onerror" not in result
+            assert "onclick" not in result
+            assert "javascript:" not in result
