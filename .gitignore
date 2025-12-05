@@ -20,3 +20,7 @@ data/
 site/
 
 smoke_local.log
+
+# Unused branding assets (kept locally for reference)
+assets/logo-pdf.png
+assets/logo-white-bg.png
