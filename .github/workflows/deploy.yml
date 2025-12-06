@@ -16,6 +16,15 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - name: Notify deployment starting
+        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"embeds":[{"title":"🚀 Deployment Starting","description":"Site rebuild triggered","color":3447003,"footer":{"text":"ChinaRxiv Translation Pipeline"}}]}'
+
       # Cache translations to avoid full re-download on every deploy
       - name: Cache translations
         uses: actions/cache@v4
@@ -135,3 +144,21 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           python -m src.tools.b2_alerts flush || true
+
+      - name: Notify deployment complete
+        if: ${{ success() && secrets.DISCORD_WEBHOOK_URL != '' }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"embeds":[{"title":"✅ Deployment Complete","description":"Site is live at chinarxiv.org","color":3066993,"footer":{"text":"ChinaRxiv Translation Pipeline"}}]}'
+
+      - name: Notify deployment failed
+        if: ${{ failure() && secrets.DISCORD_WEBHOOK_URL != '' }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"embeds":[{"title":"❌ Deployment Failed","description":"Check workflow logs for details","color":15158332,"footer":{"text":"ChinaRxiv Translation Pipeline"}}]}'

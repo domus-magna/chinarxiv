@@ -9,7 +9,7 @@ or after successful operations.
 from typing import FrozenSet, Optional, Set
 
 from ..logging_utils import log
-from ..monitoring import alert_critical
+from ..alerts import circuit_tripped
 
 
 class CircuitBreakerOpen(Exception):
@@ -176,13 +176,16 @@ class CircuitBreaker:
         self._circuit_open = False
 
     def _send_alert(self, title: str, message: str, error_code: Optional[str]) -> None:
-        """Send critical alert (best effort, won't raise)."""
+        """Send circuit trip alert (best effort, won't raise)."""
         try:
-            alert_critical(
-                title,
-                message,
-                source=self.source_name,
-                metadata={"error_code": error_code or "unknown"},
+            # Determine API name from source_name (e.g., "openrouter" -> "OpenRouter")
+            api_name = self.source_name.replace("_", " ").title()
+            consecutive = max(self._consecutive_persistent, self._consecutive_transient)
+            circuit_tripped(
+                api=api_name,
+                error_code=error_code or "unknown",
+                consecutive_count=consecutive,
+                details=message,
             )
         except Exception as alert_err:
             log(f"Failed to send circuit breaker alert: {alert_err}")

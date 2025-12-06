@@ -1,15 +1,40 @@
 """
 Discord alerting system for ChinaXiv translation pipeline.
 Sends structured alerts to Discord webhook for monitoring and notifications.
+
+DEPRECATED: This module is deprecated. Use src.alerts instead:
+
+    # Old way (deprecated)
+    from src.discord_alerts import DiscordAlerts
+    alerts = DiscordAlerts()
+    alerts.pipeline_success(10, 0.5)
+
+    # New way (recommended)
+    from src.alerts import pipeline_complete
+    pipeline_complete(successes=10, failures=0, flagged=0)
+
+The new alerts module provides:
+- Unified alerting with aggregation (60s window for similar alerts)
+- Accurate pipeline completion alerts (shows success/warning/error based on results)
+- Immediate alerts for critical events (circuit breaker trips)
+- Consistent alert formatting across all pipelines
 """
 
 import os
 import sys
+import warnings
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 # Import requests
 import requests
+
+# Emit deprecation warning on import
+warnings.warn(
+    "src.discord_alerts is deprecated. Use src.alerts instead for unified alerting.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 class DiscordAlerts:

@@ -20,7 +20,7 @@ from tenacity import (
 
 from ..config import get_config, get_proxies
 from ..http_client import openrouter_headers, parse_openrouter_error
-from ..monitoring import monitoring_service, alert_critical
+from ..monitoring import monitoring_service
 from ..tex_guard import mask_math, unmask_math, verify_token_parity
 from ..token_utils import estimate_tokens
 from ..cost_tracker import compute_cost, append_cost_log
@@ -587,20 +587,8 @@ class TranslationService:
                 )
             # fatal or non-retryable – decide if fallback to alternate models makes sense
             if not info["fallback_ok"]:
-                # Immediate critical alert for fatal auth/payment
-                try:
-                    alert_critical(
-                        "OpenRouter Fatal Error",
-                        message,
-                        source="translation_service",
-                        metadata={
-                            "status": status,
-                            "code": code or "unknown",
-                            "model": model,
-                        },
-                    )
-                except Exception as alert_err:
-                    log(f"Debug: Failed to send critical alert: {alert_err}")
+                # Don't alert here - circuit breaker will alert when it trips
+                # This prevents duplicate alerts (one per error + one on trip)
                 self._record_failure(code)
                 raise OpenRouterFatalError(message, code=code, fallback_ok=False)
             self._record_failure(code)
