@@ -63,7 +63,7 @@ function searchSubject(subject) {
     try {
       miniSearch = new MiniSearch({
         fields: ['title', 'authors', 'abstract', 'subjects'],
-        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date', 'has_figures'],
+        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date', 'has_figures', 'pdf_url'],
         searchOptions: { boost: { title: 3, authors: 2, subjects: 1.5, abstract: 1 }, fuzzy: 0.2, prefix: true }
       });
       miniSearch.addAll(docs);
@@ -233,6 +233,7 @@ function searchSubject(subject) {
             ${subjectTags ? `<span class="paper-subjects">${subjectTags}</span>` : ''}
             <div class="paper-links">
               <a href="/items/${hit.id}/" class="btn-sm">Abstract</a>
+              ${hit.pdf_url ? `<a href="${escapeHtml(hit.pdf_url)}" class="btn-sm" rel="noopener noreferrer" target="_blank">PDF</a>` : ''}
             </div>
           </div>
           <p class="paper-abstract">${highlightTerms((hit.abstract || '').slice(0, 300), currentQuery)}${(hit.abstract || '').length > 300 ? '…' : ''}</p>
