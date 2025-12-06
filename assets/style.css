@@ -165,6 +165,26 @@ a:hover {
   display: none; /* Hide button in header for cleaner look, rely on Enter key or simple styling */
 }
 
+.header-nav {
+  display: flex;
+  align-items: center;
+}
+
+.header-link {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-size: 0.95rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.header-link:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  text-decoration: none;
+}
+
 /* Breadcrumbs */
 .breadcrumbs-bar {
   background: #fff;
@@ -747,6 +767,11 @@ main {
     width: 150px;
   }
 
+  .header-link {
+    font-size: 0.85rem;
+    padding: 0.3rem 0.5rem;
+  }
+
   /* Compact sidebar on mobile */
   .sidebar-section {
     padding: 1rem;
@@ -762,15 +787,19 @@ main {
   .footer-content {
     grid-template-columns: 1fr;
   }
-  
+
   .search-filters {
     flex-direction: column;
     gap: 1rem;
   }
-  
+
   .site-header {
     height: auto;
     position: static;
+  }
+
+  .header-nav {
+    display: none;
   }
 }
 
