@@ -65,6 +65,9 @@ on:
         required: true
       BACKBLAZE_PREFIX:
         required: false
+      # Discord for alerts (optional)
+      DISCORD_WEBHOOK_URL:
+        required: false
       # BrightData secrets for automatic PDF acquisition (optional - only needed if PDFs missing)
       BRIGHTDATA_API_KEY:
         required: false
@@ -454,6 +457,8 @@ jobs:
           # GitHub run info for status writer
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          # Discord alerts
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           set -e
 
@@ -499,6 +504,15 @@ jobs:
           if not paper_ids:
               print('No papers to process')
               sys.exit(0)
+
+          # Send start alert
+          from src.alerts import pipeline_started
+          pipeline_started(
+              papers_count=len(paper_ids),
+              source='figure_pipeline',
+              month=month,
+              with_figures=True,
+          )
 
           # Start status tracking
           status_writer.start_stage('figures', total=len(paper_ids), month=month)

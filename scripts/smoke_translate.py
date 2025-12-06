@@ -23,7 +23,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.discord_alerts import DiscordAlerts  # type: ignore
+from src.alerts import (
+    alert_error,
+    alert_critical,
+    alert_warning,
+    pipeline_complete,
+    pipeline_started,
+)
+
 PY = sys.executable
 
 
@@ -73,7 +80,8 @@ def main() -> int:
     parser.add_argument("--deploy", action="store_true", help="Deploy site after success")
     args = parser.parse_args()
 
-    alerts = DiscordAlerts() if args.alert else None
+    # Alert flag controls whether we send Discord notifications
+    send_alerts = args.alert
 
     # Resolve records source
     records_path: Optional[str] = None
@@ -102,8 +110,8 @@ def main() -> int:
     if sel_rc != 0 or not selected_path.exists():
         msg = f"Selection failed (rc={sel_rc}) or {selected_path} missing"
         print(msg)
-        if alerts:
-            alerts.send_alert("error", "Smoke selection failed", description=msg)
+        if send_alerts:
+            alert_error("Smoke selection failed", msg, source="smoke_translate")
         return 1
 
     # Download PDFs (select_and_fetch no longer does this)
@@ -121,6 +129,14 @@ def main() -> int:
     paper_ids: List[str] = [it.get("id") for it in selected if isinstance(it, dict) and it.get("id")]
     print(f"Selected {len(paper_ids)} papers: {paper_ids[:min(5, len(paper_ids))]}{' …' if len(paper_ids) > 5 else ''}")
 
+    # Send start alert
+    if send_alerts:
+        pipeline_started(
+            papers_count=len(paper_ids),
+            source="smoke_translate",
+            month=args.month,
+        )
+
     # Translate with QA enabled
     pipe_rc = run(
         f"{PY} -m src.pipeline --skip-selection --workers {args.workers} --with-qa"
@@ -128,8 +144,8 @@ def main() -> int:
     if pipe_rc != 0:
         msg = f"Pipeline failed (rc={pipe_rc})"
         print(msg)
-        if alerts:
-            alerts.send_alert("critical", "Smoke pipeline failed", description=msg)
+        if send_alerts:
+            alert_critical("Smoke pipeline failed", msg, source="smoke_translate")
         return 1
 
     # Count results
@@ -147,16 +163,14 @@ def main() -> int:
     )
     if fail_rate > args.qa_threshold:
         print(f"QA failure rate {fail_rate:.1f}% exceeds threshold {args.qa_threshold:.1f}%")
-        if alerts:
-            alerts.send_alert(
-                alert_type="warning",
-                title="Smoke QA threshold exceeded",
-                description=f"fail_rate={fail_rate:.1f}% > threshold={args.qa_threshold:.1f}%",
-                fields=[
-                    {"name": "Selected", "value": str(len(paper_ids)), "inline": True},
-                    {"name": "Translated", "value": str(translated_count), "inline": True},
-                    {"name": "Flagged", "value": str(flagged_count), "inline": True},
-                ],
+        if send_alerts:
+            alert_warning(
+                "Smoke QA threshold exceeded",
+                f"fail_rate={fail_rate:.1f}% > threshold={args.qa_threshold:.1f}%",
+                source="smoke_translate",
+                selected=len(paper_ids),
+                translated=translated_count,
+                flagged=flagged_count,
             )
         return 2
 
@@ -169,19 +183,15 @@ def main() -> int:
         else:
             print("Site build complete")
 
-    # Alerts
-    if alerts:
-        fields = [
-            {"name": "Selected", "value": str(len(paper_ids)), "inline": True},
-            {"name": "Translated", "value": str(translated_count), "inline": True},
-            {"name": "Flagged", "value": str(flagged_count), "inline": True},
-            {"name": "Pass rate", "value": f"{pass_rate:.1f}%", "inline": True},
-        ]
-        alerts.send_alert(
-            alert_type="info",
-            title="Smoke translation completed",
-            description=f"Records: {Path(records_path).name if records_path else 'unknown'}",
-            fields=fields,
+    # Send completion alert using unified pipeline_complete
+    if send_alerts:
+        # Calculate failures (papers selected but not translated or flagged)
+        failed_count = len(paper_ids) - translated_count - flagged_count
+        pipeline_complete(
+            successes=translated_count,
+            failures=max(0, failed_count),  # Ensure non-negative
+            flagged=flagged_count,
+            source="smoke_translate",
         )
 
     return 0

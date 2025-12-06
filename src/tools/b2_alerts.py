@@ -21,8 +21,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List
 
-# Import DiscordAlerts from src
-from ..discord_alerts import DiscordAlerts
+# Import unified alerts module
+from ..alerts import get_alert_manager
 
 
 BUFFER_PATH = Path("data/monitoring/b2_alert_buffer.json")
@@ -75,29 +75,22 @@ def flush_if_due() -> bool:
     if last_sent and now - last_sent < timedelta(minutes=15):
         return False
 
-    # Send aggregated alert
-    alerts = DiscordAlerts()
-    if not alerts.enabled:
+    # Send aggregated alert using unified AlertManager
+    manager = get_alert_manager()
+    if not manager.enabled:
         return False
 
     # Prepare compact summary (first 5 lines)
-    preview = "\n".join([f"- {m}" for m in buf[:5]])
+    preview = "\n".join([f"\u2022 {m}" for m in buf[:5]])
     extra = "" if len(buf) <= 5 else f"\n(+{len(buf)-5} more)"
-    alerts.send_alert(
-        alert_type="warning",
-        title="B2 operations skipped or failed",
-        description=(
-            "One or more Backblaze B2 operations were skipped or failed.\n"
-            "This alert aggregates events over ~15 minutes."
-        ),
-        fields=[
-            {"name": "Count", "value": str(len(buf)), "inline": True},
-            {
-                "name": "Preview",
-                "value": (preview + extra) or "(none)",
-                "inline": False,
-            },
-        ],
+
+    # Send as immediate warning (bypasses AlertManager's internal buffer since we have our own)
+    manager.warning(
+        "B2 operations skipped or failed",
+        f"**{len(buf)} events** aggregated over ~15 minutes:\n{preview}{extra}",
+        key="b2_alert_flush",
+        immediate=True,  # We handle our own buffering
+        source="b2_alerts",
     )
 
     # Update state and clear buffer

@@ -183,7 +183,7 @@ class TestCircuitBreaker:
         with pytest.raises(CircuitBreakerOpen):
             self.service._check_circuit_breaker()
 
-    @patch("src.services.circuit_breaker.alert_critical")
+    @patch("src.services.circuit_breaker.circuit_tripped")
     def test_alert_sent_on_persistent_threshold(self, mock_alert):
         """Test that alert is sent when persistent error threshold is reached."""
         # Trigger persistent error threshold
@@ -194,11 +194,11 @@ class TestCircuitBreaker:
 
         # Alert should have been called
         mock_alert.assert_called_once()
-        call_args = mock_alert.call_args
-        assert "Persistent Error Threshold Reached" in call_args[0][0]
-        assert call_args[1]["source"] == "translation_service"
+        call_kwargs = mock_alert.call_args[1]
+        assert call_kwargs["consecutive_count"] == 2
+        assert "insufficient_quota" in call_kwargs["error_code"]
 
-    @patch("src.services.circuit_breaker.alert_critical")
+    @patch("src.services.circuit_breaker.circuit_tripped")
     def test_alert_sent_on_transient_threshold(self, mock_alert):
         """Test that alert is sent when transient error threshold is reached."""
         # Trigger transient error threshold
@@ -210,10 +210,10 @@ class TestCircuitBreaker:
 
         # Alert should have been called
         mock_alert.assert_called_once()
-        call_args = mock_alert.call_args
-        assert "Transient Error Threshold Reached" in call_args[0][0]
+        call_kwargs = mock_alert.call_args[1]
+        assert call_kwargs["consecutive_count"] == 5
 
-    @patch("src.services.circuit_breaker.alert_critical")
+    @patch("src.services.circuit_breaker.circuit_tripped")
     @patch("src.services.circuit_breaker.log")
     def test_alert_failure_is_logged(self, mock_log, mock_alert):
         """Test that if alert fails, the error is logged."""

@@ -9,9 +9,10 @@ When tripped, the pipeline stops immediately instead of wasting resources.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from typing import FrozenSet, Optional
+
+from ..alerts import circuit_tripped as send_circuit_alert
 
 
 # Error codes that indicate billing/quota issues (non-recoverable)
@@ -146,23 +147,16 @@ class FigureCircuitBreaker:
         self._send_alert(api_name, error_code, details)
 
     def _send_alert(self, api_name: str, error_code: str, details: str) -> None:
-        """Send Discord alert about circuit breaker trip."""
-        webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
-        if not webhook_url:
-            return
-
+        """Send Discord alert about circuit breaker trip using unified alerts."""
         try:
-            import requests
-
-            message = {
-                "content": f":rotating_light: **Figure Pipeline Circuit Breaker Tripped**\n"
-                           f"**API**: {api_name}\n"
-                           f"**Error**: {error_code}\n"
-                           f"**Time**: {datetime.now().isoformat()}\n"
-                           f"**Details**: {details[:500] if details else 'None'}",
-            }
-
-            requests.post(webhook_url, json=message, timeout=5)
+            # Format API name nicely (e.g., "gemini" -> "Gemini")
+            formatted_api = api_name.title()
+            send_circuit_alert(
+                api=f"Figure Pipeline ({formatted_api})",
+                error_code=error_code,
+                consecutive_count=self.consecutive_failures,
+                details=details,
+            )
         except Exception as e:
             print(f"[circuit_breaker] Failed to send Discord alert: {e}")
 

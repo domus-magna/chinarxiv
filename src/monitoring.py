@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from .utils import log, getenv_bool
 from .data_utils import filter_by_timestamp
 import contextlib
+import warnings as _alert_warnings
 
 
 @dataclass
@@ -677,23 +678,59 @@ def create_alert(level: str, title: str, message: str, **kwargs) -> Dict[str, An
     return monitoring_service.create_alert(level, title, message, **kwargs)
 
 
+# DEPRECATED: These alert_* functions are deprecated. Use src.alerts instead.
+# The new module provides unified alerting with aggregation and better formatting.
+
+
 def alert_info(title: str, message: str, **kwargs) -> Dict[str, Any]:
-    """Create info alert."""
+    """Create info alert.
+
+    DEPRECATED: Use src.alerts.alert_info instead for unified alerting.
+    """
+    _alert_warnings.warn(
+        "monitoring.alert_info is deprecated. Use src.alerts.alert_info instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return create_alert("info", title, message, **kwargs)
 
 
 def alert_warning(title: str, message: str, **kwargs) -> Dict[str, Any]:
-    """Create warning alert."""
+    """Create warning alert.
+
+    DEPRECATED: Use src.alerts.alert_warning instead for unified alerting.
+    """
+    _alert_warnings.warn(
+        "monitoring.alert_warning is deprecated. Use src.alerts.alert_warning instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return create_alert("warning", title, message, **kwargs)
 
 
 def alert_error(title: str, message: str, **kwargs) -> Dict[str, Any]:
-    """Create error alert."""
+    """Create error alert.
+
+    DEPRECATED: Use src.alerts.alert_error instead for unified alerting.
+    """
+    _alert_warnings.warn(
+        "monitoring.alert_error is deprecated. Use src.alerts.alert_error instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return create_alert("error", title, message, **kwargs)
 
 
 def alert_critical(title: str, message: str, **kwargs) -> Dict[str, Any]:
-    """Create critical alert."""
+    """Create critical alert.
+
+    DEPRECATED: Use src.alerts.alert_critical instead for unified alerting.
+    """
+    _alert_warnings.warn(
+        "monitoring.alert_critical is deprecated. Use src.alerts.alert_critical instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return create_alert("critical", title, message, **kwargs)
 
 

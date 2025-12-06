@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from .utils import log
-from .discord_alerts import DiscordAlerts
+from .alerts import pipeline_complete as send_pipeline_alert, pipeline_started
 from .tools import b2_alerts as b2_alerts_tool
 
 
@@ -228,6 +228,13 @@ def run_cli() -> None:
 
     summary["attempted"] = len(worklist)
 
+    # Send start alert
+    pipeline_started(
+        papers_count=len(worklist),
+        source="pipeline",
+        with_figures=args.with_figures,
+    )
+
     # Import QA if enabled
     if args.with_qa:
         from .qa_filter import SynthesisQAFilter, QAStatus
@@ -363,10 +370,13 @@ def run_cli() -> None:
         subprocess.run([sys.executable, "-m", "src.search_index"], check=False)
         subprocess.run([sys.executable, "-m", "src.make_pdf"], check=False)
 
-        # Send success notification to Discord
-        alerts = DiscordAlerts()
-        if successes > 0:
-            alerts.pipeline_success(successes, 0.0)  # Cost calculation TBD
+        # Send completion notification to Discord (shows accurate success/failure/flagged)
+        send_pipeline_alert(
+            successes=successes,
+            failures=failures,
+            flagged=qa_flagged_count,
+            source="pipeline",
+        )
 
     log("Pipeline complete.")
     _write_summary(summary)

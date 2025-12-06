@@ -12,7 +12,7 @@ from typing import List
 from .job_queue import job_queue
 from .streaming import process_papers_streaming
 from .utils import log
-from .monitoring import alert_info, alert_warning
+from .alerts import pipeline_complete, alert_warning, pipeline_started
 from .services.translation_service import CircuitBreakerOpen
 
 
@@ -74,6 +74,9 @@ def start_workers(num_workers: int) -> None:
 
     log(f"Processing {stats['pending']} pending jobs...")
 
+    # Send start alert
+    pipeline_started(papers_count=stats["pending"], source="batch_translate")
+
     # Get all pending paper IDs using queue abstraction
     pending_ids = job_queue.get_pending_job_ids()
 
@@ -97,19 +100,8 @@ def start_workers(num_workers: int) -> None:
 
     except Exception as e:
         if isinstance(e, CircuitBreakerOpen):
+            # Circuit breaker already sends its own alert - just log here
             log(f"Circuit breaker triggered: {e}")
-            from .monitoring import alert_critical
-
-            alert_critical(
-                "Translation Pipeline Stopped: Circuit Breaker",
-                f"Pipeline stopped after consecutive OpenRouter failures: {e}",
-                source="batch_translate",
-                metadata={
-                    "completed": completed,
-                    "failed": failed,
-                    "total": len(pending_ids),
-                },
-            )
         else:
             # Re-raise unexpected exceptions
             raise
@@ -119,15 +111,13 @@ def start_workers(num_workers: int) -> None:
         f"Processing complete: {completed}/{len(pending_ids)} completed, {failed} failed"
     )
 
-    if failed > 0:
-        alert_warning(
-            "Processing Completed with Failures",
-            f"Processing completed with {failed} failures",
-        )
-    else:
-        alert_info(
-            "Processing Completed Successfully", "Processing completed successfully"
-        )
+    # Send unified completion alert (handles success/warning/error based on results)
+    pipeline_complete(
+        successes=completed,
+        failures=failed,
+        flagged=0,  # No QA info at this level
+        source="batch_translate",
+    )
 
 
 def stop_workers() -> None:
