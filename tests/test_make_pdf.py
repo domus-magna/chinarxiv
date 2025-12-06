@@ -1,9 +1,11 @@
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+from pdfminer.high_level import extract_text
 
 from src.make_pdf import md_to_pdf, run_cli
 
@@ -26,7 +28,6 @@ def _has_xelatex_and_cjk_fonts() -> bool:
         return False
     # Check for Noto CJK font (installed by fonts-noto-cjk on Linux, or manually on macOS)
     try:
-        import subprocess
         result = subprocess.run(
             ["fc-list", ":family", "Noto Serif CJK"],
             capture_output=True,
@@ -35,14 +36,18 @@ def _has_xelatex_and_cjk_fonts() -> bool:
         )
         return "Noto Serif CJK" in result.stdout
     except Exception:
+        # fc-list not available (e.g., macOS without fontconfig)
         return False
 
 
-@pytest.mark.skipif(
-    not _has_xelatex_and_cjk_fonts(),
-    reason="Requires xelatex + Noto Serif CJK SC font (install: fonts-noto-cjk)",
-)
-def test_cjk_author_rendering():
+@pytest.fixture
+def require_cjk_fonts():
+    """Skip test if xelatex + CJK fonts are not available."""
+    if not _has_xelatex_and_cjk_fonts():
+        pytest.skip("Requires xelatex + Noto Serif CJK SC font (install: fonts-noto-cjk)")
+
+
+def test_cjk_author_rendering(require_cjk_fonts):
     """Verify Chinese author names render correctly in PDFs.
 
     This test ensures the fontspec + xeCJK packages are working and
@@ -75,12 +80,7 @@ This is a test document for CJK author name rendering.
         assert pdf_path.exists(), "PDF file not created"
 
         # Extract text and verify Chinese characters are present
-        try:
-            from pdfminer.high_level import extract_text
-            text = extract_text(str(pdf_path))
-            # Check that at least one Chinese author name is present
-            assert "周蕾" in text or "李立统" in text or "王旭" in text, (
-                f"Chinese author names missing from PDF. Extracted text:\n{text[:500]}"
-            )
-        except ImportError:
-            pytest.skip("pdfminer not installed; skipping PDF text extraction")
+        text = extract_text(str(pdf_path))
+        assert "周蕾" in text or "李立统" in text or "王旭" in text, (
+            f"Chinese author names missing from PDF. Extracted text:\n{text[:500]}"
+        )
