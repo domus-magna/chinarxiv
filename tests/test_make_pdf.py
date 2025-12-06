@@ -26,15 +26,16 @@ def _has_xelatex_and_cjk_fonts() -> bool:
     """Check if xelatex and CJK fonts are available for testing."""
     if not shutil.which("xelatex"):
         return False
-    # Check for Noto CJK font (installed by fonts-noto-cjk on Linux, or manually on macOS)
+    # Check for Noto Sans CJK SC specifically (Simplified Chinese variant)
+    # fonts-noto-cjk includes SC, but we check the exact variant to avoid flakiness
     try:
         result = subprocess.run(
-            ["fc-list", ":family", "Noto Sans CJK"],
+            ["fc-list", ":family", "Noto Sans CJK SC"],
             capture_output=True,
             text=True,
             timeout=5,
         )
-        return "Noto Sans CJK" in result.stdout
+        return "Noto Sans CJK SC" in result.stdout
     except Exception:
         # fc-list not available (e.g., macOS without fontconfig)
         return False
@@ -79,8 +80,10 @@ This is a test document for CJK author name rendering.
         assert success, "PDF generation failed"
         assert pdf_path.exists(), "PDF file not created"
 
-        # Extract text and verify Chinese characters are present
+        # Extract text and verify ALL Chinese author names are present
+        # Require all 3 names to catch partial rendering regressions
         text = extract_text(str(pdf_path))
-        assert "周蕾" in text or "李立统" in text or "王旭" in text, (
-            f"Chinese author names missing from PDF. Extracted text:\n{text[:500]}"
+        missing = [name for name in ["周蕾", "李立统", "王旭"] if name not in text]
+        assert not missing, (
+            f"Chinese author names missing from PDF: {missing}. Extracted text:\n{text[:500]}"
         )
