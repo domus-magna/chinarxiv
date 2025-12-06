@@ -500,13 +500,18 @@ class TestStatusDisplay:
 class TestCircuitBreakerIntegration:
     """Test circuit breaker integration in batch translate."""
 
-    @patch("src.monitoring.alert_critical")
+    @patch("src.batch_translate.log")
     @patch("src.batch_translate.process_papers_streaming")
     @patch("src.batch_translate.job_queue")
-    def test_circuit_breaker_triggers_alert(
-        self, mock_queue, mock_streaming, mock_alert
+    def test_circuit_breaker_handled_gracefully(
+        self, mock_queue, mock_streaming, mock_log
     ):
-        """Circuit breaker open triggers critical alert."""
+        """Circuit breaker open is handled gracefully (logged, not re-raised).
+
+        Note: Alerts are sent by the circuit breaker itself when it trips,
+        not by batch_translate when it catches the exception. See
+        test_circuit_breaker.py for alert tests.
+        """
         from src.batch_translate import start_workers
         from src.services.translation_service import CircuitBreakerOpen
 
@@ -514,7 +519,9 @@ class TestCircuitBreakerIntegration:
         mock_queue.get_pending_job_ids.return_value = ["paper-001"]
         mock_streaming.side_effect = CircuitBreakerOpen("Rate limit exceeded")
 
+        # Should not raise - circuit breaker exception is handled gracefully
         start_workers(num_workers=1)
 
-        mock_alert.assert_called_once()
-        assert "Circuit Breaker" in mock_alert.call_args[0][0]
+        # Verify it was logged
+        log_calls = [str(call) for call in mock_log.call_args_list]
+        assert any("Circuit breaker triggered" in str(call) for call in log_calls)
