@@ -421,8 +421,6 @@ main {
 }
 
 .paper-sidebar {
-  position: sticky;
-  top: calc(var(--header-height) + 2rem);
   align-self: start;
 }
 
