@@ -112,6 +112,7 @@ function searchSubject(subject) {
     const figuresOnly = figuresFilter?.checked || false;
     const sortChanged = sortOrder?.value && sortOrder.value !== 'newest';
     const hasQuery = Boolean(currentQuery);
+    // Any filter/sort change triggers browse mode (consistent behavior)
     const hasActiveFilters = Boolean(cat || dateRange || figuresOnly || sortChanged);
     const isActive = hasQuery || hasActiveFilters;
 
@@ -157,14 +158,14 @@ function searchSubject(subject) {
       return Number.isNaN(t) ? 0 : t;
     };
 
-    // Relevance sort only works with a query (MiniSearch ranking preserved)
-    // Without a query, "Relevance" falls back to "Newest First"
+    // With a query: preserve MiniSearch relevance ranking unless user explicitly picks date sort
+    // Without a query: "Relevance" falls back to "Newest First"
     if (sort === 'relevance' && hasQuery) {
       // Keep MiniSearch ranking order - no additional sort needed
     } else if (sort === 'oldest') {
       filtered.sort((a, b) => toTimestamp(a) - toTimestamp(b) || String(a.id || '').localeCompare(String(b.id || '')));
     } else {
-      // Default: newest first
+      // Newest first (explicit selection or fallback for no-query relevance)
       filtered.sort((a, b) => toTimestamp(b) - toTimestamp(a) || String(a.id || '').localeCompare(String(b.id || '')));
     }
     filtered = filtered.slice(0, 100); // Limit results

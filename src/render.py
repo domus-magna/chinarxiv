@@ -70,15 +70,19 @@ def get_b2_stats() -> Dict[str, Any]:
         except (json.JSONDecodeError, IOError):
             pass
 
-    # If we have local data, use it
-    if text_count > 0 or figures_count > 0:
+    # If we have both text and figures from local data, use them
+    if text_count > 0 and figures_count > 0:
         stats["text_translated"] = text_count
         stats["figures_translated"] = figures_count
         stats["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        log(f"B2 stats: {text_count} text, {figures_count} figures")
+        log(f"B2 stats: {text_count} text, {figures_count} figures (local)")
         return stats
 
-    # Fallback: query B2 directly (for non-CI environments without hydrated data)
+    # If we have text but no figure manifest, use local text but fall back to B2 for figures
+    need_b2_text = text_count == 0
+    need_b2_figures = figures_count == 0
+
+    # Fallback: query B2 for missing data
     try:
         import boto3
         from dotenv import load_dotenv
@@ -90,7 +94,11 @@ def get_b2_stats() -> Dict[str, Any]:
         bucket = os.environ.get("BACKBLAZE_BUCKET", "chinaxiv")
 
         if not all([endpoint, key_id, app_key]):
-            log("B2 credentials not available, using default stats")
+            # Use local data if available, even without B2 creds
+            if text_count > 0:
+                stats["text_translated"] = text_count
+                stats["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            log(f"B2 credentials not available, using local stats: {text_count} text, {figures_count} figures")
             return stats
 
         s3 = boto3.client(
@@ -105,32 +113,42 @@ def get_b2_stats() -> Dict[str, Any]:
         text_prefix = f"{prefix}/validated/translations/" if prefix else "validated/translations/"
         figures_prefix = f"{prefix}/figures/" if prefix else "figures/"
 
-        # Count text translations (separate paginator)
-        text_count = 0
-        text_paginator = s3.get_paginator("list_objects_v2")
-        for page in text_paginator.paginate(Bucket=bucket, Prefix=text_prefix):
-            text_count += len(page.get("Contents", []))
-        stats["text_translated"] = text_count
+        # Count text translations from B2 only if we don't have local data
+        if need_b2_text:
+            b2_text_count = 0
+            text_paginator = s3.get_paginator("list_objects_v2")
+            for page in text_paginator.paginate(Bucket=bucket, Prefix=text_prefix):
+                b2_text_count += len(page.get("Contents", []))
+            stats["text_translated"] = b2_text_count
+        else:
+            stats["text_translated"] = text_count  # Use local count
 
-        # Count papers with translated figures (separate paginator)
-        paper_ids = set()
-        fig_paginator = s3.get_paginator("list_objects_v2")
-        for page in fig_paginator.paginate(Bucket=bucket, Prefix=figures_prefix):
-            for obj in page.get("Contents", []):
-                parts = obj["Key"].split("/")
-                # Find "translated" folder in path
-                if "translated" in parts:
-                    # Paper ID is the segment before "translated"
-                    idx = parts.index("translated")
-                    if idx > 0:
-                        paper_ids.add(parts[idx - 1])
-        stats["figures_translated"] = len(paper_ids)
+        # Count papers with translated figures from B2 only if manifest missing
+        if need_b2_figures:
+            paper_ids = set()
+            fig_paginator = s3.get_paginator("list_objects_v2")
+            for page in fig_paginator.paginate(Bucket=bucket, Prefix=figures_prefix):
+                for obj in page.get("Contents", []):
+                    parts = obj["Key"].split("/")
+                    # Find "translated" folder in path
+                    if "translated" in parts:
+                        # Paper ID is the segment before "translated"
+                        idx = parts.index("translated")
+                        if idx > 0:
+                            paper_ids.add(parts[idx - 1])
+            stats["figures_translated"] = len(paper_ids)
+        else:
+            stats["figures_translated"] = figures_count  # Use local count
 
         stats["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        log(f"B2 stats: {text_count} text, {len(paper_ids)} figures")
+        log(f"B2 stats: {stats['text_translated']} text, {stats['figures_translated']} figures (B2 fallback)")
 
     except Exception as e:
         log(f"Failed to fetch B2 stats: {e}")
+        # Preserve any local data we have
+        if text_count > 0:
+            stats["text_translated"] = text_count
+            stats["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     return stats
 

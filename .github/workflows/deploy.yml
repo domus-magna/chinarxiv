@@ -68,12 +68,10 @@ jobs:
           # Clear any cached data to ensure we don't mix stale translations with fresh ones
           rm -rf data/translated/*
           echo "⬇️  Syncing ${DEST}validated/translations → data/translated ..."
-          # Sync must succeed - no || true fallback allowed
-          aws s3 sync "${DEST}validated/translations" data/translated --delete --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors
-          SYNC_EXIT=$?
-          if [ "$SYNC_EXIT" -ne 0 ]; then
-            echo "❌ B2 sync failed with exit code $SYNC_EXIT"
-            python -m src.tools.b2_alerts add "deploy: B2 sync failed (exit $SYNC_EXIT)"
+          # Sync must succeed - use if-then to capture failure despite set -e
+          if ! aws s3 sync "${DEST}validated/translations" data/translated --delete --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors; then
+            echo "❌ B2 sync failed"
+            python -m src.tools.b2_alerts add "deploy: B2 sync failed"
             exit 1
           fi
           COUNT=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
