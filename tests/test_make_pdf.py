@@ -29,12 +29,12 @@ def _has_xelatex_and_cjk_fonts() -> bool:
     # Check for Noto CJK font (installed by fonts-noto-cjk on Linux, or manually on macOS)
     try:
         result = subprocess.run(
-            ["fc-list", ":family", "Noto Serif CJK"],
+            ["fc-list", ":family", "Noto Sans CJK"],
             capture_output=True,
             text=True,
             timeout=5,
         )
-        return "Noto Serif CJK" in result.stdout
+        return "Noto Sans CJK" in result.stdout
     except Exception:
         # fc-list not available (e.g., macOS without fontconfig)
         return False
@@ -44,7 +44,7 @@ def _has_xelatex_and_cjk_fonts() -> bool:
 def require_cjk_fonts():
     """Skip test if xelatex + CJK fonts are not available."""
     if not _has_xelatex_and_cjk_fonts():
-        pytest.skip("Requires xelatex + Noto Serif CJK SC font (install: fonts-noto-cjk)")
+        pytest.skip("Requires xelatex + Noto Sans CJK SC font (install: fonts-noto-cjk)")
 
 
 def test_cjk_author_rendering(require_cjk_fonts):
@@ -58,7 +58,7 @@ def test_cjk_author_rendering(require_cjk_fonts):
 header-includes:
   - \\usepackage{fontspec}
   - \\usepackage{xeCJK}
-  - \\setCJKmainfont{Noto Serif CJK SC}
+  - \\setCJKmainfont{Noto Sans CJK SC}
 ---
 
 # Test Paper

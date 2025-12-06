@@ -52,16 +52,18 @@ def run_cli() -> None:
         log("pandoc not found; skipping PDF generation")
         return
 
-    pdf_engine = None  # Will default to xelatex in md_to_pdf
-    if not has_binary("xelatex"):
-        if has_binary("tectonic"):
-            pdf_engine = "tectonic"
-            log("⚠️  xelatex missing; using tectonic (CJK fonts may not be available)")
-        elif has_binary("pdflatex"):
-            pdf_engine = "pdflatex"
-            log("⚠️  xelatex missing; falling back to pdflatex (CJK author names WILL be blank)")
-        else:
-            log("No LaTeX engine found (xelatex, tectonic, pdflatex); PDFs will fail")
+    # xelatex is required for CJK support (fontspec/xeCJK preamble)
+    # pdflatex is NOT supported - it cannot compile the CJK preamble
+    pdf_engine: str | None = None
+    if has_binary("xelatex"):
+        pdf_engine = "xelatex"
+        log("Using xelatex for PDF generation")
+    elif has_binary("tectonic"):
+        pdf_engine = "tectonic"
+        log("⚠️  xelatex not found; using tectonic (CJK fonts may need download)")
+    else:
+        log("⚠️  No compatible LaTeX engine found (need xelatex or tectonic); skipping PDFs")
+        return
 
     count = 0
     for md in glob.glob(os.path.join("site", "items", "*", "*.md")):
