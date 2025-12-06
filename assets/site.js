@@ -201,7 +201,7 @@ function searchSubject(subject) {
     return escaped.replace(new RegExp(`(${pattern})`, 'gi'), (match) => '<mark>' + match + '</mark>');
   }
 
-  // Render results
+  // Render results - uses same structure as .paper-card for unified styling
   function renderResults(hits, hasQuery, hasActiveFilters) {
     toggleArticleList(hasQuery || hasActiveFilters);
     if (!hits.length) {
@@ -209,15 +209,35 @@ function searchSubject(subject) {
       const msg = hasActiveFilters
         ? 'No papers match with selected filters. Try adjusting them.'
         : 'No papers found. Try different keywords.';
-      results.innerHTML = `<div class="res"><div>${msg}</div></div>`;
+      results.innerHTML = `<article class="paper-card"><p>${msg}</p></article>`;
     } else {
       const count = `<div class="search-results-count">Found ${hits.length} paper${hits.length > 1 ? 's' : ''}</div>`;
-      results.innerHTML = count + hits.map(hit => `
-        <div class="res">
-          <div class="res-title"><a href="/items/${hit.id}/">${highlightTerms(hit.title || '', currentQuery)}</a></div>
-          <div class="res-meta">${hit.date || ''} — ${escapeHtml(hit.authors || '')}</div>
-          <div class="res-abstract">${highlightTerms((hit.abstract || '').slice(0, 280), currentQuery)}…</div>
-        </div>`).join('');
+      results.innerHTML = count + hits.map(hit => {
+        // Parse subjects (comma-separated string)
+        const subjects = (hit.subjects || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 3);
+        const subjectTags = subjects.map(s =>
+          `<span class="subject-tag" data-subject="${escapeHtml(s)}">${escapeHtml(s)}</span>`
+        ).join('');
+
+        return `
+        <article class="paper-card">
+          <h3 class="paper-title">
+            <a href="/items/${hit.id}/" title="Abstract">${highlightTerms(hit.title || '', currentQuery)}</a>
+          </h3>
+          <div class="paper-meta-row">
+            <span class="paper-authors">${escapeHtml(hit.authors || 'Unknown')}</span>
+          </div>
+          <div class="paper-meta-row secondary">
+            <span class="paper-date">${escapeHtml(hit.date || '')}</span>
+            <span class="paper-id">ChinaXiv:${escapeHtml(hit.id || '')}</span>
+            ${subjectTags ? `<span class="paper-subjects">${subjectTags}</span>` : ''}
+            <div class="paper-links">
+              <a href="/items/${hit.id}/" class="btn-sm">Abstract</a>
+            </div>
+          </div>
+          <p class="paper-abstract">${highlightTerms((hit.abstract || '').slice(0, 300), currentQuery)}${(hit.abstract || '').length > 300 ? '…' : ''}</p>
+        </article>`;
+      }).join('');
     }
   }
 

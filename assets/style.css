@@ -303,8 +303,7 @@ main {
   gap: 1.5rem;
 }
 
-.paper-card,
-#search-results .res {
+.paper-card {
   background: #fff;
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -312,8 +311,7 @@ main {
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-.paper-card:hover,
-#search-results .res:hover {
+.paper-card:hover {
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   border-color: #cbd5e0;
 }
@@ -794,51 +792,17 @@ main {
 /* Search Results */
 #search-results {
   margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .search-results-count {
   font-family: var(--font-sans);
   font-size: 0.9rem;
   color: var(--text-muted);
-  margin-bottom: 1rem;
   padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--border-color);
-}
-
-/* Search result spacing (core styles unified with .paper-card above) */
-#search-results .res {
-  margin-bottom: 1rem;
-}
-
-#search-results .res .res-title {
-  font-size: 1.15rem;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-bottom: 0.5rem;
-}
-
-#search-results .res .res-title a {
-  color: var(--link-color);
-}
-
-#search-results .res .res-meta {
-  font-family: var(--font-sans);
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  margin-bottom: 0.5rem;
-}
-
-#search-results .res .res-abstract {
-  font-size: 0.95rem;
-  color: #444;
-  line-height: 1.5;
-  margin-bottom: 0.75rem;
-}
-
-#search-results .res .res-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
 }
 
 .subject-tag {
