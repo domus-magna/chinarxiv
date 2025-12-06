@@ -56,10 +56,10 @@ def run_cli() -> None:
     if not has_binary("xelatex"):
         if has_binary("tectonic"):
             pdf_engine = "tectonic"
-            log("xelatex missing; using tectonic via pandoc --pdf-engine")
+            log("⚠️  xelatex missing; using tectonic (CJK fonts may not be available)")
         elif has_binary("pdflatex"):
             pdf_engine = "pdflatex"
-            log("xelatex missing; falling back to pdflatex (Unicode chars may fail)")
+            log("⚠️  xelatex missing; falling back to pdflatex (CJK author names WILL be blank)")
         else:
             log("No LaTeX engine found (xelatex, tectonic, pdflatex); PDFs will fail")
 

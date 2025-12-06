@@ -32,7 +32,7 @@ jobs:
       - name: Install pandoc and XeLaTeX for PDF generation
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended
+          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended fonts-noto-cjk
           which pandoc || { echo "❌ xelatex installation failed"; exit 1; }
           which xelatex || { echo "❌ xelatex installation failed"; exit 1; }
           pandoc --version | head -1

@@ -249,10 +249,14 @@ def build_pdf_markdown(item: Dict[str, Any], body_md: str) -> str:
     display_url = f"chinarxiv.org/items/{paper_id}"
 
     # YAML front matter for pandoc with LaTeX header-includes
+    # fontspec + xeCJK enable Chinese author names (requires xelatex + fonts-noto-cjk)
     # hyperref provides clickable links in PDF, graphicx for logo
     # Logo uses relative path - pandoc resolves via --resource-path in make_pdf.py
     yaml_header = f"""---
 header-includes:
+  - \\usepackage{{fontspec}}
+  - \\usepackage{{xeCJK}}
+  - \\setCJKmainfont{{Noto Serif CJK SC}}
   - \\usepackage{{fancyhdr}}
   - \\usepackage{{hyperref}}
   - \\usepackage{{graphicx}}

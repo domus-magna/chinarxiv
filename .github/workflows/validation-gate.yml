@@ -87,9 +87,9 @@ jobs:
             qpdf \
             unpaper \
             pandoc \
-            texlive-latex-base \
-            texlive-latex-recommended \
-            texlive-fonts-recommended
+            texlive-xetex \
+            texlive-fonts-recommended \
+            fonts-noto-cjk
 
       - name: Install Python dependencies
         run: |
