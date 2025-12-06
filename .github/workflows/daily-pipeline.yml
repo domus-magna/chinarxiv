@@ -84,6 +84,9 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
           BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          BRIGHTDATA_UNLOCKER_PASSWORD: ${{ secrets.BRIGHTDATA_UNLOCKER_PASSWORD }}
+          BRIGHTDATA_BROWSER_WSS: ${{ secrets.BRIGHTDATA_BROWSER_WSS }}
           # Figure translation (Gemini + Moondream)
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
@@ -191,6 +194,14 @@ jobs:
             fi
 
             # MANDATORY: Download PDFs before translation
+            # Guard: fail early if BrightData credentials missing on scheduled/manual runs
+            if [ "${{ github.event_name }}" != "pull_request" ]; then
+              if [ -z "${BRIGHTDATA_UNLOCKER_PASSWORD}" ]; then
+                echo "❌ BRIGHTDATA_UNLOCKER_PASSWORD not set - PDF downloads will fail with 407"
+                echo "   Add this secret to the repository or check workflow env configuration"
+                exit 1
+              fi
+            fi
             echo "📥 Downloading PDFs for all selected papers..."
             python scripts/download_missing_pdfs.py || {
               echo "⚠️ Some PDF downloads failed, continuing with available PDFs"
