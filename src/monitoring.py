@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from .utils import log, getenv_bool
 from .data_utils import filter_by_timestamp
 import contextlib
+import warnings as _alert_warnings
 
 
 @dataclass
@@ -679,7 +680,6 @@ def create_alert(level: str, title: str, message: str, **kwargs) -> Dict[str, An
 
 # DEPRECATED: These alert_* functions are deprecated. Use src.alerts instead.
 # The new module provides unified alerting with aggregation and better formatting.
-import warnings as _alert_warnings
 
 
 def alert_info(title: str, message: str, **kwargs) -> Dict[str, Any]:
