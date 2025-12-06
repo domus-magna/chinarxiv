@@ -194,6 +194,14 @@ jobs:
             fi
 
             # MANDATORY: Download PDFs before translation
+            # Guard: fail early if BrightData credentials missing on scheduled/manual runs
+            if [ "${{ github.event_name }}" != "pull_request" ]; then
+              if [ -z "${BRIGHTDATA_UNLOCKER_PASSWORD}" ]; then
+                echo "❌ BRIGHTDATA_UNLOCKER_PASSWORD not set - PDF downloads will fail with 407"
+                echo "   Add this secret to the repository or check workflow env configuration"
+                exit 1
+              fi
+            fi
             echo "📥 Downloading PDFs for all selected papers..."
             python scripts/download_missing_pdfs.py || {
               echo "⚠️ Some PDF downloads failed, continuing with available PDFs"
