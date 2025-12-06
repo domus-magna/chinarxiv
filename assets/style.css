@@ -290,7 +290,9 @@ main {
   height: 1rem;
   cursor: pointer;
   accent-color: var(--primary-color);
-  color-scheme: light;  /* Force light mode rendering for checkbox */
+  /* Forces light mode to ensure checkbox visibility - system dark mode causes
+     invisible checkmarks on white backgrounds. This is intentional for UX. */
+  color-scheme: light;
 }
 
 /* Article List */

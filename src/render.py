@@ -60,18 +60,21 @@ def get_b2_stats() -> Dict[str, Any]:
 
     # Count text translations from local hydrated data
     if translated_dir.exists():
-        text_count = len(list(translated_dir.glob("*.json")))
+        text_count = sum(1 for _ in translated_dir.glob("*.json"))
 
     # Count figure translations from manifest
     if manifest_path.exists():
         try:
             manifest = json.loads(manifest_path.read_text())
-            figures_count = len(manifest.get("papers", {}))
-        except (json.JSONDecodeError, IOError):
-            pass
+            papers = manifest.get("papers", {})
+            # Validate structure - papers should be a dict mapping paper_id to figure info
+            if isinstance(papers, dict):
+                figures_count = len(papers)
+        except (json.JSONDecodeError, IOError) as e:
+            log(f"Failed to parse figure manifest: {e}")
 
-    # If we have both text and figures from local data, use them
-    if text_count > 0 and figures_count > 0:
+    # If we have local data (text OR figures), use it to avoid redundant B2 queries
+    if text_count > 0 or figures_count > 0:
         stats["text_translated"] = text_count
         stats["figures_translated"] = figures_count
         stats["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
