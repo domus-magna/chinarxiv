@@ -98,8 +98,9 @@ def get_b2_stats() -> Dict[str, Any]:
 
         if not all([endpoint, key_id, app_key]):
             # Use local data if available, even without B2 creds
-            if text_count > 0:
+            if text_count > 0 or figures_count > 0:
                 stats["text_translated"] = text_count
+                stats["figures_translated"] = figures_count
                 stats["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             log(f"B2 credentials not available, using local stats: {text_count} text, {figures_count} figures")
             return stats
@@ -149,8 +150,9 @@ def get_b2_stats() -> Dict[str, Any]:
     except Exception as e:
         log(f"Failed to fetch B2 stats: {e}")
         # Preserve any local data we have
-        if text_count > 0:
+        if text_count > 0 or figures_count > 0:
             stats["text_translated"] = text_count
+            stats["figures_translated"] = figures_count
             stats["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     return stats
