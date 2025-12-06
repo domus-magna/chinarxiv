@@ -41,6 +41,7 @@ function searchSubject(subject) {
   let lastSearchResults = [];
   let currentQuery = '';
   let indexLoadState = 'loading'; // 'loading' | 'success' | 'failed'
+  let userChangedSort = false; // Track if user explicitly changed sort
 
   // Date filter: days ago lookup (relative to today)
   const dateDays = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
@@ -77,12 +78,13 @@ function searchSubject(subject) {
     indexLoadState = 'success';
     allDocs = data;
     initMiniSearch(data);
-    // If user typed a query before index loaded, run the search now
+    // Handle any pending query or filter state
     if (currentQuery) {
       performSearch(currentQuery);
     } else if (urlQuery) {
       performSearch(urlQuery);
-    } else if (categoryFilter?.value || dateFilter?.value || figuresFilter?.checked) {
+    } else {
+      // Always re-render to handle any filter/sort changes made while loading
       applyFiltersAndRender();
     }
   }
@@ -158,10 +160,12 @@ function searchSubject(subject) {
       return Number.isNaN(t) ? 0 : t;
     };
 
-    // With a query: preserve MiniSearch relevance ranking unless user explicitly picks date sort
+    // With a query: preserve MiniSearch relevance ranking unless user explicitly changed sort
     // Without a query: "Relevance" falls back to "Newest First"
-    if (sort === 'relevance' && hasQuery) {
-      // Keep MiniSearch ranking order - no additional sort needed
+    if (hasQuery && !userChangedSort) {
+      // Keep MiniSearch ranking order - user hasn't touched sort dropdown
+    } else if (sort === 'relevance' && hasQuery) {
+      // User explicitly selected "Relevance" - keep MiniSearch order
     } else if (sort === 'oldest') {
       filtered.sort((a, b) => toTimestamp(a) - toTimestamp(b) || String(a.id || '').localeCompare(String(b.id || '')));
     } else {
@@ -233,7 +237,7 @@ function searchSubject(subject) {
 
   if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndRender);
   if (dateFilter) dateFilter.addEventListener('change', applyFiltersAndRender);
-  if (sortOrder) sortOrder.addEventListener('change', applyFiltersAndRender);
+  if (sortOrder) sortOrder.addEventListener('change', () => { userChangedSort = true; applyFiltersAndRender(); });
   if (figuresFilter) figuresFilter.addEventListener('change', applyFiltersAndRender);
   if (searchBtn) searchBtn.addEventListener('click', () => performSearch(input.value));
 

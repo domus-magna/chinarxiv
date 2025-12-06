@@ -72,6 +72,7 @@ jobs:
           if ! aws s3 sync "${DEST}validated/translations" data/translated --delete --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors; then
             echo "❌ B2 sync failed"
             python -m src.tools.b2_alerts add "deploy: B2 sync failed"
+            python -m src.tools.b2_alerts flush || true
             exit 1
           fi
           COUNT=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
