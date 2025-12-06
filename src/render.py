@@ -249,10 +249,14 @@ def build_pdf_markdown(item: Dict[str, Any], body_md: str) -> str:
     display_url = f"chinarxiv.org/items/{paper_id}"
 
     # YAML front matter for pandoc with LaTeX header-includes
+    # fontspec + xeCJK enable Chinese author names (requires xelatex + fonts-noto-cjk)
     # hyperref provides clickable links in PDF, graphicx for logo
     # Logo uses relative path - pandoc resolves via --resource-path in make_pdf.py
     yaml_header = f"""---
 header-includes:
+  - \\usepackage{{fontspec}}
+  - \\usepackage{{xeCJK}}
+  - \\setCJKmainfont{{Noto Sans CJK SC}}
   - \\usepackage{{fancyhdr}}
   - \\usepackage{{hyperref}}
   - \\usepackage{{graphicx}}
@@ -627,7 +631,11 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
 
         Requirements:
         - pandoc (required)
-        - pdflatex OR tectonic (for LaTeX → PDF conversion)
+        - xelatex (required for CJK author names via fontspec/xeCJK)
+        - fonts-noto-cjk (provides Noto Sans CJK SC font)
+
+        Fallback: tectonic can work if it downloads CJK fonts, but xelatex is preferred.
+        pdflatex is NOT supported (cannot compile fontspec/xeCJK preamble).
 
         The template conditionally shows "Download PDF (English)" link based on
         `item._has_english_pdf` which reflects actual PDF generation success.
@@ -639,19 +647,24 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
     from .format_translation import format_translation_to_markdown
 
     # Hoist PDF engine detection once at start (not per-paper)
+    # xelatex is required for CJK support (fontspec/xeCJK preamble)
+    # pdflatex is NOT supported - it cannot compile the CJK preamble
     can_generate_pdf = False
     pdf_engine: str | None = None
     if skip_pdf:
         log("PDF generation skipped (--skip-pdf)")
     elif not has_binary("pandoc"):
         log("WARNING: pandoc not found - English PDFs will not be generated")
-    elif not has_binary("pdflatex") and not has_binary("tectonic"):
-        log("WARNING: pdflatex/tectonic not found - PDF generation may fail")
-    else:
+    elif has_binary("xelatex"):
         can_generate_pdf = True
-        pdf_engine = "tectonic" if not has_binary("pdflatex") and has_binary("tectonic") else None
-        if pdf_engine:
-            log("Using tectonic as PDF engine (pdflatex not found)")
+        pdf_engine = "xelatex"
+        log("Using xelatex for PDF generation (CJK support enabled)")
+    elif has_binary("tectonic"):
+        can_generate_pdf = True
+        pdf_engine = "tectonic"
+        log("Using tectonic for PDF generation (xelatex not found; CJK fonts may need download)")
+    else:
+        log("WARNING: xelatex/tectonic not found - English PDFs will not be generated")
 
     env = Environment(
         loader=FileSystemLoader(os.path.join("src", "templates")),

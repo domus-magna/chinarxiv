@@ -87,9 +87,11 @@ jobs:
             qpdf \
             unpaper \
             pandoc \
-            texlive-latex-base \
-            texlive-latex-recommended \
-            texlive-fonts-recommended
+            texlive-xetex \
+            texlive-fonts-recommended \
+            fonts-noto-cjk
+          which xelatex || { echo "❌ xelatex installation failed"; exit 1; }
+          fc-list | grep -i "Noto.*CJK" | head -3 || echo "⚠️ CJK fonts not found in fontconfig"
 
       - name: Install Python dependencies
         run: |
