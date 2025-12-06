@@ -112,7 +112,6 @@ function searchSubject(subject) {
     const cat = categoryFilter?.value || '';
     const dateRange = dateFilter?.value || '';
     const figuresOnly = figuresFilter?.checked || false;
-    const sortChanged = sortOrder?.value && sortOrder.value !== 'newest';
     const hasQuery = Boolean(currentQuery);
 
     // Disable "Relevance" when no query (relevance requires search terms)
@@ -122,8 +121,12 @@ function searchSubject(subject) {
       // If relevance was selected and query cleared, reset to newest
       if (!hasQuery && sortOrder?.value === 'relevance') {
         sortOrder.value = 'newest';
+        userChangedSort = false;  // Reset so next query uses relevance ranking
       }
     }
+
+    // Compute sortChanged AFTER any auto-reset (fixes stale state bug)
+    const sortChanged = sortOrder?.value && sortOrder.value !== 'newest';
 
     // Any filter/sort change triggers browse mode (consistent behavior)
     const hasActiveFilters = Boolean(cat || dateRange || figuresOnly || sortChanged);
