@@ -114,6 +114,17 @@ function searchSubject(subject) {
     const figuresOnly = figuresFilter?.checked || false;
     const sortChanged = sortOrder?.value && sortOrder.value !== 'newest';
     const hasQuery = Boolean(currentQuery);
+
+    // Disable "Relevance" when no query (relevance requires search terms)
+    const relevanceOpt = sortOrder?.querySelector('option[value="relevance"]');
+    if (relevanceOpt) {
+      relevanceOpt.disabled = !hasQuery;
+      // If relevance was selected and query cleared, reset to newest
+      if (!hasQuery && sortOrder?.value === 'relevance') {
+        sortOrder.value = 'newest';
+      }
+    }
+
     // Any filter/sort change triggers browse mode (consistent behavior)
     const hasActiveFilters = Boolean(cat || dateRange || figuresOnly || sortChanged);
     const isActive = hasQuery || hasActiveFilters;
