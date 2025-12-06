@@ -31,6 +31,7 @@ function searchSubject(subject) {
   const articleList = document.getElementById('articles');
   const categoryFilter = document.getElementById('category-filter');
   const dateFilter = document.getElementById('date-filter');
+  const sortOrder = document.getElementById('sort-order');
   const figuresFilter = document.getElementById('figures-filter');
   const searchBtn = document.querySelector('.search-btn');
   if (!input || !results) return;
@@ -40,9 +41,10 @@ function searchSubject(subject) {
   let lastSearchResults = [];
   let currentQuery = '';
   let indexLoadState = 'loading'; // 'loading' | 'success' | 'failed'
+  let userChangedSort = false; // Track if user explicitly changed sort
 
-  // Date filter: days ago lookup
-  const dateDays = { today: 0, week: 7, month: 30, year: 365 };
+  // Date filter: days ago lookup (relative to today)
+  const dateDays = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
 
   // URL search parameter
   const urlQuery = new URLSearchParams(window.location.search).get('q');
@@ -76,12 +78,13 @@ function searchSubject(subject) {
     indexLoadState = 'success';
     allDocs = data;
     initMiniSearch(data);
-    // If user typed a query before index loaded, run the search now
+    // Handle any pending query or filter state
     if (currentQuery) {
       performSearch(currentQuery);
     } else if (urlQuery) {
       performSearch(urlQuery);
-    } else if (categoryFilter?.value || dateFilter?.value || figuresFilter?.checked) {
+    } else {
+      // Always re-render to handle any filter/sort changes made while loading
       applyFiltersAndRender();
     }
   }
@@ -109,8 +112,10 @@ function searchSubject(subject) {
     const cat = categoryFilter?.value || '';
     const dateRange = dateFilter?.value || '';
     const figuresOnly = figuresFilter?.checked || false;
+    const sortChanged = sortOrder?.value && sortOrder.value !== 'newest';
     const hasQuery = Boolean(currentQuery);
-    const hasActiveFilters = Boolean(cat || dateRange || figuresOnly);
+    // Any filter/sort change triggers browse mode (consistent behavior)
+    const hasActiveFilters = Boolean(cat || dateRange || figuresOnly || sortChanged);
     const isActive = hasQuery || hasActiveFilters;
 
     // No active search/filters → show the default list
@@ -148,15 +153,26 @@ function searchSubject(subject) {
       return true;
     });
 
-    // If no query is present, mirror homepage ordering (newest first) and apply limit
-    if (!hasQuery) {
-      const toTimestamp = (hit) => {
-        const t = Date.parse(hit.date || '');
-        return Number.isNaN(t) ? 0 : t;
-      };
+    // Sort results based on user selection
+    const sort = sortOrder?.value || 'newest';
+    const toTimestamp = (hit) => {
+      const t = Date.parse(hit.date || '');
+      return Number.isNaN(t) ? 0 : t;
+    };
+
+    // With a query: preserve MiniSearch relevance ranking unless user explicitly changed sort
+    // Without a query: "Relevance" falls back to "Newest First"
+    if (hasQuery && !userChangedSort) {
+      // Keep MiniSearch ranking order - user hasn't touched sort dropdown
+    } else if (sort === 'relevance' && hasQuery) {
+      // User explicitly selected "Relevance" - keep MiniSearch order
+    } else if (sort === 'oldest') {
+      filtered.sort((a, b) => toTimestamp(a) - toTimestamp(b) || String(a.id || '').localeCompare(String(b.id || '')));
+    } else {
+      // Newest first (explicit selection or fallback for no-query relevance)
       filtered.sort((a, b) => toTimestamp(b) - toTimestamp(a) || String(a.id || '').localeCompare(String(b.id || '')));
-      filtered = filtered.slice(0, 100); // Match search result limit
     }
+    filtered = filtered.slice(0, 100); // Limit results
 
     renderResults(filtered, hasQuery, hasActiveFilters);
   }
@@ -221,6 +237,7 @@ function searchSubject(subject) {
 
   if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndRender);
   if (dateFilter) dateFilter.addEventListener('change', applyFiltersAndRender);
+  if (sortOrder) sortOrder.addEventListener('change', () => { userChangedSort = true; applyFiltersAndRender(); });
   if (figuresFilter) figuresFilter.addEventListener('change', applyFiltersAndRender);
   if (searchBtn) searchBtn.addEventListener('click', () => performSearch(input.value));
 

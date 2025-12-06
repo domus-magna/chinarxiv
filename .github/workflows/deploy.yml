@@ -65,8 +65,16 @@ jobs:
           pip install awscli >/dev/null 2>&1
           DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
           mkdir -p data/translated
+          # Clear any cached data to ensure we don't mix stale translations with fresh ones
+          rm -rf data/translated/*
           echo "⬇️  Syncing ${DEST}validated/translations → data/translated ..."
-          aws s3 sync "${DEST}validated/translations" data/translated --delete --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors
+          # Sync must succeed - use if-then to capture failure despite set -e
+          if ! aws s3 sync "${DEST}validated/translations" data/translated --delete --exclude "*" --include "*.json" --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" --only-show-errors; then
+            echo "❌ B2 sync failed"
+            python -m src.tools.b2_alerts add "deploy: B2 sync failed"
+            python -m src.tools.b2_alerts flush || true
+            exit 1
+          fi
           COUNT=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
           echo "Found ${COUNT} validated translation files"
           if [ "${COUNT}" = "0" ]; then
