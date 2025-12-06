@@ -69,6 +69,7 @@ jobs:
           if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ] || [ -z "${BACKBLAZE_S3_ENDPOINT}" ] || [ -z "${BACKBLAZE_BUCKET}" ]; then
             echo "❌ Missing B2 credentials for hydration"
             python -m src.tools.b2_alerts add "deploy: hydrate skipped (missing credentials)"
+            python -m src.tools.b2_alerts flush || true
             exit 1
           fi
           pip install awscli >/dev/null 2>&1
