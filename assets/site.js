@@ -69,7 +69,7 @@ function searchSubject(subject) {
       miniSearch.addAll(docs);
     } catch (e) {
       console.error('Failed to initialize search index:', e);
-      results.innerHTML = '<div class="res"><div>Search initialization failed. Please refresh the page.</div></div>';
+      results.innerHTML = '<article class="paper-card"><p>Search initialization failed. Please refresh the page.</p></article>';
     }
   }
 
@@ -93,7 +93,7 @@ function searchSubject(subject) {
   function onIndexFailed() {
     indexLoadState = 'failed';
     toggleArticleList(false);  // Restore article list if hidden during loading
-    results.innerHTML = '<div class="res"><div>Failed to load search index.</div></div>';
+    results.innerHTML = '<article class="paper-card"><p>Failed to load search index.</p></article>';
   }
 
   // Load index (try compressed first)
@@ -142,7 +142,7 @@ function searchSubject(subject) {
     // Use all docs when filters are applied without a query
     const baseResults = hasQuery ? lastSearchResults : allDocs;
     if (!baseResults.length && !allDocs.length) {
-      results.innerHTML = '<div class="res"><div>Loading search index...</div></div>';
+      results.innerHTML = '<article class="paper-card"><p class="search-loading">Loading search index...</p></article>';
       toggleArticleList(true);
       return;
     }
@@ -252,7 +252,7 @@ function searchSubject(subject) {
       applyFiltersAndRender();
       return;
     }
-    if (!miniSearch) { results.innerHTML = '<div class="res search-loading"><div>Loading search index...</div></div>'; return; }
+    if (!miniSearch) { results.innerHTML = '<article class="paper-card"><p class="search-loading">Loading search index...</p></article>'; return; }
     lastSearchResults = miniSearch.search(currentQuery, { limit: 100 });
     applyFiltersAndRender();
   }
