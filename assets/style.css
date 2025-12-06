@@ -43,6 +43,7 @@ body {
   line-height: 1.6;
   font-size: 17px; /* Slightly larger for readability */
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior: contain; /* Prevent scroll bounce on mobile */
 }
 
 /* Typography */
