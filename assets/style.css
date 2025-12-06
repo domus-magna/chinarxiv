@@ -673,8 +673,12 @@ main {
   border-radius: 4px;
   margin-top: 1rem;
   max-height: 600px;
-  overflow-y: auto;
+  overflow-y: clip;  /* Not scrollable by default - prevents scroll trapping */
   box-shadow: inset 0 1px 4px rgba(0,0,0,0.05);
+}
+
+.full-text-preview:hover {
+  overflow-y: auto;  /* Scrollable when mouse is over the content */
 }
 
 .meta-table dl {
