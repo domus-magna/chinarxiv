@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript Visibility Management - ChinaRxiv</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            padding: 2rem;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+        }
+        .header {
+            margin-bottom: 2rem;
+        }
+        h1 {
+            color: #b31b1b;
+            margin-bottom: 0.5rem;
+        }
+        .intro {
+            color: #666;
+            margin-bottom: 2rem;
+        }
+        .note {
+            background: #d4edda;
+            border: 1px solid #28a745;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            color: #155724;
+        }
+
+        /* Subject Pills Container */
+        .subject-pills-container {
+            margin-bottom: 2rem;
+        }
+
+        .filter-label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1rem;
+        }
+
+        /* Pills Wrapper */
+        .pills-wrapper {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        /* Pills Container - Pills hidden via JavaScript */
+        .subject-pills-scroll {
+            display: flex;
+            gap: 0.75rem;
+            flex: 1;
+            overflow: hidden; /* No scrolling - JS hides pills that don't fit */
+        }
+
+        /* Individual Pill Button */
+        .pill-btn {
+            padding: 0.5rem 1.25rem;
+            background: #f1f3f5;
+            border: 2px solid transparent;
+            border-radius: 20px;
+            color: #495057;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            font-family: inherit;
+            flex-shrink: 0;
+        }
+
+        .pill-btn:hover {
+            background: #e9ecef;
+            border-color: #dee2e6;
+        }
+
+        .pill-btn.active {
+            background: #b31b1b;
+            color: white;
+            border-color: #b31b1b;
+        }
+
+        /* More Button */
+        .more-btn {
+            flex-shrink: 0;
+        }
+
+        /* Dropdown Container */
+        .pill-dropdown {
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .dropdown-arrow {
+            font-size: 0.7rem;
+            transition: transform 0.2s ease;
+        }
+
+        .pill-dropdown.open .dropdown-arrow {
+            transform: rotate(180deg);
+        }
+
+        /* Dropdown Menu */
+        .dropdown-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            right: 0;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            min-width: 250px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 100;
+            padding: 0.5rem;
+        }
+
+        .pill-dropdown.open .dropdown-menu {
+            display: block;
+        }
+
+        /* Dropdown Items */
+        .dropdown-item {
+            width: 100%;
+            text-align: left;
+            border-radius: 4px;
+            margin-bottom: 0.25rem;
+            padding: 0.5rem 1rem;
+            background: #f1f3f5;
+            border: 2px solid transparent;
+            color: #495057;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .dropdown-item:hover {
+            background: #e9ecef;
+            border-color: #dee2e6;
+        }
+
+        .dropdown-item.active {
+            background: #b31b1b;
+            color: white;
+            border-color: #b31b1b;
+        }
+
+        .dropdown-item:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Demo content area */
+        .results {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .results h2 {
+            color: #2c3e50;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+
+        .result-count {
+            color: #666;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>JavaScript Visibility Management</h1>
+            <p class="intro">Pills that don't fully fit are hidden via JavaScript - no partial pills ever shown!</p>
+        </div>
+
+        <div class="note">
+            <strong>✓ This approach works!</strong>
+            <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+                <li>JavaScript measures container width and hides pills that don't fully fit</li>
+                <li>Hidden pills are still accessible via the "More" dropdown</li>
+                <li>Recalculates on window resize - try resizing your browser!</li>
+                <li>No partial pills ever shown</li>
+            </ul>
+        </div>
+
+        <!-- Subject Pills Container -->
+        <div class="subject-pills-container">
+            <label class="filter-label">Filter by Subject</label>
+
+            <div class="pills-wrapper">
+                <!-- Pills Row (hidden via JS if they don't fit) -->
+                <div class="subject-pills-scroll" id="subject-pills">
+                    <!-- Pill: All Recent (always first) -->
+                    <button class="pill-btn active" data-subject="">All Recent</button>
+
+                    <!-- Subject Pills (20 pills to demonstrate hiding) -->
+                    <button class="pill-btn" data-subject="Artificial Intelligence">Artificial Intelligence</button>
+                    <button class="pill-btn" data-subject="Astrophysics">Astrophysics</button>
+                    <button class="pill-btn" data-subject="Biochemistry">Biochemistry</button>
+                    <button class="pill-btn" data-subject="Biology">Biology</button>
+                    <button class="pill-btn" data-subject="Chemistry">Chemistry</button>
+                    <button class="pill-btn" data-subject="Computer Science">Computer Science</button>
+                    <button class="pill-btn" data-subject="Data Science">Data Science</button>
+                    <button class="pill-btn" data-subject="Economics">Economics</button>
+                    <button class="pill-btn" data-subject="Engineering">Engineering</button>
+                    <button class="pill-btn" data-subject="Environmental Science">Environmental Science</button>
+                    <button class="pill-btn" data-subject="Genetics">Genetics</button>
+                    <button class="pill-btn" data-subject="Machine Learning">Machine Learning</button>
+                    <button class="pill-btn" data-subject="Mathematics">Mathematics</button>
+                    <button class="pill-btn" data-subject="Neuroscience">Neuroscience</button>
+                    <button class="pill-btn" data-subject="Physics">Physics</button>
+                    <button class="pill-btn" data-subject="Psychology">Psychology</button>
+                    <button class="pill-btn" data-subject="Quantum Computing">Quantum Computing</button>
+                    <button class="pill-btn" data-subject="Robotics">Robotics</button>
+                    <button class="pill-btn" data-subject="Statistics">Statistics</button>
+                </div>
+
+                <!-- More Dropdown (always visible at end) -->
+                <div class="pill-dropdown">
+                    <button class="pill-btn more-btn" id="more-toggle">
+                        More <span class="dropdown-arrow">▼</span>
+                    </button>
+                    <div class="dropdown-menu" id="dropdown-menu">
+                        <!-- Full alphabetical list of all subjects -->
+                        <button class="dropdown-item" data-subject="">All Recent</button>
+                        <button class="dropdown-item" data-subject="Artificial Intelligence">Artificial Intelligence</button>
+                        <button class="dropdown-item" data-subject="Astrophysics">Astrophysics</button>
+                        <button class="dropdown-item" data-subject="Biochemistry">Biochemistry</button>
+                        <button class="dropdown-item" data-subject="Biology">Biology</button>
+                        <button class="dropdown-item" data-subject="Chemistry">Chemistry</button>
+                        <button class="dropdown-item" data-subject="Computer Science">Computer Science</button>
+                        <button class="dropdown-item" data-subject="Data Science">Data Science</button>
+                        <button class="dropdown-item" data-subject="Economics">Economics</button>
+                        <button class="dropdown-item" data-subject="Engineering">Engineering</button>
+                        <button class="dropdown-item" data-subject="Environmental Science">Environmental Science</button>
+                        <button class="dropdown-item" data-subject="Genetics">Genetics</button>
+                        <button class="dropdown-item" data-subject="Machine Learning">Machine Learning</button>
+                        <button class="dropdown-item" data-subject="Mathematics">Mathematics</button>
+                        <button class="dropdown-item" data-subject="Neuroscience">Neuroscience</button>
+                        <button class="dropdown-item" data-subject="Physics">Physics</button>
+                        <button class="dropdown-item" data-subject="Psychology">Psychology</button>
+                        <button class="dropdown-item" data-subject="Quantum Computing">Quantum Computing</button>
+                        <button class="dropdown-item" data-subject="Robotics">Robotics</button>
+                        <button class="dropdown-item" data-subject="Statistics">Statistics</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Demo Results -->
+        <div class="results">
+            <h2>Filtered Papers</h2>
+            <p class="result-count" id="result-count">Showing all recent papers</p>
+        </div>
+    </div>
+
+    <script>
+        // Subject Pills with Dropdown + Visibility Management
+        (() => {
+            const pillsScroll = document.getElementById('subject-pills');
+            const moreToggle = document.getElementById('more-toggle');
+            const dropdownMenu = document.getElementById('dropdown-menu');
+            const resultCount = document.getElementById('result-count');
+
+            if (!pillsScroll || !moreToggle || !dropdownMenu) return;
+
+            // Get all pill buttons and dropdown items
+            const pills = pillsScroll.querySelectorAll('.pill-btn');
+            const dropdownItems = dropdownMenu.querySelectorAll('.dropdown-item');
+
+            // Hide pills that don't fully fit in the container
+            function updatePillVisibility() {
+                const containerWidth = pillsScroll.clientWidth;
+                let accumulatedWidth = 0;
+                const gap = 12; // 0.75rem = 12px
+
+                Array.from(pills).forEach((pill, index) => {
+                    const pillWidth = pill.offsetWidth;
+                    accumulatedWidth += pillWidth;
+                    if (index > 0) accumulatedWidth += gap;
+
+                    // Hide pill if it doesn't fully fit
+                    pill.style.display = accumulatedWidth > containerWidth ? 'none' : '';
+                });
+            }
+
+            // Handle pill click (both visible pills and dropdown items)
+            function handlePillClick(subject) {
+                // Update active state on all pills
+                pills.forEach(pill => {
+                    pill.classList.toggle('active', pill.dataset.subject === subject);
+                });
+
+                // Update active state on dropdown items
+                dropdownItems.forEach(item => {
+                    item.classList.toggle('active', item.dataset.subject === subject);
+                });
+
+                // Update result count (demo)
+                if (subject === '') {
+                    resultCount.textContent = 'Showing all recent papers';
+                } else {
+                    resultCount.textContent = `Showing papers in ${subject}`;
+                }
+
+                // Close dropdown
+                moreToggle.parentElement.classList.remove('open');
+            }
+
+            // Attach click handlers
+            pills.forEach(pill => {
+                pill.addEventListener('click', () => handlePillClick(pill.dataset.subject));
+            });
+
+            dropdownItems.forEach(item => {
+                item.addEventListener('click', () => handlePillClick(item.dataset.subject));
+            });
+
+            // Toggle dropdown
+            moreToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                moreToggle.parentElement.classList.toggle('open');
+            });
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!moreToggle.parentElement.contains(e.target)) {
+                    moreToggle.parentElement.classList.remove('open');
+                }
+            });
+
+            // Update visibility on load and resize
+            updatePillVisibility();
+            window.addEventListener('resize', updatePillVisibility);
+        })();
+    </script>
+</body>
+</html>

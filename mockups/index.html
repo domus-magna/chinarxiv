@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Homepage Design Comparison - ChinaRxiv</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            padding: 2rem;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #b31b1b;
+            margin-bottom: 1rem;
+        }
+        .intro {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        .option-card {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1.5rem;
+            transition: all 0.2s;
+        }
+        .option-card:hover {
+            border-color: #b31b1b;
+            box-shadow: 0 4px 12px rgba(179, 27, 27, 0.1);
+        }
+        .option-card h2 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+            font-size: 1.3rem;
+        }
+        .option-card .concept {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        .option-card ul {
+            list-style: none;
+            margin-bottom: 1rem;
+        }
+        .option-card li {
+            padding: 0.3rem 0;
+            font-size: 0.9rem;
+            color: #444;
+        }
+        .option-card li::before {
+            content: "✓ ";
+            color: #b31b1b;
+            font-weight: bold;
+        }
+        .option-card a {
+            display: inline-block;
+            background: #b31b1b;
+            color: white;
+            padding: 0.6rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+        }
+        .option-card a:hover {
+            background: #850000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Homepage Design Options - ChinaRxiv</h1>
+        <div class="intro">
+            <p><strong>Goal:</strong> Create a distinctive "What's New" homepage that emphasizes recent content and looks different from search results.</p>
+            <p style="margin-top: 0.5rem;">Click each option below to view a live mockup with real paper data.</p>
+        </div>
+
+        <!-- High-Fidelity Recommendation -->
+        <div style="background: #d4edda; border: 2px solid #28a745; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem;">
+            <h2 style="color: #155724; margin-bottom: 0.5rem; font-size: 1.2rem;">✓ Gemini's Recommended Design</h2>
+            <p style="color: #155724; margin-bottom: 1rem;">Timeline with subject filter tabs - best balance of clean chronology and domain-specific filtering</p>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <a href="timeline-with-filters.html" style="display: inline-block; background: #28a745; color: white; padding: 0.75rem 1.5rem; border-radius: 4px; text-decoration: none; font-weight: 600;">View Desktop Mockup →</a>
+                <a href="mobile-comparison.html" style="display: inline-block; background: #0066cc; color: white; padding: 0.75rem 1.5rem; border-radius: 4px; text-decoration: none; font-weight: 600;">📱 Mobile vs Desktop →</a>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="option-card">
+                <h2>Option 1: Timeline</h2>
+                <p class="concept">Clean vertical timeline emphasizing chronology</p>
+                <ul>
+                    <li>Date dividers separate papers by day</li>
+                    <li>No boxes/borders - just horizontal dividers</li>
+                    <li>High density, maximum scan-ability</li>
+                </ul>
+                <a href="option1-timeline.html">View Timeline →</a>
+            </div>
+
+            <div class="option-card">
+                <h2>Option 2: Magazine</h2>
+                <p class="concept">Hero featured paper + compact recent list</p>
+                <ul>
+                    <li>Top paper gets featured treatment</li>
+                    <li>Rest are compact single-line items</li>
+                    <li>Clear hierarchy (new = prominent)</li>
+                </ul>
+                <a href="option2-magazine.html">View Magazine →</a>
+            </div>
+
+            <div class="option-card">
+                <h2>Option 3: Compact</h2>
+                <p class="concept">Maximum density, minimal styling</p>
+                <ul>
+                    <li>No boxes, borders, or backgrounds</li>
+                    <li>Title stands alone (bold)</li>
+                    <li>Very scannable, text-focused</li>
+                </ul>
+                <a href="option3-compact.html">View Compact →</a>
+            </div>
+
+            <div class="option-card">
+                <h2>Option 4: Newspaper</h2>
+                <p class="concept">Metadata column on left, content on right</p>
+                <ul>
+                    <li>Two-column layout</li>
+                    <li>Very distinctive from search</li>
+                    <li>Efficient use of space</li>
+                </ul>
+                <a href="option4-newspaper.html">View Newspaper →</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

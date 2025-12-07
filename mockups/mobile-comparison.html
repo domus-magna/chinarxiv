@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile vs Desktop Comparison - ChinaRxiv Timeline</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f0f0;
+            padding: 2rem;
+        }
+
+        .comparison-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .comparison-header h1 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .comparison-header p {
+            color: #666;
+        }
+
+        .comparison-container {
+            display: flex;
+            gap: 2rem;
+            max-width: 1600px;
+            margin: 0 auto;
+            align-items: flex-start;
+        }
+
+        .viewport {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .viewport-header {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .viewport-body {
+            height: 800px;
+            overflow-y: auto;
+        }
+
+        /* Mobile viewport - 375px width (iPhone SE) */
+        .mobile-viewport .viewport-body {
+            width: 375px;
+            margin: 0 auto;
+        }
+
+        /* Desktop viewport - full width */
+        .desktop-viewport .viewport-body {
+            width: 100%;
+        }
+
+        /* Responsive: Stack on smaller screens */
+        @media (max-width: 1200px) {
+            .comparison-container {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .viewport {
+                width: 100%;
+                max-width: 900px;
+            }
+
+            .mobile-viewport .viewport-body {
+                width: 375px;
+            }
+        }
+
+        /* Embedded styles from the original mockup - Mobile optimized */
+        .mockup-content {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #2c3e50;
+            background: #f8f9fa;
+        }
+
+        .site-header {
+            background: #b31b1b;
+            color: white;
+            padding: 1rem;
+        }
+
+        .header-content {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .site-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .header-search input {
+            width: 100%;
+            padding: 0.5rem;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .container {
+            padding: 1rem;
+        }
+
+        .page-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .page-header h1 {
+            font-size: 1.5rem;
+            color: #2c3e50;
+            margin-bottom: 0.25rem;
+        }
+
+        .page-header p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .paper-count {
+            color: #888;
+            font-size: 0.85rem;
+            margin-top: 0.25rem;
+        }
+
+        .subject-filters {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .filter-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.75rem;
+            display: block;
+        }
+
+        .filter-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .filter-tab {
+            padding: 0.4rem 1rem;
+            background: #f1f3f5;
+            border: 2px solid transparent;
+            border-radius: 20px;
+            color: #495057;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .filter-tab.active {
+            background: #b31b1b;
+            color: white;
+        }
+
+        .timeline-feed {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .date-marker {
+            background: linear-gradient(to right, #f8f9fa, #ffffff);
+            border-left: 4px solid #b31b1b;
+            padding: 0.6rem 1rem;
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9rem;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .feed-item {
+            border-bottom: 1px solid #e9ecef;
+            padding: 1rem;
+        }
+
+        .feed-item:last-child {
+            border-bottom: none;
+        }
+
+        .feed-title {
+            font-size: 1.05rem;
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .feed-title a {
+            color: #2c3e50;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .feed-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .subject-badges {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .subject-badge {
+            background: #e7f5ff;
+            color: #1864ab;
+            padding: 0.25rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .feed-abstract {
+            color: #495057;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            margin-bottom: 0.75rem;
+        }
+
+        .feed-links {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .feed-link {
+            padding: 0.35rem 0.9rem;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            color: #495057;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .feed-link.primary {
+            background: #b31b1b;
+            color: white;
+            border-color: #b31b1b;
+        }
+
+        /* Desktop-specific styles */
+        .desktop-viewport .header-content {
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1rem;
+        }
+
+        .desktop-viewport .site-title {
+            font-size: 1.5rem;
+        }
+
+        .desktop-viewport .header-search {
+            flex: 0 0 300px;
+        }
+
+        .desktop-viewport .container {
+            padding: 2rem;
+        }
+
+        .desktop-viewport .page-header h1 {
+            font-size: 2rem;
+        }
+
+        .desktop-viewport .subject-filters {
+            padding: 1.5rem;
+        }
+
+        .desktop-viewport .filter-tabs {
+            gap: 0.75rem;
+        }
+
+        .desktop-viewport .filter-tab {
+            padding: 0.5rem 1.25rem;
+            font-size: 0.9rem;
+        }
+
+        .desktop-viewport .feed-item {
+            padding: 1.5rem;
+        }
+
+        .desktop-viewport .feed-title {
+            font-size: 1.15rem;
+        }
+
+        .desktop-viewport .feed-meta {
+            flex-direction: row;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .desktop-viewport .feed-abstract {
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="comparison-header">
+        <h1>Timeline Design: Mobile vs Desktop</h1>
+        <p>Compare how the design adapts to different screen sizes</p>
+    </div>
+
+    <div class="comparison-container">
+        <!-- Mobile Viewport -->
+        <div class="viewport mobile-viewport">
+            <div class="viewport-header">📱 Mobile (375px)</div>
+            <div class="viewport-body">
+                <div class="mockup-content">
+                    <header class="site-header">
+                        <div class="header-content">
+                            <div class="site-title">ChinaRxiv</div>
+                            <div class="header-search">
+                                <input type="search" placeholder="Search papers...">
+                            </div>
+                        </div>
+                    </header>
+
+                    <main class="container">
+                        <div class="page-header">
+                            <h1>Recent Translations</h1>
+                            <p>Latest from ChinaXiv</p>
+                            <p class="paper-count">127 papers</p>
+                        </div>
+
+                        <div class="subject-filters">
+                            <label class="filter-label">Filter by Subject</label>
+                            <div class="filter-tabs">
+                                <span class="filter-tab active">All</span>
+                                <span class="filter-tab">Physics</span>
+                                <span class="filter-tab">CS</span>
+                                <span class="filter-tab">Math</span>
+                                <span class="filter-tab">Bio</span>
+                            </div>
+                        </div>
+
+                        <div class="timeline-feed">
+                            <div class="date-marker">Dec 6, 2024</div>
+
+                            <article class="feed-item">
+                                <h3 class="feed-title">
+                                    <a href="#">Role of Rhythm in Speech Comprehension</a>
+                                </h3>
+                                <div class="feed-meta">
+                                    <div>Chen L., Liu L., Ge Z., et al.</div>
+                                    <div class="subject-badges">
+                                        <span class="subject-badge">Psychology</span>
+                                    </div>
+                                </div>
+                                <p class="feed-abstract">
+                                    Speech comprehension is influenced by multi-scale rhythmic information including prosodic structure, contextual rhythm, and body language...
+                                </p>
+                                <div class="feed-links">
+                                    <a href="#" class="feed-link primary">Abstract</a>
+                                    <a href="#" class="feed-link">PDF</a>
+                                </div>
+                            </article>
+
+                            <article class="feed-item">
+                                <h3 class="feed-title">
+                                    <a href="#">Life Satisfaction Prediction Models</a>
+                                </h3>
+                                <div class="feed-meta">
+                                    <div>Chen J., Hu D., Song R., et al.</div>
+                                    <div class="subject-badges">
+                                        <span class="subject-badge">Psychology</span>
+                                        <span class="subject-badge">CS</span>
+                                    </div>
+                                </div>
+                                <p class="feed-abstract">
+                                    Text analysis and machine learning to predict satisfaction, addressing challenges in obtaining labeled data...
+                                </p>
+                                <div class="feed-links">
+                                    <a href="#" class="feed-link primary">Abstract</a>
+                                    <a href="#" class="feed-link">PDF</a>
+                                    <a href="#" class="feed-link">Figures</a>
+                                </div>
+                            </article>
+
+                            <div class="date-marker">Dec 5, 2024</div>
+
+                            <article class="feed-item">
+                                <h3 class="feed-title">
+                                    <a href="#">Neutron-Skin Thickness Using CIE</a>
+                                </h3>
+                                <div class="feed-meta">
+                                    <div>Ma C., Liu Y., Wei H., Pu J.</div>
+                                    <div class="subject-badges">
+                                        <span class="subject-badge">Physics</span>
+                                    </div>
+                                </div>
+                                <p class="feed-abstract">
+                                    Configurational information entropy theory for neutron-rich calcium isotopes and fragment cross-sections...
+                                </p>
+                                <div class="feed-links">
+                                    <a href="#" class="feed-link primary">Abstract</a>
+                                    <a href="#" class="feed-link">PDF</a>
+                                </div>
+                            </article>
+                        </div>
+                    </main>
+                </div>
+            </div>
+        </div>
+
+        <!-- Desktop Viewport -->
+        <div class="viewport desktop-viewport">
+            <div class="viewport-header">🖥️ Desktop (Full Width)</div>
+            <div class="viewport-body">
+                <div class="mockup-content">
+                    <header class="site-header">
+                        <div class="header-content">
+                            <div class="site-title">ChinaRxiv</div>
+                            <div class="header-search">
+                                <input type="search" placeholder="Search papers...">
+                            </div>
+                        </div>
+                    </header>
+
+                    <main class="container">
+                        <div class="page-header">
+                            <h1>Recent Translations from ChinaXiv</h1>
+                            <p>Automatically translated preprints from the Chinese arXiv</p>
+                            <p class="paper-count">Latest updates • 127 papers translated</p>
+                        </div>
+
+                        <div class="subject-filters">
+                            <label class="filter-label">Filter by Subject</label>
+                            <div class="filter-tabs">
+                                <span class="filter-tab active">All Recent</span>
+                                <span class="filter-tab">Physics</span>
+                                <span class="filter-tab">Computer Science</span>
+                                <span class="filter-tab">Psychology</span>
+                                <span class="filter-tab">Mathematics</span>
+                                <span class="filter-tab">Biology</span>
+                            </div>
+                        </div>
+
+                        <div class="timeline-feed">
+                            <div class="date-marker">December 6, 2024</div>
+
+                            <article class="feed-item">
+                                <h3 class="feed-title">
+                                    <a href="#">The Role of Rhythm in Auditory Speech Comprehension</a>
+                                </h3>
+                                <div class="feed-meta">
+                                    <div>Liangjie Chen, Liu Lei, Ge Zhongshu, Yang Xiaodong, Li Liang</div>
+                                    <span style="color: #dee2e6;">•</span>
+                                    <div class="subject-badges">
+                                        <span class="subject-badge">Psychology</span>
+                                        <span class="subject-badge">Cognitive Psychology</span>
+                                    </div>
+                                </div>
+                                <p class="feed-abstract">
+                                    Speech comprehension is the psychological process by which a listener receives external speech input and acquires meaning. In daily communication, auditory speech comprehension is influenced by multi-scale rhythmic information, commonly including three aspects of external rhythms: prosodic structure rhythm, contextual rhythm, and speaker's body language rhythm...
+                                </p>
+                                <div class="feed-links">
+                                    <a href="#" class="feed-link primary">Abstract</a>
+                                    <a href="#" class="feed-link">PDF</a>
+                                </div>
+                            </article>
+
+                            <article class="feed-item">
+                                <h3 class="feed-title">
+                                    <a href="#">Optimization of Life Satisfaction Prediction Models Based on Text Data Augmentation</a>
+                                </h3>
+                                <div class="feed-meta">
+                                    <div>Chen Jiajing, Hu Dingding, Song Rui, Tan Shiqi, Li Yuqing, Zhang Shengnan</div>
+                                    <span style="color: #dee2e6;">•</span>
+                                    <div class="subject-badges">
+                                        <span class="subject-badge">Psychology</span>
+                                        <span class="subject-badge">Applied Psychology</span>
+                                        <span class="subject-badge">Computer Science</span>
+                                    </div>
+                                </div>
+                                <p class="feed-abstract">
+                                    Objective: With the development of internet big data and machine learning methods, an increasing number of studies combine text analysis and machine learning to predict satisfaction. In research on building life satisfaction prediction models, to address the challenge of obtaining large amounts of effective labeled data...
+                                </p>
+                                <div class="feed-links">
+                                    <a href="#" class="feed-link primary">Abstract</a>
+                                    <a href="#" class="feed-link">PDF</a>
+                                    <a href="#" class="feed-link">Figures</a>
+                                </div>
+                            </article>
+
+                            <div class="date-marker">December 5, 2024</div>
+
+                            <article class="feed-item">
+                                <h3 class="feed-title">
+                                    <a href="#">Determination of neutron-skin thickness using configurational information entropy</a>
+                                </h3>
+                                <div class="feed-meta">
+                                    <div>Ma, Chun-Wang, Liu, Yi-Pu, Wei, Hui-Ling, Pu, Jie</div>
+                                    <span style="color: #dee2e6;">•</span>
+                                    <div class="subject-badges">
+                                        <span class="subject-badge">Physics</span>
+                                        <span class="subject-badge">Nuclear Physics</span>
+                                    </div>
+                                </div>
+                                <p class="feed-abstract">
+                                    Configurational information entropy (CIE) theory was employed to determine the neutron skin thickness of neutron-rich calcium isotopes. The nuclear density distributions and fragment cross-sections in 350 MeV/u 40060Ca + 9Be projectile fragmentation reactions were calculated using a modified statistical abrasion-ablation model...
+                                </p>
+                                <div class="feed-links">
+                                    <a href="#" class="feed-link primary">Abstract</a>
+                                    <a href="#" class="feed-link">PDF</a>
+                                </div>
+                            </article>
+                        </div>
+                    </main>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

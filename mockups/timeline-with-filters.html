@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChinaRxiv - Recent Translations</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #2c3e50;
+            background: #f8f9fa;
+        }
+
+        /* Header */
+        .site-header {
+            background: #b31b1b;
+            color: white;
+            padding: 1.5rem 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .site-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .header-search {
+            flex: 0 0 300px;
+        }
+
+        .header-search input {
+            width: 100%;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Page Title */
+        .page-header {
+            margin-bottom: 2rem;
+        }
+
+        .page-header h1 {
+            font-size: 2rem;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-header p {
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .paper-count {
+            color: #888;
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+
+        /* Subject Filter Tabs */
+        .subject-filters {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .filter-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .filter-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        .filter-tab {
+            padding: 0.5rem 1.25rem;
+            background: #f1f3f5;
+            border: 2px solid transparent;
+            border-radius: 20px;
+            color: #495057;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .filter-tab:hover {
+            background: #e9ecef;
+            border-color: #dee2e6;
+        }
+
+        .filter-tab.active {
+            background: #b31b1b;
+            color: white;
+            border-color: #b31b1b;
+        }
+
+        /* Timeline Feed */
+        .timeline-feed {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        /* Date Marker */
+        .date-marker {
+            background: linear-gradient(to right, #f8f9fa, #ffffff);
+            border-left: 4px solid #b31b1b;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.95rem;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        /* Paper Item */
+        .feed-item {
+            border-bottom: 1px solid #e9ecef;
+            padding: 1.5rem;
+            transition: background 0.15s ease;
+        }
+
+        .feed-item:hover {
+            background: #f8f9fa;
+        }
+
+        .feed-item:last-child {
+            border-bottom: none;
+        }
+
+        .feed-title {
+            font-size: 1.15rem;
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .feed-title a {
+            color: #2c3e50;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .feed-title a:hover {
+            color: #b31b1b;
+            text-decoration: underline;
+        }
+
+        .feed-meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .feed-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .meta-separator {
+            color: #dee2e6;
+        }
+
+        .subject-badges {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .subject-badge {
+            background: #e7f5ff;
+            color: #1864ab;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .subject-badge:hover {
+            background: #1864ab;
+            color: white;
+        }
+
+        .feed-links {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .feed-link {
+            padding: 0.35rem 1rem;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            color: #495057;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.15s ease;
+        }
+
+        .feed-link:hover {
+            background: #f8f9fa;
+            border-color: #adb5bd;
+        }
+
+        .feed-link.primary {
+            background: #b31b1b;
+            color: white;
+            border-color: #b31b1b;
+        }
+
+        .feed-link.primary:hover {
+            background: #8a1414;
+            border-color: #8a1414;
+        }
+
+        .feed-abstract {
+            color: #495057;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 0.75rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .header-search {
+                flex: 1;
+                width: 100%;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+
+            .filter-tabs {
+                gap: 0.5rem;
+            }
+
+            .filter-tab {
+                padding: 0.4rem 1rem;
+                font-size: 0.85rem;
+            }
+
+            .feed-meta {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="site-header">
+        <div class="header-content">
+            <div class="site-title">ChinaRxiv</div>
+            <div class="header-search">
+                <input type="search" placeholder="Search papers...">
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container">
+        <!-- Page Header -->
+        <div class="page-header">
+            <h1>Recent Translations from ChinaXiv</h1>
+            <p>Automatically translated preprints from the Chinese arXiv</p>
+            <p class="paper-count">Latest updates • 127 papers translated</p>
+        </div>
+
+        <!-- Subject Filter Tabs -->
+        <div class="subject-filters">
+            <label class="filter-label">Filter by Subject</label>
+            <div class="filter-tabs">
+                <a href="#" class="filter-tab active">All Recent</a>
+                <a href="#" class="filter-tab">Physics</a>
+                <a href="#" class="filter-tab">Computer Science</a>
+                <a href="#" class="filter-tab">Psychology</a>
+                <a href="#" class="filter-tab">Mathematics</a>
+                <a href="#" class="filter-tab">Biology</a>
+                <a href="#" class="filter-tab">Chemistry</a>
+                <a href="#" class="filter-tab">Engineering</a>
+            </div>
+        </div>
+
+        <!-- Timeline Feed -->
+        <div class="timeline-feed">
+            <!-- Date Marker -->
+            <div class="date-marker">December 6, 2024</div>
+
+            <!-- Paper 1 -->
+            <article class="feed-item">
+                <h3 class="feed-title">
+                    <a href="#">The Role of Rhythm in Auditory Speech Comprehension</a>
+                </h3>
+                <div class="feed-meta">
+                    <div class="feed-meta-item">
+                        <span>Liangjie Chen, Liu Lei, Ge Zhongshu, Yang Xiaodong, Li Liang</span>
+                    </div>
+                    <span class="meta-separator">•</span>
+                    <div class="subject-badges">
+                        <span class="subject-badge">Psychology</span>
+                        <span class="subject-badge">Cognitive Psychology</span>
+                    </div>
+                </div>
+                <p class="feed-abstract">
+                    Speech comprehension is the psychological process by which a listener receives external speech input and acquires meaning. In daily communication, auditory speech comprehension is influenced by multi-scale rhythmic information, commonly including three aspects of external rhythms: prosodic structure rhythm, contextual rhythm, and speaker's body language rhythm...
+                </p>
+                <div class="feed-links">
+                    <a href="#" class="feed-link primary">Abstract</a>
+                    <a href="#" class="feed-link">PDF</a>
+                </div>
+            </article>
+
+            <!-- Paper 2 -->
+            <article class="feed-item">
+                <h3 class="feed-title">
+                    <a href="#">Optimization of Life Satisfaction Prediction Models Based on Text Data Augmentation</a>
+                </h3>
+                <div class="feed-meta">
+                    <div class="feed-meta-item">
+                        <span>Chen Jiajing, Hu Dingding, Song Rui, Tan Shiqi, Li Yuqing, Zhang Shengnan</span>
+                    </div>
+                    <span class="meta-separator">•</span>
+                    <div class="subject-badges">
+                        <span class="subject-badge">Psychology</span>
+                        <span class="subject-badge">Applied Psychology</span>
+                        <span class="subject-badge">Computer Science</span>
+                    </div>
+                </div>
+                <p class="feed-abstract">
+                    Objective: With the development of internet big data and machine learning methods, an increasing number of studies combine text analysis and machine learning to predict satisfaction. In research on building life satisfaction prediction models, to address the challenge of obtaining large amounts of effective labeled data...
+                </p>
+                <div class="feed-links">
+                    <a href="#" class="feed-link primary">Abstract</a>
+                    <a href="#" class="feed-link">PDF</a>
+                    <a href="#" class="feed-link">Figures</a>
+                </div>
+            </article>
+
+            <!-- Date Marker -->
+            <div class="date-marker">December 5, 2024</div>
+
+            <!-- Paper 3 -->
+            <article class="feed-item">
+                <h3 class="feed-title">
+                    <a href="#">Determination of neutron-skin thickness using configurational information entropy</a>
+                </h3>
+                <div class="feed-meta">
+                    <div class="feed-meta-item">
+                        <span>Ma, Chun-Wang, Liu, Yi-Pu, Wei, Hui-Ling, Pu, Jie</span>
+                    </div>
+                    <span class="meta-separator">•</span>
+                    <div class="subject-badges">
+                        <span class="subject-badge">Physics</span>
+                        <span class="subject-badge">Nuclear Physics</span>
+                    </div>
+                </div>
+                <p class="feed-abstract">
+                    Configurational information entropy (CIE) theory was employed to determine the neutron skin thickness of neutron-rich calcium isotopes. The nuclear density distributions and fragment cross-sections in 350 MeV/u 40060Ca + 9Be projectile fragmentation reactions were calculated using a modified statistical abrasion-ablation model...
+                </p>
+                <div class="feed-links">
+                    <a href="#" class="feed-link primary">Abstract</a>
+                    <a href="#" class="feed-link">PDF</a>
+                </div>
+            </article>
+
+            <!-- Paper 4 -->
+            <article class="feed-item">
+                <h3 class="feed-title">
+                    <a href="#">Evaluation of neutron beam characteristics for D-BNCT01 facility</a>
+                </h3>
+                <div class="feed-meta">
+                    <div class="feed-meta-item">
+                        <span>Chen, Jun-Yang, Tong, Jian-Fei, Hu, Zhi-Liang, Han, Xue-Fen</span>
+                    </div>
+                    <span class="meta-separator">•</span>
+                    <div class="subject-badges">
+                        <span class="subject-badge">Nuclear Science</span>
+                        <span class="subject-badge">Particle Accelerators</span>
+                    </div>
+                </div>
+                <p class="feed-abstract">
+                    An accelerator-based Boron Neutron Capture Therapy (AB-BNCT) experimental facility called D-BNCT01 has been recently completed and is currently able to generate a high-intensity neutron beam for BNCT related research. In this study, we perform several experiments involving water phantoms to validate the Monte Carlo simulation results...
+                </p>
+                <div class="feed-links">
+                    <a href="#" class="feed-link primary">Abstract</a>
+                    <a href="#" class="feed-link">PDF</a>
+                    <a href="#" class="feed-link">Figures</a>
+                </div>
+            </article>
+
+            <!-- Paper 5 -->
+            <article class="feed-item">
+                <h3 class="feed-title">
+                    <a href="#">Burnup optimization of once-through molten salt reactors using enriched uranium and thorium</a>
+                </h3>
+                <div class="feed-meta">
+                    <div class="feed-meta-item">
+                        <span>Tan, Meng-Lu, Zhu, Gui-Feng, Zhang, Zheng-De, Zou, Yang</span>
+                    </div>
+                    <span class="meta-separator">•</span>
+                    <div class="subject-badges">
+                        <span class="subject-badge">Nuclear Science</span>
+                        <span class="subject-badge">Fission Reactor Engineering</span>
+                    </div>
+                </div>
+                <p class="feed-abstract">
+                    The advantages of once-through molten salt reactors include readily available fuel, low nuclear proliferation risk, and low technical difficulty, making them potentially one of the most easily commercialized fuel cycle modes for molten salt reactors. However, there exist certain issues in parameter selection for once-through molten salt reactors...
+                </p>
+                <div class="feed-links">
+                    <a href="#" class="feed-link primary">Abstract</a>
+                    <a href="#" class="feed-link">PDF</a>
+                    <a href="#" class="feed-link">Figures</a>
+                </div>
+            </article>
+
+            <!-- Date Marker -->
+            <div class="date-marker">December 4, 2024</div>
+
+            <!-- Paper 6 -->
+            <article class="feed-item">
+                <h3 class="feed-title">
+                    <a href="#">Application of homogenization techniques for inflow transport approximation on light water reactor analysis</a>
+                </h3>
+                <div class="feed-meta">
+                    <div class="feed-meta-item">
+                        <span>Xiao, Xiang, Wang, Kan, Yang, Tong-Rui, Chen, Yi-Xue</span>
+                    </div>
+                    <span class="meta-separator">•</span>
+                    <div class="subject-badges">
+                        <span class="subject-badge">Nuclear Science</span>
+                        <span class="subject-badge">Fission Reactor Engineering</span>
+                    </div>
+                </div>
+                <p class="feed-abstract">
+                    The transport cross-section based on inflow transport approximation can significantly improve the accuracy of light water reactor (LWR) analysis, especially for the treatment of the anisotropic scattering effect. The previous inflow transport approximation is based on the moderator cross-section and normalized fission source...
+                </p>
+                <div class="feed-links">
+                    <a href="#" class="feed-link primary">Abstract</a>
+                    <a href="#" class="feed-link">PDF</a>
+                    <a href="#" class="feed-link">Figures</a>
+                </div>
+            </article>
+        </div>
+    </main>
+
+    <script>
+        // Simple tab filtering demo
+        document.querySelectorAll('.filter-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+            });
+        });
+
+        // Subject badge filtering demo
+        document.querySelectorAll('.subject-badge').forEach(badge => {
+            badge.addEventListener('click', () => {
+                const subject = badge.textContent;
+                document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+                // In real implementation, this would filter by the clicked subject
+                alert(`Would filter by: ${subject}`);
+            });
+        });
+    </script>
+</body>
+</html>
