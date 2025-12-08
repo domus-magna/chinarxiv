@@ -1697,6 +1697,13 @@ main {
   box-shadow: 0 0 0 0.2rem rgba(179, 27, 27, 0.15);
 }
 
+/* Category accordion groups */
+.category-group {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
 .category-groups {
   background: white;
 }
@@ -1746,11 +1753,37 @@ main {
   font-weight: 600;
 }
 
+/* Category group toggle (caret) */
+.category-group-toggle {
+  font-size: 14px;
+  color: #666;
+  transition: transform 0.2s ease;
+  user-select: none;
+  margin-right: 0.5rem;
+}
+
+/* Expanded state - downward caret */
+.category-group.active .category-group-toggle {
+  transform: rotate(0deg);
+}
+
+/* Collapsed state - right-pointing caret */
+.category-group:not(.active) .category-group-toggle {
+  transform: rotate(-90deg);
+}
+
+/* Category group name */
+.category-group-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
 .category-group-content {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 4px 16px;
-  padding: 12px 16px 16px 32px;
+  gap: 0.25rem;
+  column-gap: 1.5rem;
+  padding: 0.75rem 1rem;
   background: #fafafa;
 }
 
@@ -1759,14 +1792,6 @@ main {
   display: none !important;
 }
 
-/* Two-column grid layout for category items */
-.category-group-items {
-  padding: 1rem;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
-  column-gap: 1.5rem;
-}
 
 .category-item {
   display: flex;

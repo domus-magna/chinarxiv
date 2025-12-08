@@ -1026,11 +1026,11 @@ function populateCategoryAccordion() {
   const html = sortedCategories.map(([id, category]) => `
     <div class="category-group active">
       <div class="category-group-header">
+        <span class="category-group-toggle">▼</span>
         <span class="category-group-name">${category.label}</span>
         <span class="category-group-count">${category.count} papers</span>
-        <span class="category-group-toggle">−</span>
       </div>
-      <div class="category-group-items">
+      <div class="category-group-content">
         ${category.children.map(child => `
           <div class="category-item">
             <input type="checkbox" name="category" id="cat-${child.name.replace(/\s+/g, '-')}" value="${child.name}">
