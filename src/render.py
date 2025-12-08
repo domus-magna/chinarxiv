@@ -376,8 +376,16 @@ def load_figure_manifest() -> Dict[str, Any]:
         try:
             with open(manifest_cache) as f:
                 data = json.load(f)
-                # Coerce None to {} in case manifest has {"papers": null}
-                manifest = data.get("papers") or {}
+                papers = data.get("papers") or []
+
+                # Normalize to dict: {paper_id: paper_info}
+                if isinstance(papers, list):
+                    manifest = {p["id"]: p for p in papers if "id" in p}
+                elif isinstance(papers, dict):
+                    manifest = papers
+                else:
+                    manifest = {}
+
                 log(
                     f"Loaded figure manifest: {len(manifest)} papers with translated figures"
                 )
@@ -635,11 +643,16 @@ def build_hierarchical_categories(items: List[Dict[str, Any]], min_count: int = 
     pinned_cats = [(cid, cat) for cid, cat in hierarchical.items() if cat.get('pinned')]
     unpinned_cats = [(cid, cat) for cid, cat in hierarchical.items() if not cat.get('pinned')]
 
-    # Sort pinned by their taxonomy order (preserve user intent for multiple pinned)
-    pinned_cats.sort(key=lambda x: taxonomy.get(x[0], {}).get('order', 999))
+    # Helper function for safe order extraction (handles None values)
+    def get_order_safe(cat_id):
+        order = taxonomy.get(cat_id, {}).get('order')
+        return order if order is not None else 999
 
-    # Sort unpinned by count (descending)
-    unpinned_cats.sort(key=lambda x: x[1]['count'], reverse=True)
+    # Sort pinned by their taxonomy order (preserve user intent for multiple pinned)
+    pinned_cats.sort(key=lambda x: get_order_safe(x[0]))
+
+    # Sort unpinned by count (descending), then label (ascending) for deterministic tie-breaking
+    unpinned_cats.sort(key=lambda x: (-x[1]['count'], x[1]['label']))
 
     # Assign final order values
     order_index = 1
