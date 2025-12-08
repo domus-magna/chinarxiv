@@ -375,3 +375,122 @@ s3://chinaxiv/
 | Records | ~50 months | ✅ Working |
 
 **To check current status:** `python scripts/b2_status.py`
+
+## Figure Translation Requests
+
+Users can request figure translation for papers via the "Request Figure Translation" button on the paper detail page.
+
+### Request Storage
+
+**Production Storage:** Cloudflare KV `FIGURE_REQUESTS` namespace
+
+**Storage Pattern:** Per-request keys (eliminates race conditions)
+- Key format: `requests:YYYY-MM-DD:uuid` (e.g., `requests:2025-12-08:a1b2c3d4-...`)
+- TTL: 90 days (auto-expiration)
+- Value: JSON object with request details
+
+**Format:** Each KV key contains a single JSON object:
+```json
+{"paper_id":"chinaxiv-202510.00001","timestamp":"2025-12-08T12:34:56.123Z","ip_hash":"abc123def456789"}
+```
+
+**Fields:**
+- `paper_id`: Paper identifier (format: `chinaxiv-YYYYMM.NNNNN`)
+- `timestamp`: ISO 8601 UTC timestamp of the request
+- `ip_hash`: First 16 characters of SHA-256 hash of requester IP (privacy-preserving)
+
+### Viewing Requests
+
+#### Production Workflow (Cloudflare KV)
+
+The API logs requests to Cloudflare KV. To aggregate production requests:
+
+```bash
+# Set environment variables (one-time setup)
+export CF_ACCOUNT_ID=your_account_id
+export CF_API_TOKEN=your_api_token  # Needs KV read scope
+export CF_KV_NAMESPACE_ID=88b32d74f91649bca3321de23732d3c3
+
+# Aggregate from KV (last 30 days)
+python scripts/aggregate_figure_requests.py --kv --days 30
+
+# Export to local file for faster re-runs
+python scripts/aggregate_figure_requests.py --kv --days 30 --export-jsonl data/figure_requests.jsonl
+
+# Get top 50 requested papers
+python scripts/aggregate_figure_requests.py --kv --days 30 --top 50
+
+# Export paper IDs for batch processing
+python scripts/aggregate_figure_requests.py --kv --output data/high_priority_papers.txt
+```
+
+**Getting Cloudflare Credentials:**
+
+1. **Account ID**: Dashboard → Account → Account ID
+2. **API Token**: Dashboard → My Profile → API Tokens → Create Token
+   - Template: "Edit Cloudflare Workers"
+   - Permissions: Account > Workers KV Storage > Read
+3. **Namespace ID**: From `wrangler.toml` (line 10) or `88b32d74f91649bca3321de23732d3c3`
+
+#### Local Development Workflow
+
+For testing without KV access (uses local JSONL file):
+
+```bash
+# Aggregate from local JSONL file
+python scripts/aggregate_figure_requests.py --input data/figure_requests.jsonl
+
+# Or use default path
+python scripts/aggregate_figure_requests.py
+```
+
+### Spam Protection
+
+Two-layer protection:
+
+1. **Client-side:** localStorage tracks requested papers - button shows "Request Submitted" persistently
+2. **Server-side:** Duplicate detection - same IP can't request same paper within 60 seconds (Cloudflare KV)
+3. **Future:** Can add more sophisticated rate limiting later if spam becomes an issue
+
+**Race Condition Status:** ✅ FIXED - Per-request keys (v2) eliminated the race condition from v1's append-to-daily-log approach.
+
+### Integration with Figure Pipeline
+
+To process most-requested papers:
+
+```bash
+# Get top 20 requested papers from production
+python scripts/aggregate_figure_requests.py --kv --output data/high_priority_papers.txt --top 20
+
+# Review the list
+cat data/high_priority_papers.txt
+
+# Run figure translation for high-priority papers
+# (Manual selection recommended - review the list first)
+python -m src.figure_pipeline --paper-ids <paper_id1> <paper_id2> ...
+```
+
+### Cloudflare Setup
+
+**Required KV Namespace:** `FIGURE_REQUESTS`
+
+**Binding in wrangler.toml:**
+```toml
+[[kv_namespaces]]
+binding = "FIGURE_REQUESTS"
+id = "88b32d74f91649bca3321de23732d3c3"
+```
+
+**KV Keys:**
+- `dup:{ip_hash}:{paper_id}` → Duplicate detection (TTL: 60 seconds)
+- `requests:YYYY-MM-DD:uuid` → Per-request log (TTL: 90 days)
+
+## Frontend Development
+
+When working on frontend design and UI/UX tasks:
+
+**Use the `frontend-design` skill** for creating production-grade interfaces with high design quality. This skill generates distinctive, polished code that avoids generic AI aesthetics.
+
+**Always dispatch gemini subagents** to research and make design and front-end recommendations, as they are experts. Dispatch with `gemini -p "your prompt"`. Use these in addition to your explore agents.
+
+This ensures you get expert-level design input and recommendations for user interface work.
