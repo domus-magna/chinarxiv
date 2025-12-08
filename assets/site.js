@@ -748,6 +748,10 @@ function showCopyFeedback() {
         cb.checked = false;
       });
 
+      // Clear category filter text
+      const categoryFilter = document.getElementById('categoryFilter');
+      if (categoryFilter) categoryFilter.value = '';
+
       // Update category accordion counts
       if (window.categoryAccordion) {
         window.categoryAccordion.groups.forEach(group => {
@@ -999,7 +1003,7 @@ function populateCategoryAccordion() {
       <div class="category-group-items">
         ${window.categoryData.map(([name, count]) => `
           <div class="category-item">
-            <input type="checkbox" id="cat-${name.replace(/\s+/g, '-')}" value="${name}">
+            <input type="checkbox" name="category" id="cat-${name.replace(/\s+/g, '-')}" value="${name}">
             <label for="cat-${name.replace(/\s+/g, '-')}">
               ${name}
               <span class="category-item-count">(${count})</span>

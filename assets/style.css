@@ -1515,7 +1515,7 @@ main {
 }
 
 .modal-section {
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
 }
 
 .modal-section:last-child {
@@ -1532,7 +1532,7 @@ main {
 .modal-divider {
   height: 1px;
   background: #e9ecef;
-  margin: 2rem 0;
+  margin: 1rem 0;
 }
 
 /* MODAL FORM CONTROLS */
