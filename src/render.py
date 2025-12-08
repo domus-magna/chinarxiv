@@ -1040,9 +1040,6 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         if html_body_md:
             md_parts.append("## Full Text\n")
             md_parts.append(html_body_md)
-        md_parts.append(
-            "\n_Source: ChinaXiv — Machine translation. Verify with original._"
-        )
         md = "\n\n".join(md_parts) + "\n"
         md_path = os.path.join(out_dir, f"{it['id']}.md")
         write_text(md_path, md)
@@ -1069,9 +1066,6 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
             if pdf_body_md:
                 pdf_md_parts.append("## Full Text\n")
                 pdf_md_parts.append(pdf_body_md)
-            pdf_md_parts.append(
-                "\n_Source: ChinaXiv — Machine translation. Verify with original._"
-            )
             pdf_content = "\n\n".join(pdf_md_parts) + "\n"
             pdf_md = build_pdf_markdown(it, pdf_content)
             pdf_md_path = os.path.join(out_dir, f"{it['id']}_pdf.md")
@@ -1091,9 +1085,6 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
                 if original_body_md:
                     pdf_md_parts_fallback.append("## Full Text\n")
                     pdf_md_parts_fallback.append(original_body_md)
-                pdf_md_parts_fallback.append(
-                    "\n_Source: ChinaXiv — Machine translation. Verify with original._"
-                )
                 pdf_content_fallback = "\n\n".join(pdf_md_parts_fallback) + "\n"
                 pdf_md_fallback = build_pdf_markdown(it, pdf_content_fallback)
                 write_text(pdf_md_path, pdf_md_fallback)

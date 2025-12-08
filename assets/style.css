@@ -249,6 +249,10 @@ main {
   padding-top: 1rem;
 }
 
+.page-header {
+  padding-top: 1rem;
+}
+
 /* Search Section (Home) */
 .search-block {
   background: var(--bg-light);
