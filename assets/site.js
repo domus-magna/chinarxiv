@@ -978,8 +978,44 @@ class CategoryAccordion {
   }
 }
 
-// Initialize category accordion (if modal exists on this page)
+/**
+ * Populate category accordion from window.categoryData
+ */
+function populateCategoryAccordion() {
+  const container = document.getElementById('categoryAccordion');
+  if (!container || !window.categoryData || window.categoryData.length === 0) {
+    console.warn('No category data available for accordion');
+    return;
+  }
+
+  // Build HTML for all categories as a single flat list
+  const html = `
+    <div class="category-group active">
+      <div class="category-group-header">
+        <span class="category-group-name">All Categories</span>
+        <span class="category-group-count">${window.categoryData.length} categories</span>
+        <span class="category-group-toggle">−</span>
+      </div>
+      <div class="category-group-items">
+        ${window.categoryData.map(([name, count]) => `
+          <div class="category-item">
+            <input type="checkbox" id="cat-${name.replace(/\s+/g, '-')}" value="${name}">
+            <label for="cat-${name.replace(/\s+/g, '-')}">
+              ${name}
+              <span class="category-item-count">(${count})</span>
+            </label>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
+
+// Populate and initialize category accordion (if modal exists on this page)
 (() => {
+  populateCategoryAccordion();
   const categorySection = document.querySelector('.category-section');
   if (categorySection) {
     window.categoryAccordion = new CategoryAccordion(categorySection);

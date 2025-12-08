@@ -47,6 +47,11 @@
     </div>
   </div>
 
+  {# Expose category data to JavaScript for modal accordion #}
+  <script>
+    window.categoryData = {{ categories | tojson | safe }};
+  </script>
+
   {# ========================================================================
      UNIFIED CONTAINER ARCHITECTURE
      ======================================================================== #}
