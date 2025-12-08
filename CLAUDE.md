@@ -375,3 +375,93 @@ s3://chinaxiv/
 | Records | ~50 months | ✅ Working |
 
 **To check current status:** `python scripts/b2_status.py`
+
+## Figure Translation Requests
+
+Users can request figure translation for papers via the "Request Figure Translation" button on the paper detail page.
+
+### Request Storage
+
+**Location:** `data/figure_requests.jsonl` (local) or Cloudflare KV `FIGURE_REQUESTS` (production)
+
+**Format:** JSONL (one request per line)
+```jsonl
+{"paper_id":"chinaxiv-202510.00001","timestamp":"2025-12-08T12:34:56.123Z","ip_hash":"abc123def456789"}
+{"paper_id":"chinaxiv-202510.00002","timestamp":"2025-12-08T12:35:10.456Z","ip_hash":"abc123def456789"}
+```
+
+**Fields:**
+- `paper_id`: Paper identifier (format: `chinaxiv-YYYYMM.NNNNN`)
+- `timestamp`: ISO 8601 UTC timestamp of the request
+- `ip_hash`: First 16 characters of SHA-256 hash of requester IP (privacy-preserving)
+
+### Viewing Requests
+
+**Aggregate by paper:**
+```bash
+python scripts/aggregate_figure_requests.py
+```
+
+**Count requests for specific paper:**
+```bash
+grep "chinaxiv-202510.00001" data/figure_requests.jsonl | wc -l
+```
+
+**Most requested papers (last 30 days):**
+```bash
+python scripts/aggregate_figure_requests.py --days 30 --top 50
+```
+
+**Export paper IDs for batch processing:**
+```bash
+python scripts/aggregate_figure_requests.py --output data/high_priority_papers.txt
+```
+
+### Spam Protection
+
+Two-layer protection (V1):
+
+1. **Client-side:** localStorage tracks requested papers - button shows "Request Submitted" permanently
+2. **Server-side:** Simple duplicate detection - same IP can't request same paper within 60 seconds (Cloudflare KV)
+3. **Future:** Can add more sophisticated rate limiting later if spam becomes an issue
+
+### Integration with Figure Pipeline
+
+To process most-requested papers:
+
+```bash
+# Get top 20 requested papers
+python scripts/aggregate_figure_requests.py --output data/high_priority_papers.txt --top 20
+
+# Read the list
+cat data/high_priority_papers.txt
+
+# Run figure translation for high-priority papers
+# (Manual selection recommended - review the list first)
+python -m src.figure_pipeline --paper-ids <paper_id1> <paper_id2> ...
+```
+
+### Cloudflare Setup
+
+**Required KV Namespace:** `FIGURE_REQUESTS`
+
+**Binding in wrangler.toml:**
+```toml
+[[kv_namespaces]]
+binding = "FIGURE_REQUESTS"
+id = "your-namespace-id"
+```
+
+**KV Keys:**
+- `dup:{ip_hash}:{paper_id}` → Duplicate detection (TTL: 60 seconds)
+- `requests:{YYYY-MM-DD}` → Daily request log (JSONL)
+
+## Frontend Development
+
+When working on frontend design and UI/UX tasks:
+
+**Use the `frontend-design` skill** for creating production-grade interfaces with high design quality. This skill generates distinctive, polished code that avoids generic AI aesthetics.
+
+**Always dispatch gemini subagents** to research and make design and front-end recommendations, as they are experts. Dispatch with `gemini -p "your prompt"`. Use these in addition to your explore agents.
+
+This ensures you get expert-level design input and recommendations for user interface work.

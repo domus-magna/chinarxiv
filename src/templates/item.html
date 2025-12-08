@@ -130,6 +130,9 @@
           <h3>Feedback</h3>
           <ul class="sidebar-actions">
             <li><a href="#" class="sidebar-btn" onclick="openReportModal(); return false;" aria-label="Report a problem with this paper">Report Problem</a></li>
+            {% if not item._has_translated_figures %}
+            <li><a href="#" id="request-figures-btn" class="sidebar-btn" onclick="requestFigureTranslation('{{ item.id }}'); return false;" aria-label="Request figure translation for this paper">Request Figure Translation</a></li>
+            {% endif %}
           </ul>
         </div>
 
@@ -495,5 +498,75 @@
         showToast('Bookmarking unavailable');
       }
     }
+
+    // Figure Translation Request Functions
+    function checkFigureRequestStatus(paperId) {
+      const btn = document.getElementById('request-figures-btn');
+      if (!btn) return;
+
+      const requested = localStorage.getItem(`fig_requested_${paperId}`);
+      if (requested === 'true') {
+        btn.textContent = 'Request Submitted';
+        btn.disabled = true;
+        btn.classList.add('disabled');
+      }
+    }
+
+    async function requestFigureTranslation(paperId) {
+      const btn = document.getElementById('request-figures-btn');
+
+      // Check if already requested
+      if (localStorage.getItem(`fig_requested_${paperId}`) === 'true') {
+        showToast('Already requested!');
+        return;
+      }
+
+      // Disable button immediately
+      btn.disabled = true;
+      btn.textContent = 'Submitting...';
+
+      try {
+        // Call API endpoint
+        const response = await fetch('/api/request-figure-translation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paper_id: paperId })
+        });
+
+        if (response.ok) {
+          // Success - mark as submitted in localStorage
+          localStorage.setItem(`fig_requested_${paperId}`, 'true');
+
+          // Update button permanently
+          btn.textContent = 'Request Submitted';
+          btn.classList.add('disabled');
+
+          showToast('Request submitted! We\'ll prioritize this paper for figure translation.');
+
+        } else if (response.status === 409) {
+          // Duplicate detected by server
+          showToast('Request already submitted recently. Please wait a moment.');
+          btn.disabled = false;
+          btn.textContent = 'Request Figure Translation';
+        } else {
+          // Error - re-enable button
+          showToast('Failed to submit request. Please try again.');
+          btn.disabled = false;
+          btn.textContent = 'Request Figure Translation';
+        }
+
+      } catch (error) {
+        console.error('Error submitting request:', error);
+        showToast('Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Request Figure Translation';
+      }
+    }
+
+    // Check figure request status on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      const paperId = {{ item.id|tojson }};
+      checkFigureRequestStatus(paperId);
+    });
   </script>
 {% endblock %}
