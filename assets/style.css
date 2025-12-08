@@ -492,7 +492,6 @@ main {
   font-weight: 500;
   font-size: 0.9rem;
   transition: all 0.2s;
-  min-width: 200px;
 }
 
 .sidebar-btn:hover {
@@ -510,6 +509,10 @@ main {
 
 .sidebar-btn.primary:hover {
   background: var(--secondary-color);
+}
+
+#request-figures-btn {
+  min-width: 200px; /* Prevent shrinking when text changes state */
 }
 
 /* Citation Modal */
