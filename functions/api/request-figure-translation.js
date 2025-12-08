@@ -9,6 +9,12 @@
  * - Request logging to KV storage
  * - Privacy-preserving IP hashing
  */
+// TODO(v2, when request volume is steady in the hundreds/day): move ingestion into a Durable Object
+// so dedupe + logging are atomic and batched. The DO can maintain the 60s window in-memory and
+// flush to KV/R2 every N entries or seconds to avoid per-request KV writes and race windows.
+// TODO(v3, when we need durable analytics feeds/monitoring): introduce a Queue/DO→R2 pipeline with
+// per-day JSONL/Parquet rollups, alerting on write failures or abnormal spikes, and a small export
+// endpoint for the figure batcher. Keep IP hashes, and add opt-in UA/referrer with schema guards.
 
 /**
  * Hash a string using SHA-256
@@ -24,10 +30,44 @@ async function hashString(str) {
 }
 
 /**
+ * Create response headers with CORS support
+ * @param {string} origin - Request origin
+ * @returns {Object} Headers object
+ */
+function createHeaders(origin) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+
+  // Allow same-origin requests (chinarxiv.com)
+  if (origin && origin.includes('chinarxiv.com')) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+
+  return headers;
+}
+
+/**
+ * Handle OPTIONS request for CORS preflight
+ */
+export async function onRequestOptions(context) {
+  const { request } = context;
+  const origin = request.headers.get('Origin');
+
+  return new Response(null, {
+    status: 204,
+    headers: createHeaders(origin)
+  });
+}
+
+/**
  * Handle POST request for figure translation
  */
 export async function onRequestPost(context) {
   const { request, env } = context;
+  const origin = request.headers.get('Origin');
 
   try {
     // Parse request body
@@ -41,7 +81,7 @@ export async function onRequestPost(context) {
         message: 'Invalid paper_id'
       }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' }
+        headers: createHeaders(origin)
       });
     }
 
@@ -52,7 +92,7 @@ export async function onRequestPost(context) {
         message: 'Invalid paper_id format'
       }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' }
+        headers: createHeaders(origin)
       });
     }
 
@@ -70,7 +110,7 @@ export async function onRequestPost(context) {
         message: 'Duplicate request detected. Please wait before requesting again.'
       }), {
         status: 409,
-        headers: { 'Content-Type': 'application/json' }
+        headers: createHeaders(origin)
       });
     }
 
@@ -99,7 +139,7 @@ export async function onRequestPost(context) {
       message: 'Request logged successfully'
     }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' }
+      headers: createHeaders(origin)
     });
 
   } catch (error) {
@@ -109,7 +149,7 @@ export async function onRequestPost(context) {
       message: 'Internal server error'
     }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: createHeaders(origin)
     });
   }
 }
