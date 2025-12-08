@@ -382,12 +382,16 @@ Users can request figure translation for papers via the "Request Figure Translat
 
 ### Request Storage
 
-**Location:** `data/figure_requests.jsonl` (local) or Cloudflare KV `FIGURE_REQUESTS` (production)
+**Production Storage:** Cloudflare KV `FIGURE_REQUESTS` namespace
 
-**Format:** JSONL (one request per line)
-```jsonl
+**Storage Pattern:** Per-request keys (eliminates race conditions)
+- Key format: `requests:YYYY-MM-DD:uuid` (e.g., `requests:2025-12-08:a1b2c3d4-...`)
+- TTL: 90 days (auto-expiration)
+- Value: JSON object with request details
+
+**Format:** Each KV key contains a single JSON object:
+```json
 {"paper_id":"chinaxiv-202510.00001","timestamp":"2025-12-08T12:34:56.123Z","ip_hash":"abc123def456789"}
-{"paper_id":"chinaxiv-202510.00002","timestamp":"2025-12-08T12:35:10.456Z","ip_hash":"abc123def456789"}
 ```
 
 **Fields:**
@@ -397,47 +401,68 @@ Users can request figure translation for papers via the "Request Figure Translat
 
 ### Viewing Requests
 
-**Aggregate by paper:**
+#### Production Workflow (Cloudflare KV)
+
+The API logs requests to Cloudflare KV. To aggregate production requests:
+
 ```bash
+# Set environment variables (one-time setup)
+export CF_ACCOUNT_ID=your_account_id
+export CF_API_TOKEN=your_api_token  # Needs KV read scope
+export CF_KV_NAMESPACE_ID=88b32d74f91649bca3321de23732d3c3
+
+# Aggregate from KV (last 30 days)
+python scripts/aggregate_figure_requests.py --kv --days 30
+
+# Export to local file for faster re-runs
+python scripts/aggregate_figure_requests.py --kv --days 30 --export-jsonl data/figure_requests.jsonl
+
+# Get top 50 requested papers
+python scripts/aggregate_figure_requests.py --kv --days 30 --top 50
+
+# Export paper IDs for batch processing
+python scripts/aggregate_figure_requests.py --kv --output data/high_priority_papers.txt
+```
+
+**Getting Cloudflare Credentials:**
+
+1. **Account ID**: Dashboard → Account → Account ID
+2. **API Token**: Dashboard → My Profile → API Tokens → Create Token
+   - Template: "Edit Cloudflare Workers"
+   - Permissions: Account > Workers KV Storage > Read
+3. **Namespace ID**: From `wrangler.toml` (line 10) or `88b32d74f91649bca3321de23732d3c3`
+
+#### Local Development Workflow
+
+For testing without KV access (uses local JSONL file):
+
+```bash
+# Aggregate from local JSONL file
+python scripts/aggregate_figure_requests.py --input data/figure_requests.jsonl
+
+# Or use default path
 python scripts/aggregate_figure_requests.py
-```
-
-**Count requests for specific paper:**
-```bash
-grep "chinaxiv-202510.00001" data/figure_requests.jsonl | wc -l
-```
-
-**Most requested papers (last 30 days):**
-```bash
-python scripts/aggregate_figure_requests.py --days 30 --top 50
-```
-
-**Export paper IDs for batch processing:**
-```bash
-python scripts/aggregate_figure_requests.py --output data/high_priority_papers.txt
 ```
 
 ### Spam Protection
 
-Two-layer protection (V1):
+Two-layer protection:
 
 1. **Client-side:** localStorage tracks requested papers - button shows "Request Submitted" persistently
-2. **Server-side:** Simple duplicate detection - same IP can't request same paper within 60 seconds (Cloudflare KV)
+2. **Server-side:** Duplicate detection - same IP can't request same paper within 60 seconds (Cloudflare KV)
 3. **Future:** Can add more sophisticated rate limiting later if spam becomes an issue
 
-**Known Limitations:**
-
-- **Race condition in log appending:** The log append operation (read-modify-write to `requests:{date}`) is not atomic. Under high concurrent load, some log entries may be lost. This is acceptable for V1 since the logs are primarily for analytics, not billing. If analytics accuracy becomes critical, consider migrating to Durable Objects (atomic operations) or a Queue-based system.
+**Race Condition Status:** ✅ FIXED - Per-request keys (v2) eliminated the race condition from v1's append-to-daily-log approach.
 
 ### Integration with Figure Pipeline
 
 To process most-requested papers:
 
 ```bash
-# Get top 20 requested papers
-python scripts/aggregate_figure_requests.py --output data/high_priority_papers.txt --top 20
+# Get top 20 requested papers from production
+python scripts/aggregate_figure_requests.py --kv --output data/high_priority_papers.txt --top 20
 
-# Read the list
+# Review the list
 cat data/high_priority_papers.txt
 
 # Run figure translation for high-priority papers
@@ -453,12 +478,12 @@ python -m src.figure_pipeline --paper-ids <paper_id1> <paper_id2> ...
 ```toml
 [[kv_namespaces]]
 binding = "FIGURE_REQUESTS"
-id = "your-namespace-id"
+id = "88b32d74f91649bca3321de23732d3c3"
 ```
 
 **KV Keys:**
 - `dup:{ip_hash}:{paper_id}` → Duplicate detection (TTL: 60 seconds)
-- `requests:{YYYY-MM-DD}` → Daily request log (JSONL)
+- `requests:YYYY-MM-DD:uuid` → Per-request log (TTL: 90 days)
 
 ## Frontend Development
 
