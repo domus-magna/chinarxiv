@@ -59,14 +59,32 @@ def aggregate_from_jsonl(filepath: Path, days: int | None = None) -> Counter:
     if days is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         original_count = len(requests)
-        requests = [
-            r for r in requests
-            if datetime.fromisoformat(r['timestamp'].replace('Z', '+00:00')) > cutoff
-        ]
-        print(f"Filtered to {len(requests)} requests from last {days} days (removed {original_count - len(requests)})")
+        filtered = []
+        skipped = 0
+
+        for r in requests:
+            try:
+                if 'timestamp' not in r or 'paper_id' not in r:
+                    print(f"Warning: Record missing required field: {r}", file=sys.stderr)
+                    skipped += 1
+                    continue
+
+                ts = datetime.fromisoformat(r['timestamp'].replace('Z', '+00:00'))
+                if ts > cutoff:
+                    filtered.append(r)
+            except (ValueError, TypeError, AttributeError) as e:
+                print(f"Warning: Invalid record: {r} - {e}", file=sys.stderr)
+                skipped += 1
+                continue
+
+        requests = filtered
+        print(f"Filtered to {len(requests)} requests from last {days} days (removed {original_count - len(requests)}, skipped {skipped} malformed)")
 
     # Count by paper
-    paper_counts = Counter(r['paper_id'] for r in requests)
+    paper_counts = Counter(
+        r['paper_id'] for r in requests
+        if 'paper_id' in r and r['paper_id']
+    )
     return paper_counts
 
 
