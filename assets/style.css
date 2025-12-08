@@ -1708,8 +1708,9 @@ main {
 .category-group-header {
   width: 100%;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  gap: 0.5rem;
   padding: 12px 16px;
   cursor: pointer;
   background: #f8f9fa;
