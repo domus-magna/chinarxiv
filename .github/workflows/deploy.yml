@@ -59,6 +59,45 @@ jobs:
           which xelatex || { echo "❌ xelatex installation failed"; exit 1; }
           pandoc --version | head -1
 
+      - name: Wait for in-progress pipelines
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Checking for in-progress pipeline runs..."
+
+          RUNNING=$(gh run list --workflow=daily-pipeline.yml \
+            --json status --jq '.[] | select(.status == "in_progress" or .status == "queued")' \
+            2>/dev/null || echo "")
+
+          if [ -n "$RUNNING" ]; then
+            echo "⏳ Daily pipeline running - waiting for completion..."
+            echo "   (Prevents deploying while translations upload to B2)"
+
+            TIMEOUT=1800  # 30 minutes
+            ELAPSED=0
+
+            while [ $ELAPSED -lt $TIMEOUT ]; do
+              RUNNING=$(gh run list --workflow=daily-pipeline.yml \
+                --json status --jq '.[] | select(.status == "in_progress" or .status == "queued")' \
+                2>/dev/null || echo "")
+
+              if [ -z "$RUNNING" ]; then
+                echo "✅ Pipeline completed - proceeding with deploy"
+                break
+              fi
+
+              sleep 30
+              ELAPSED=$((ELAPSED + 30))
+              echo "   Waiting... (${ELAPSED}s elapsed)"
+            done
+
+            if [ $ELAPSED -ge $TIMEOUT ]; then
+              echo "⚠️  Timeout - proceeding anyway"
+            fi
+          else
+            echo "✅ No in-progress pipelines - safe to deploy"
+          fi
+
       - name: Hydrate translations from B2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
