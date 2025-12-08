@@ -234,7 +234,6 @@ main {
 .paper-count {
   color: var(--text-muted);
   font-size: 0.9rem;
-  font-style: italic;
   margin-top: 0.75rem;
   margin-bottom: 1.5rem;
 }

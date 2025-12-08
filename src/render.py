@@ -570,39 +570,84 @@ def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List
 
 
 def build_hierarchical_categories(items: List[Dict[str, Any]], min_count: int = 1) -> Dict[str, Any]:
-    """Build hierarchical category structure from flat categories using taxonomy."""
+    """Build hierarchical category structure from flat categories using taxonomy.
+
+    Gracefully handles missing or invalid taxonomy files by falling back to flat categories.
+    """
     import json
     from pathlib import Path
 
-    # Load taxonomy
+    # Load taxonomy with error handling
     taxonomy_path = Path(__file__).parent / "category_taxonomy.json"
-    with open(taxonomy_path, 'r') as f:
-        taxonomy = json.load(f)
+    try:
+        with open(taxonomy_path, 'r') as f:
+            taxonomy = json.load(f)
+    except FileNotFoundError:
+        log(f"Warning: Taxonomy file not found at {taxonomy_path}, using flat categories")
+        return _fallback_to_flat_categories(items, min_count)
+    except json.JSONDecodeError as e:
+        log(f"Warning: Invalid JSON in taxonomy file: {e}, using flat categories")
+        return _fallback_to_flat_categories(items, min_count)
+    except Exception as e:
+        log(f"Warning: Unexpected error loading taxonomy: {e}, using flat categories")
+        return _fallback_to_flat_categories(items, min_count)
 
     # Get flat categories with counts
     flat_categories = collect_categories(items, min_count=min_count)
     category_counts = {name: count for name, count in flat_categories}
 
-    # Build hierarchical structure
+    # Build hierarchical structure with validation
     hierarchical = {}
-    for category_id, category_def in taxonomy.items():
-        # Count papers in this top-level category
-        total_count = sum(
-            category_counts.get(child, 0)
-            for child in category_def['children']
-        )
+    try:
+        for category_id, category_def in taxonomy.items():
+            # Validate required fields
+            if not isinstance(category_def, dict):
+                log(f"Warning: Invalid category definition for {category_id}, skipping")
+                continue
 
-        if total_count > 0:
-            hierarchical[category_id] = {
-                'label': category_def['label'],
-                'order': category_def['order'],
-                'count': total_count,
-                'children': [
-                    {'name': child, 'count': category_counts.get(child, 0)}
-                    for child in category_def['children']
-                    if category_counts.get(child, 0) > 0
-                ]
-            }
+            children = category_def.get('children', [])
+            if not isinstance(children, list):
+                log(f"Warning: Invalid children list for {category_id}, skipping")
+                continue
+
+            # Count papers in this top-level category
+            total_count = sum(
+                category_counts.get(child, 0)
+                for child in children
+            )
+
+            if total_count > 0:
+                hierarchical[category_id] = {
+                    'label': category_def.get('label', category_id),
+                    'order': category_def.get('order', 999),
+                    'count': total_count,
+                    'children': [
+                        {'name': child, 'count': category_counts.get(child, 0)}
+                        for child in children
+                        if category_counts.get(child, 0) > 0
+                    ]
+                }
+    except Exception as e:
+        log(f"Warning: Error building hierarchical categories: {e}, using flat categories")
+        return _fallback_to_flat_categories(items, min_count)
+
+    return hierarchical
+
+
+def _fallback_to_flat_categories(items: List[Dict[str, Any]], min_count: int = 1) -> Dict[str, Any]:
+    """Fallback when taxonomy file is unavailable - returns flat category structure."""
+    flat_categories = collect_categories(items, min_count=min_count)
+
+    # Convert flat list to hierarchical-like structure for template compatibility
+    hierarchical = {}
+    for idx, (name, count) in enumerate(flat_categories, start=1):
+        category_id = name.lower().replace(' ', '_').replace('&', 'and')
+        hierarchical[category_id] = {
+            'label': name,
+            'order': idx,
+            'count': count,
+            'children': [{'name': name, 'count': count}]
+        }
 
     return hierarchical
 
