@@ -619,8 +619,8 @@ def build_hierarchical_categories(items: List[Dict[str, Any]], min_count: int = 
             if total_count > 0:
                 hierarchical[category_id] = {
                     'label': category_def.get('label', category_id),
-                    'order': category_def.get('order', 999),
                     'count': total_count,
+                    'pinned': category_def.get('pinned', False),
                     'children': [
                         {'name': child, 'count': category_counts.get(child, 0)}
                         for child in children
@@ -630,6 +630,22 @@ def build_hierarchical_categories(items: List[Dict[str, Any]], min_count: int = 
     except Exception as e:
         log(f"Warning: Error building hierarchical categories: {e}, using flat categories")
         return _fallback_to_flat_categories(items, min_count)
+
+    # Assign dynamic order: pinned first (by taxonomy order), then by count descending
+    pinned_cats = [(cid, cat) for cid, cat in hierarchical.items() if cat.get('pinned')]
+    unpinned_cats = [(cid, cat) for cid, cat in hierarchical.items() if not cat.get('pinned')]
+
+    # Sort pinned by their taxonomy order (preserve user intent for multiple pinned)
+    pinned_cats.sort(key=lambda x: taxonomy.get(x[0], {}).get('order', 999))
+
+    # Sort unpinned by count (descending)
+    unpinned_cats.sort(key=lambda x: x[1]['count'], reverse=True)
+
+    # Assign final order values
+    order_index = 1
+    for cid, cat in pinned_cats + unpinned_cats:
+        hierarchical[cid]['order'] = order_index
+        order_index += 1
 
     return hierarchical
 
