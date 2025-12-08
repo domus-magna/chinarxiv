@@ -511,6 +511,10 @@ main {
   background: var(--secondary-color);
 }
 
+#request-figures-btn {
+  min-width: 200px; /* Prevent shrinking when text changes state */
+}
+
 /* Citation Modal */
 .modal {
   display: none;
