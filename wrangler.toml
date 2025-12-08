@@ -19,6 +19,10 @@ DISCORD_WEBHOOK_URL = ""
 name = "chinarxiv"
 compatibility_date = "2024-01-01"
 
+[[env.production.kv_namespaces]]
+binding = "FIGURE_REQUESTS"
+id = "88b32d74f91649bca3321de23732d3c3"
+
 [env.production.vars]
 OPENROUTER_API_KEY = ""
 DISCORD_WEBHOOK_URL = ""
