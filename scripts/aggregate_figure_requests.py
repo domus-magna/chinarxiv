@@ -10,13 +10,19 @@ Usage:
     python scripts/aggregate_figure_requests.py --days 30  # Last 30 days only
     python scripts/aggregate_figure_requests.py --top 50   # Top 50 papers
 """
+# TODO(v2, after server-side logging moves to a Durable Object): add a KV/R2 fetch path that
+# reads per-day batches the DO flushes, with graceful backoff on missing days and pagination to
+# avoid pulling giant blobs into memory.
+# TODO(v3, when requests exceed a few hundred/day): consume a Queue- or DO-produced R2 manifest
+# (e.g., daily JSONL/Parquet) instead of raw KV; emit rollup summaries and basic anomaly alerts
+# (spikes, parse errors) so downstream prioritization scripts stay reliable.
 from __future__ import annotations
 
 import argparse
 import json
 import sys
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -51,7 +57,7 @@ def aggregate_from_jsonl(filepath: Path, days: int | None = None) -> Counter:
 
     # Filter by date if requested
     if days is not None:
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         original_count = len(requests)
         requests = [
             r for r in requests
