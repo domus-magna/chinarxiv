@@ -1034,8 +1034,7 @@ function populateCategoryAccordion() {
     <div class="category-group active">
       <div class="category-group-header">
         <span class="category-group-toggle">▼</span>
-        <span class="category-group-name">${category.label}</span>
-        <span class="category-group-count">${category.count} papers</span>
+        <span class="category-group-name">${category.label} (${category.count})</span>
       </div>
       <div class="category-group-content">
         ${category.children.map(child => `
