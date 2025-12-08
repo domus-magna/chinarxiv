@@ -934,6 +934,13 @@ class CategoryAccordion {
     const isExpanded = header.getAttribute('aria-expanded') === 'true';
     header.setAttribute('aria-expanded', !isExpanded);
     content.hidden = isExpanded;
+
+    // Toggle .active class for caret rotation
+    if (isExpanded) {
+      group.classList.remove('active');
+    } else {
+      group.classList.add('active');
+    }
   }
 
   filterCategories() {

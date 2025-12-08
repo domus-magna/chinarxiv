@@ -1755,6 +1755,7 @@ main {
 
 /* Category group toggle (caret) */
 .category-group-toggle {
+  display: inline-block;  /* Required for transform to work */
   font-size: 14px;
   color: #666;
   transition: transform 0.2s ease;
