@@ -544,3 +544,444 @@ function showToast(message) {
 function showCopyFeedback() {
   showToast('Copied!');
 }
+
+// ============================================================================
+// ADVANCED SEARCH MODAL CONTROLS
+// ============================================================================
+// Modal overlay and advanced filter functionality
+// Integrated from recovered mockup (mockups-v3.html)
+// ============================================================================
+
+(() => {
+  // Modal controls
+  const modalOverlay = document.getElementById('modalOverlay');
+  const advancedSearchBtn = document.getElementById('advancedSearchBtn');
+  const modalClose = document.getElementById('modalClose');
+  const applyFiltersBtn = document.getElementById('applyFiltersBtn');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+
+  // Filter indicators
+  const filterIndicators = document.getElementById('filterIndicators');
+  const filterBadge = document.getElementById('filterBadge');
+
+  // Form inputs
+  const modalSearchInput = document.getElementById('modalSearchInput');
+  const searchInput = document.getElementById('search-input');
+  const startDate = document.getElementById('startDate');
+  const endDate = document.getElementById('endDate');
+
+  // Guard: Only run if modal elements exist
+  if (!modalOverlay || !advancedSearchBtn) return;
+
+  // Open modal
+  advancedSearchBtn.addEventListener('click', () => {
+    modalOverlay.classList.add('active');
+    // Sync search input value from main search
+    if (modalSearchInput && searchInput) {
+      modalSearchInput.value = searchInput.value;
+    }
+  });
+
+  // Close modal
+  if (modalClose) {
+    modalClose.addEventListener('click', () => {
+      modalOverlay.classList.remove('active');
+    });
+  }
+
+  // Close on overlay click
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) {
+      modalOverlay.classList.remove('active');
+    }
+  });
+
+  // Close on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modalOverlay.classList.contains('active')) {
+      modalOverlay.classList.remove('active');
+    }
+  });
+
+  // Apply filters
+  if (applyFiltersBtn) {
+    applyFiltersBtn.addEventListener('click', () => {
+      let activeFilters = 0;
+      const filterPillsHTML = [];
+
+      // Sync search term from modal to main input
+      if (modalSearchInput && searchInput) {
+        searchInput.value = modalSearchInput.value;
+        // Trigger search update
+        searchInput.dispatchEvent(new Event('input'));
+      }
+
+      // Check sort order
+      const selectedSort = document.querySelector('input[name="sortOrder"]:checked');
+      if (selectedSort && selectedSort.value !== 'relevance') {
+        const sortLabels = {
+          newest: 'Newest first',
+          oldest: 'Oldest first'
+        };
+        filterPillsHTML.push(`
+          <div class="filter-indicator" data-filter-type="sort">
+            Sort: ${sortLabels[selectedSort.value]} <span class="close-btn">×</span>
+          </div>
+        `);
+        activeFilters++;
+      }
+
+      // Check date range
+      if (startDate && endDate && (startDate.value || endDate.value)) {
+        let dateText = '';
+        if (startDate.value && endDate.value) {
+          dateText = `Date: ${startDate.value} to ${endDate.value}`;
+        } else if (startDate.value) {
+          dateText = `After: ${startDate.value}`;
+        } else {
+          dateText = `Before: ${endDate.value}`;
+        }
+        filterPillsHTML.push(`
+          <div class="filter-indicator" data-filter-type="date">
+            ${dateText} <span class="close-btn">×</span>
+          </div>
+        `);
+        activeFilters++;
+      }
+
+      // Check field-specific search
+      const selectedField = document.querySelector('input[name="searchField"]:checked');
+      if (selectedField && selectedField.value !== 'all') {
+        const fieldLabels = {
+          title: 'Title only',
+          author: 'Author only',
+          abstract: 'Abstract only'
+        };
+        filterPillsHTML.push(`
+          <div class="filter-indicator" data-filter-type="field">
+            ${fieldLabels[selectedField.value]} <span class="close-btn">×</span>
+          </div>
+        `);
+        activeFilters++;
+      }
+
+      // Check "only papers with figures" filter
+      const onlyFigures = document.getElementById('onlyFigures');
+      if (onlyFigures && onlyFigures.checked) {
+        filterPillsHTML.push(`
+          <div class="filter-indicator" data-filter-type="figures">
+            Papers with figures <span class="close-btn">×</span>
+          </div>
+        `);
+        activeFilters++;
+      }
+
+      // Check category selections from accordion
+      const selectedCategories = document.querySelectorAll('input[name="category"]:checked');
+      if (selectedCategories.length > 0) {
+        const categoryNames = Array.from(selectedCategories).map(cb => cb.value).join(', ');
+        const displayText = selectedCategories.length > 3
+          ? `${selectedCategories.length} categories selected`
+          : categoryNames;
+        filterPillsHTML.push(`
+          <div class="filter-indicator" data-filter-type="categories">
+            ${displayText} <span class="close-btn">×</span>
+          </div>
+        `);
+        activeFilters++;
+      }
+
+      // Render filter pills
+      if (filterIndicators) {
+        if (activeFilters > 0) {
+          filterIndicators.innerHTML = filterPillsHTML.join('');
+          filterIndicators.style.display = 'flex';
+        } else {
+          filterIndicators.innerHTML = '';
+          filterIndicators.style.display = 'none';
+        }
+      }
+
+      // Update badge count
+      if (filterBadge) {
+        if (activeFilters > 0) {
+          filterBadge.textContent = activeFilters;
+          filterBadge.style.display = 'inline-block';
+        } else {
+          filterBadge.style.display = 'none';
+        }
+      }
+
+      // Close modal
+      modalOverlay.classList.remove('active');
+
+      // TODO: Trigger actual filtering based on modal state
+      // This will need to be wired into the MiniSearch filtering logic
+    });
+  }
+
+  // Clear all filters
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', () => {
+      // Reset form
+      if (modalSearchInput) modalSearchInput.value = '';
+
+      const allFields = document.getElementById('allFields');
+      if (allFields) allFields.checked = true;
+
+      const sortRelevance = document.getElementById('sortRelevance');
+      if (sortRelevance) sortRelevance.checked = true;
+
+      if (startDate) startDate.value = '';
+      if (endDate) endDate.value = '';
+
+      const onlyFigures = document.getElementById('onlyFigures');
+      if (onlyFigures) onlyFigures.checked = false;
+
+      // Clear all checkboxes in modal
+      document.querySelectorAll('.modal .checkbox-group input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+      });
+
+      // Clear category accordion checkboxes
+      document.querySelectorAll('input[name="category"]:checked').forEach(cb => {
+        cb.checked = false;
+      });
+
+      // Update category accordion counts
+      if (window.categoryAccordion) {
+        window.categoryAccordion.groups.forEach(group => {
+          window.categoryAccordion.updateGroupCount(group);
+        });
+        window.categoryAccordion.updateSummary();
+      }
+
+      // Hide indicators
+      if (filterIndicators) {
+        filterIndicators.innerHTML = '';
+        filterIndicators.style.display = 'none';
+      }
+      if (filterBadge) {
+        filterBadge.style.display = 'none';
+      }
+
+      // Note: Modal stays open so user can continue editing or apply cleared state
+    });
+  }
+
+  // Remove individual filter pills on close button click
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('close-btn') && e.target.closest('.filter-indicator')) {
+      const pill = e.target.closest('.filter-indicator');
+      const filterType = pill.dataset.filterType;
+
+      // Clear the corresponding filter in the modal
+      if (filterType === 'sort') {
+        const sortRelevance = document.getElementById('sortRelevance');
+        if (sortRelevance) sortRelevance.checked = true;
+      } else if (filterType === 'date') {
+        if (startDate) startDate.value = '';
+        if (endDate) endDate.value = '';
+      } else if (filterType === 'field') {
+        const allFields = document.getElementById('allFields');
+        if (allFields) allFields.checked = true;
+      } else if (filterType === 'figures') {
+        const onlyFigures = document.getElementById('onlyFigures');
+        if (onlyFigures) onlyFigures.checked = false;
+      } else if (filterType === 'categories') {
+        document.querySelectorAll('input[name="category"]:checked').forEach(cb => {
+          cb.checked = false;
+        });
+        if (window.categoryAccordion) {
+          window.categoryAccordion.groups.forEach(group => {
+            window.categoryAccordion.updateGroupCount(group);
+          });
+          window.categoryAccordion.updateSummary();
+        }
+      }
+
+      // Remove the pill
+      pill.remove();
+
+      // Update badge count
+      const remainingPills = document.querySelectorAll('.filter-indicator').length;
+      if (filterBadge) {
+        if (remainingPills === 0) {
+          if (filterIndicators) filterIndicators.style.display = 'none';
+          filterBadge.style.display = 'none';
+        } else {
+          filterBadge.textContent = remainingPills;
+        }
+      }
+
+      // TODO: Re-apply filters to update results
+    }
+  });
+
+  // Category tab toggle (for main navigation tabs)
+  document.querySelectorAll('.category-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Update active state
+      document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      // TODO: Trigger category filtering based on data-category attribute
+      const category = tab.dataset.category;
+      console.log('Category tab clicked:', category);
+    });
+  });
+})();
+
+// ============================================================================
+// CATEGORY ACCORDION (for modal's detailed categories section)
+// ============================================================================
+
+// Debounce helper function
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Category accordion class
+class CategoryAccordion {
+  constructor(container) {
+    this.container = container;
+    this.filterInput = document.getElementById('categoryFilter');
+    this.groups = document.querySelectorAll('.category-group');
+    this.summaryCount = document.querySelector('.summary-count');
+    this.clearCategoriesBtn = document.querySelector('.clear-categories');
+    this.collapseAllBtn = document.querySelector('.collapse-all-categories');
+
+    this.bindEvents();
+    this.updateSummary();
+  }
+
+  bindEvents() {
+    // Accordion toggle
+    this.groups.forEach(group => {
+      const header = group.querySelector('.category-group-header');
+      if (header) {
+        header.addEventListener('click', () => this.toggleGroup(group));
+      }
+    });
+
+    // Search filter with debounce
+    if (this.filterInput) {
+      this.filterInput.addEventListener('input', debounce(() => this.filterCategories(), 150));
+    }
+
+    // Checkbox changes
+    this.container.addEventListener('change', (e) => {
+      if (e.target.type === 'checkbox' && e.target.name === 'category') {
+        this.updateGroupCount(e.target.closest('.category-group'));
+        this.updateSummary();
+      }
+    });
+
+    // Clear all categories
+    if (this.clearCategoriesBtn) {
+      this.clearCategoriesBtn.addEventListener('click', () => this.clearAll());
+    }
+
+    // Collapse all categories
+    if (this.collapseAllBtn) {
+      this.collapseAllBtn.addEventListener('click', () => this.collapseAll());
+    }
+  }
+
+  toggleGroup(group) {
+    const header = group.querySelector('.category-group-header');
+    const content = group.querySelector('.category-group-content');
+    if (!header || !content) return;
+
+    const isExpanded = header.getAttribute('aria-expanded') === 'true';
+    header.setAttribute('aria-expanded', !isExpanded);
+    content.hidden = isExpanded;
+  }
+
+  filterCategories() {
+    const query = this.filterInput.value.toLowerCase().trim();
+
+    if (!query) {
+      // Show all, collapse all groups
+      this.groups.forEach(group => {
+        group.hidden = false;
+        const content = group.querySelector('.category-group-content');
+        const header = group.querySelector('.category-group-header');
+        if (content) content.hidden = true;
+        if (header) header.setAttribute('aria-expanded', 'false');
+      });
+      return;
+    }
+
+    this.groups.forEach(group => {
+      const items = group.querySelectorAll('.category-item');
+      let hasMatch = false;
+
+      items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        const matches = text.includes(query);
+        item.hidden = !matches;
+        if (matches) hasMatch = true;
+      });
+
+      // Hide group if no matches, expand if has matches
+      group.hidden = !hasMatch;
+      if (hasMatch) {
+        const content = group.querySelector('.category-group-content');
+        const header = group.querySelector('.category-group-header');
+        if (content) content.hidden = false;
+        if (header) header.setAttribute('aria-expanded', 'true');
+      }
+    });
+  }
+
+  updateGroupCount(group) {
+    if (!group) return;
+    const checked = group.querySelectorAll('input[name="category"]:checked').length;
+    const countEl = group.querySelector('.count');
+    if (countEl) {
+      countEl.textContent = checked ? `${checked} selected` : '0 selected';
+      countEl.classList.toggle('has-selected', checked > 0);
+    }
+  }
+
+  updateSummary() {
+    const total = document.querySelectorAll('input[name="category"]:checked').length;
+    if (this.summaryCount) {
+      this.summaryCount.textContent = total > 0 ? ` - ${total} selected` : '';
+    }
+  }
+
+  clearAll() {
+    document.querySelectorAll('input[name="category"]:checked').forEach(cb => {
+      cb.checked = false;
+    });
+    this.groups.forEach(group => this.updateGroupCount(group));
+    this.updateSummary();
+  }
+
+  collapseAll() {
+    this.groups.forEach(group => {
+      const header = group.querySelector('.category-group-header');
+      const content = group.querySelector('.category-group-content');
+      if (header) header.setAttribute('aria-expanded', 'false');
+      if (content) content.hidden = true;
+    });
+  }
+}
+
+// Initialize category accordion (if modal exists on this page)
+(() => {
+  const categorySection = document.querySelector('.category-section');
+  if (categorySection) {
+    window.categoryAccordion = new CategoryAccordion(categorySection);
+  }
+})();
