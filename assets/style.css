@@ -1759,6 +1759,15 @@ main {
   display: none !important;
 }
 
+/* Two-column grid layout for category items */
+.category-group-items {
+  padding: 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  column-gap: 1.5rem;
+}
+
 .category-item {
   display: flex;
   align-items: center;

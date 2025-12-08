@@ -1,0 +1,36 @@
+{
+  "ai_computing": {
+    "label": "AI & Computer Science",
+    "order": 1,
+    "children": [
+      "Computer Science",
+      "Computer Science & Technology",
+      "Computer Software",
+      "Computer Application Technology",
+      "Computer Applications"
+    ]
+  },
+  "physics": {
+    "label": "Physics & Nuclear Science",
+    "order": 2,
+    "children": [
+      "Physics",
+      "Nuclear Science & Technology",
+      "Nuclear Physics",
+      "Fission Reactor Engineering",
+      "Fission Reactor Engineering Technology",
+      "Particle Accelerators"
+    ]
+  },
+  "psychology": {
+    "label": "Psychology & Behavioral Science",
+    "order": 3,
+    "children": [
+      "Psychology",
+      "Applied Psychology",
+      "Management Psychology",
+      "Personality Psychology",
+      "Cognitive Psychology"
+    ]
+  }
+}

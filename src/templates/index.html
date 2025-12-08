@@ -29,8 +29,10 @@
     <div class="tabs-row">
       <nav class="subject-nav">
         <button class="category-tab active" data-category="">All Recent</button>
-        {% for name, count in categories %}
-        <button class="category-tab" data-category="{{ name }}">{{ name }}</button>
+        {% for category_id, category in categories.items()|sort(attribute='1.order') %}
+        <button class="category-tab" data-category="{{ category_id }}">
+          {{ category.label }}
+        </button>
         {% endfor %}
       </nav>
 
@@ -50,6 +52,7 @@
   {# Expose category data to JavaScript for modal accordion #}
   <script>
     window.categoryData = {{ categories | tojson | safe }};
+    window.categoryTaxonomy = {{ categories | tojson | safe }};
   </script>
 
   {# ========================================================================

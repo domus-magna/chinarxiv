@@ -569,6 +569,44 @@ def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List
     return categories
 
 
+def build_hierarchical_categories(items: List[Dict[str, Any]], min_count: int = 1) -> Dict[str, Any]:
+    """Build hierarchical category structure from flat categories using taxonomy."""
+    import json
+    from pathlib import Path
+
+    # Load taxonomy
+    taxonomy_path = Path(__file__).parent / "category_taxonomy.json"
+    with open(taxonomy_path, 'r') as f:
+        taxonomy = json.load(f)
+
+    # Get flat categories with counts
+    flat_categories = collect_categories(items, min_count=min_count)
+    category_counts = {name: count for name, count in flat_categories}
+
+    # Build hierarchical structure
+    hierarchical = {}
+    for category_id, category_def in taxonomy.items():
+        # Count papers in this top-level category
+        total_count = sum(
+            category_counts.get(child, 0)
+            for child in category_def['children']
+        )
+
+        if total_count > 0:
+            hierarchical[category_id] = {
+                'label': category_def['label'],
+                'order': category_def['order'],
+                'count': total_count,
+                'children': [
+                    {'name': child, 'count': category_counts.get(child, 0)}
+                    for child in category_def['children']
+                    if category_counts.get(child, 0) > 0
+                ]
+            }
+
+    return hierarchical
+
+
 def generate_figure_manifest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Generate a manifest of all papers with figures for later processing.
@@ -773,9 +811,9 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
 
     build_version = int(time.time())
 
-    # Collect categories for dynamic filter (min 1 paper for small datasets)
-    categories = collect_categories(items, min_count=1)
-    log(f"Found {len(categories)} categories with 1+ papers")
+    # Build hierarchical categories for tabs and modal
+    categories = build_hierarchical_categories(items, min_count=1)
+    log(f"Found {len(categories)} top-level categories")
 
     # Generate figure manifest for future extraction pipeline
     figure_manifest = generate_figure_manifest(items)

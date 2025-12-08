@@ -825,13 +825,39 @@ function showCopyFeedback() {
   // Category tab toggle (for main navigation tabs)
   document.querySelectorAll('.category-tab').forEach(tab => {
     tab.addEventListener('click', () => {
+      const categoryId = tab.dataset.category;
+
       // Update active state
       document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
 
-      // TODO: Trigger category filtering based on data-category attribute
-      const category = tab.dataset.category;
-      console.log('Category tab clicked:', category);
+      // Filter papers by category group
+      const articles = document.querySelectorAll('#articles .paper-card');
+
+      if (!categoryId) {
+        // Show all papers
+        articles.forEach(article => article.style.display = '');
+      } else {
+        // Get child categories for this top-level category
+        const childCategories = window.categoryTaxonomy?.[categoryId]?.children.map(c => c.name) || [];
+
+        articles.forEach(article => {
+          const subjects = article.querySelector('.paper-subjects');
+          if (!subjects) {
+            article.style.display = 'none';
+            return;
+          }
+
+          // Check if any subject matches child categories
+          const subjectTags = Array.from(subjects.querySelectorAll('.subject-tag'));
+          const hasMatch = subjectTags.some(tag => {
+            const subject = tag.getAttribute('data-subject');
+            return childCategories.includes(subject);
+          });
+
+          article.style.display = hasMatch ? '' : 'none';
+        });
+      }
     });
   });
 })();
@@ -983,36 +1009,40 @@ class CategoryAccordion {
 }
 
 /**
- * Populate category accordion from window.categoryData
+ * Populate category accordion from window.categoryTaxonomy (hierarchical structure)
  */
 function populateCategoryAccordion() {
   const container = document.getElementById('categoryAccordion');
-  if (!container || !window.categoryData || window.categoryData.length === 0) {
+  if (!container || !window.categoryTaxonomy || Object.keys(window.categoryTaxonomy).length === 0) {
     console.warn('No category data available for accordion');
     return;
   }
 
-  // Build HTML for all categories as a single flat list
-  const html = `
+  // Sort by order
+  const sortedCategories = Object.entries(window.categoryTaxonomy)
+    .sort((a, b) => a[1].order - b[1].order);
+
+  // Build HTML for hierarchical categories
+  const html = sortedCategories.map(([id, category]) => `
     <div class="category-group active">
       <div class="category-group-header">
-        <span class="category-group-name">All Categories</span>
-        <span class="category-group-count">${window.categoryData.length} categories</span>
+        <span class="category-group-name">${category.label}</span>
+        <span class="category-group-count">${category.count} papers</span>
         <span class="category-group-toggle">−</span>
       </div>
       <div class="category-group-items">
-        ${window.categoryData.map(([name, count]) => `
+        ${category.children.map(child => `
           <div class="category-item">
-            <input type="checkbox" name="category" id="cat-${name.replace(/\s+/g, '-')}" value="${name}">
-            <label for="cat-${name.replace(/\s+/g, '-')}">
-              ${name}
-              <span class="category-item-count">(${count})</span>
+            <input type="checkbox" name="category" id="cat-${child.name.replace(/\s+/g, '-')}" value="${child.name}">
+            <label for="cat-${child.name.replace(/\s+/g, '-')}">
+              ${child.name}
+              <span class="category-item-count">(${child.count})</span>
             </label>
           </div>
         `).join('')}
       </div>
     </div>
-  `;
+  `).join('');
 
   container.innerHTML = html;
 }
