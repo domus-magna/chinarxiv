@@ -817,13 +817,13 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         # Fetch live stats from B2
         sponsor_stats = get_b2_stats()
         # Clamp to ≥0 in case B2 count exceeds static total
-        remaining = max(0, sponsor_stats["total_papers"] - sponsor_stats["text_translated"])
+        remaining = max(0, sponsor_stats["total_papers"] - len(items))
         total_cost = max(0, int(remaining * sponsor_stats["cost_per_paper"]))
         html_sponsors = tmpl_sponsors.render(
             root=".",
             build_version=build_version,
             total_papers=sponsor_stats["total_papers"],
-            text_translated=sponsor_stats["text_translated"],
+            text_translated=len(items),
             figures_translated=sponsor_stats["figures_translated"],
             remaining=remaining,
             total_cost=total_cost,
