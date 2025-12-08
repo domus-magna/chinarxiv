@@ -245,6 +245,14 @@ function searchSubject(subject) {
     renderResults(filtered, hasQuery, hasActiveFilters);
   }
 
+  // Update global paper count display
+  function updatePaperCount(count) {
+    const paperCountEl = document.getElementById('paperCount');
+    if (paperCountEl) {
+      paperCountEl.textContent = `Showing ${count} paper${count !== 1 ? 's' : ''}`;
+    }
+  }
+
   // Highlight search terms (using function replacement for safety)
   function highlightTerms(text, query) {
     if (!query || !text) return escapeHtml(text || '');
@@ -262,6 +270,9 @@ function searchSubject(subject) {
   // V2 TODO: When adding "Load More", split this into renderBatch() function
   // ============================================================================
   function renderResults(hits, hasQuery, hasActiveFilters) {
+    // Update global paper count
+    updatePaperCount(hits.length);
+
     if (!hits.length) {
       // Use filter message only when dropdown filters are active
       const msg = hasActiveFilters

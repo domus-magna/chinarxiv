@@ -10,7 +10,6 @@
     <p class="page-description">
       Automatically translated preprints from the Chinese arXiv (ChinaXiv).
     </p>
-    <p class="paper-count">{{ items|length }} papers translated</p>
   </div>
 
   {# ========================================================================
@@ -48,6 +47,9 @@
       <!-- Filter pills will be dynamically added by JavaScript -->
     </div>
   </div>
+
+  <!-- Paper count below filter pills -->
+  <p class="paper-count" id="paperCount">Showing {{ items|length }} paper{% if items|length != 1 %}s{% endif %}</p>
 
   {# Expose category data to JavaScript for modal accordion #}
   <script>

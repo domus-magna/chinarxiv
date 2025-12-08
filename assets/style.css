@@ -233,9 +233,10 @@ main {
 
 .paper-count {
   color: var(--text-muted);
-  font-size: 0.95rem;
-  margin-top: 0;
-  margin-bottom: 2rem;
+  font-size: 0.9rem;
+  font-style: italic;
+  margin-top: 0.75rem;
+  margin-bottom: 1.5rem;
 }
 
 .page-header {
