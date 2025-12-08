@@ -41,8 +41,16 @@ function createHeaders(origin) {
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 
-  // Allow same-origin requests (chinarxiv.com)
-  if (origin && origin.includes('chinarxiv.com')) {
+  // Explicit allowlist of origins
+  const allowedOrigins = [
+    'https://chinarxiv.org',
+    'https://www.chinarxiv.org',
+    'https://chinarxiv.com',  // Keep .com for legacy support
+    'https://www.chinarxiv.com'
+  ];
+
+  // Exact match only (no substring matching)
+  if (origin && allowedOrigins.includes(origin)) {
     headers['Access-Control-Allow-Origin'] = origin;
   }
 
