@@ -236,6 +236,10 @@ main {
   margin-bottom: 2rem;
 }
 
+.page-header {
+  padding-top: 1rem;
+}
+
 /* Search Section (Home) */
 .search-block {
   background: var(--bg-light);
@@ -252,12 +256,13 @@ main {
   margin-bottom: 1rem;
 }
 
+/* V1: iOS zoom prevention - 16px minimum font size */
 #search-input {
   flex: 1;
   padding: 0.8rem 1rem;
   border: 1px solid #ccc;
   border-radius: 4px;
-  font-size: 1rem;
+  font-size: 16px;  /* Critical: prevents iOS autozoom on focus */
   font-family: var(--font-sans);
   background: #fff;
   color: #333;
@@ -273,10 +278,55 @@ main {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
+  min-height: 44px;  /* WCAG touch target minimum */
 }
 
 .search-btn:hover {
   background-color: var(--secondary-color);
+}
+
+/* V1: Subject Navigation Pills - moved below search for logical flow */
+/* V2 TODO: When adding "More" dropdown, keep top 5-7 categories as pills */
+.subject-nav {
+  display: flex;
+  gap: 0;
+  padding: 1rem 0;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #e0e0e0;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  -webkit-overflow-scrolling: touch; /* Smooth iOS momentum scrolling */
+}
+
+.subject-nav::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+.subject-nav-pill {
+  padding: 0.75rem 1.25rem;  /* V1: 44px min height for touch targets */
+  font-size: 0.9rem;
+  font-weight: 600;  /* V1: Same weight for all states (prevents wiggle) */
+  color: #6c757d;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  text-decoration: none;
+  flex-shrink: 0;
+  min-height: 44px; /* iOS touch target minimum */
+}
+
+.subject-nav-pill:hover {
+  color: #495057;
+  border-bottom-color: #dee2e6;
+}
+
+.subject-nav-pill.active {
+  color: #212529;
+  border-bottom-color: #b31b1b;
 }
 
 .search-filters {
@@ -328,8 +378,8 @@ main {
   gap: 1.5rem;
 }
 
-.paper-card,
-#search-results .res {
+/* V1: Single unified card style for all article displays */
+.paper-card {
   background: #fff;
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -337,8 +387,7 @@ main {
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-.paper-card:hover,
-#search-results .res:hover {
+.paper-card:hover {
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   border-color: #cbd5e0;
 }
@@ -578,8 +627,8 @@ main {
   line-height: 1;
 }
 
-/* Search match highlighting */
-#search-results mark {
+/* Search match highlighting - applies to all search results */
+.paper-card mark {
   background: rgba(255, 213, 0, 0.4);
   color: inherit;
   padding: 0 2px;
@@ -827,11 +876,7 @@ main {
   border: 1px solid #ddd;
 }
 
-/* Search Results */
-#search-results {
-  margin-top: 1.5rem;
-}
-
+/* V1: Unified filtering - result count shown above .paper-card elements */
 .search-results-count {
   font-family: var(--font-sans);
   font-size: 0.9rem;
@@ -839,42 +884,6 @@ main {
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--border-color);
-}
-
-/* Search result spacing (core styles unified with .paper-card above) */
-#search-results .res {
-  margin-bottom: 1rem;
-}
-
-#search-results .res .res-title {
-  font-size: 1.15rem;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-bottom: 0.5rem;
-}
-
-#search-results .res .res-title a {
-  color: var(--link-color);
-}
-
-#search-results .res .res-meta {
-  font-family: var(--font-sans);
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  margin-bottom: 0.5rem;
-}
-
-#search-results .res .res-abstract {
-  font-size: 0.95rem;
-  color: #444;
-  line-height: 1.5;
-  margin-bottom: 0.75rem;
-}
-
-#search-results .res .res-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
 }
 
 .subject-tag {

@@ -52,7 +52,7 @@ def run_cli(argv: Optional[List[str]] = None) -> None:
     args = parser.parse_args(argv)
 
     # Load figure manifest for has_figures flag
-    figure_manifest = load_figure_manifest()
+    figure_manifest = load_figure_manifest() or {}
     log(f"Loaded figure manifest with {len(figure_manifest)} papers")
 
     # Check for bypass file first, but only use if explicitly enabled

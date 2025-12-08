@@ -25,16 +25,50 @@ function searchSubject(subject) {
   }
 }
 
+// ============================================================================
+// UNIFIED FILTERING ARCHITECTURE
+// ============================================================================
+// V1 (Current): Simple client-side filtering for small datasets (<5K papers)
+//   - Single unified container (#articles) for all display states
+//   - Filter all docs on every change
+//   - Render all filtered results immediately (up to 100)
+//   - Fast enough for current dataset size
+//
+// V2 (Future, when dataset > 5K papers):
+//   1. ADD DATA NORMALIZATION:
+//      - On page load, create normalized copies with lowercase fields
+//      - Store as: { ...paper, lc_title, lc_abstract, lc_authors, timestamp }
+//      - Prevents repeated .toLowerCase() calls during filtering
+//      - Add to onIndexLoaded(): allDocs = data.map(d => ({ ...d, lc_title: d.title.toLowerCase(), ... }))
+//
+//   2. ADD DEBOUNCING TO SEARCH INPUT:
+//      - Current: 120ms timeout (line 249) - works for small datasets
+//      - V2: Increase to 200ms to reduce filtering frequency
+//      - Keep category/date/figures filters instant (no debouncing)
+//
+//   3. ADD PROGRESSIVE RENDERING:
+//      - Filter → slice(0, 200) → "Load More" button
+//      - Or implement virtual scrolling for infinite scroll
+//      - Example: https://github.com/virtual-list-js or similar libraries
+//      - Add CSS for .load-more-btn (min-height: 44px, full width, clear styling)
+//
+//   4. PERFORMANCE MONITORING:
+//      - Add console.time('filter') before filtering (line 150)
+//      - Add console.timeEnd('filter') after filtering (line 189)
+//      - If consistently > 50ms, trigger V2 optimizations
+//
+// Detailed V2 implementation notes available in project documentation
+// ============================================================================
+
 (() => {
   const input = document.getElementById('search-input');
-  const results = document.getElementById('search-results');
-  const articleList = document.getElementById('articles');
+  const container = document.getElementById('articles');  // V1: Single unified container
   const categoryFilter = document.getElementById('category-filter');
   const dateFilter = document.getElementById('date-filter');
   const sortOrder = document.getElementById('sort-order');
   const figuresFilter = document.getElementById('figures-filter');
   const searchBtn = document.querySelector('.search-btn');
-  if (!input || !results) return;
+  if (!input || !container) return;
 
   let miniSearch = null;
   let allDocs = [];
@@ -42,6 +76,7 @@ function searchSubject(subject) {
   let currentQuery = '';
   let indexLoadState = 'loading'; // 'loading' | 'success' | 'failed'
   let userChangedSort = false; // Track if user explicitly changed sort
+  let initialHTML = container.innerHTML; // Cache server-rendered HTML for restore
 
   // Date filter: days ago lookup (relative to today)
   const dateDays = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
@@ -51,7 +86,7 @@ function searchSubject(subject) {
   if (urlQuery) input.value = urlQuery;
 
   // Event delegation for subject tag clicks (prevents XSS from inline onclick)
-  results.addEventListener('click', (e) => {
+  container.addEventListener('click', (e) => {
     const tag = e.target.closest('.subject-tag[data-subject]');
     if (tag) {
       searchSubject(tag.dataset.subject);
@@ -63,13 +98,21 @@ function searchSubject(subject) {
     try {
       miniSearch = new MiniSearch({
         fields: ['title', 'authors', 'abstract', 'subjects'],
-        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date', 'has_figures'],
+        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date', 'has_figures', 'pdf_url'],
         searchOptions: { boost: { title: 3, authors: 2, subjects: 1.5, abstract: 1 }, fuzzy: 0.2, prefix: true }
       });
       miniSearch.addAll(docs);
+      // V2 TODO: Add data normalization here
+      // allDocs = docs.map(d => ({
+      //   ...d,
+      //   lc_title: (d.title || '').toLowerCase(),
+      //   lc_abstract: (d.abstract || '').toLowerCase(),
+      //   lc_authors: (d.authors || '').toLowerCase(),
+      //   timestamp: Date.parse(d.date || '') || 0
+      // }));
     } catch (e) {
       console.error('Failed to initialize search index:', e);
-      results.innerHTML = '<div class="res"><div>Search initialization failed. Please refresh the page.</div></div>';
+      showErrorMessage('Search initialization failed. Please refresh the page.');
     }
   }
 
@@ -92,8 +135,8 @@ function searchSubject(subject) {
   // Handle index load failure
   function onIndexFailed() {
     indexLoadState = 'failed';
-    toggleArticleList(false);  // Restore article list if hidden during loading
-    results.innerHTML = '<div class="res"><div>Failed to load search index.</div></div>';
+    // V1: Show error without hiding server-rendered articles
+    showErrorMessage('Failed to load search index. Showing default article list.');
   }
 
   // Load index (try compressed first)
@@ -102,9 +145,14 @@ function searchSubject(subject) {
     .then(onIndexLoaded)
     .catch(() => fetch('search-index.json').then(r => r.json()).then(onIndexLoaded).catch(onIndexFailed));
 
-  // Apply filters and render
+  // ============================================================================
+  // APPLY FILTERS AND RENDER
+  // ============================================================================
+  // V1: Simple filtering logic - fast enough for <5K papers
+  // V2 TODO: Add performance monitoring (console.time/timeEnd) when scaling
+  // ============================================================================
   function applyFiltersAndRender() {
-    // If index load failed, preserve failure message and don't hide article list
+    // If index load failed, preserve server-rendered articles
     if (indexLoadState === 'failed') {
       return;
     }
@@ -128,32 +176,34 @@ function searchSubject(subject) {
     // Compute sortChanged AFTER any auto-reset (fixes stale state bug)
     const sortChanged = sortOrder?.value && sortOrder.value !== 'newest';
 
-    // Any filter/sort change triggers browse mode (consistent behavior)
+    // Any filter/sort change triggers filtering
     const hasActiveFilters = Boolean(cat || dateRange || figuresOnly || sortChanged);
     const isActive = hasQuery || hasActiveFilters;
 
-    // No active search/filters → show the default list
+    // V1: No active search/filters → restore server-rendered articles (already in DOM)
+    // V2 TODO: When adding "Load More", may need to re-render here to reset pagination
     if (!isActive) {
-      toggleArticleList(false);
-      results.innerHTML = '';
+      restoreServerRenderedArticles();
       return;
     }
 
     // Use all docs when filters are applied without a query
     const baseResults = hasQuery ? lastSearchResults : allDocs;
     if (!baseResults.length && !allDocs.length) {
-      results.innerHTML = '<div class="res"><div>Loading search index...</div></div>';
-      toggleArticleList(true);
+      showLoadingMessage();
       return;
     }
 
+    // V2 TODO: Add console.time('filter') here for performance monitoring
     let filtered = baseResults.filter(hit => {
       // Category filter - exact match (subjects is comma-separated string like "Physics, Nuclear Physics")
+      // V2 TODO: Use pre-normalized fields for faster filtering
       if (cat) {
         const subjects = (hit.subjects || '').split(',').map(s => s.trim().toLowerCase());
         if (!subjects.includes(cat.toLowerCase())) return false;
       }
       // Date filter (reset to start of day to include papers from today)
+      // V2 TODO: Use pre-computed timestamp field instead of Date.parse
       if (dateRange && dateDays[dateRange] !== undefined) {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - dateDays[dateRange]);
@@ -186,7 +236,11 @@ function searchSubject(subject) {
       // Newest first (explicit selection or fallback for no-query relevance)
       filtered.sort((a, b) => toTimestamp(b) - toTimestamp(a) || String(a.id || '').localeCompare(String(b.id || '')));
     }
-    filtered = filtered.slice(0, 100); // Limit results
+    // V2 TODO: Add console.timeEnd('filter') here
+
+    // V1: Limit to 100 results - renders instantly
+    // V2 TODO: Replace with progressive rendering (slice(0, 200) + "Load More" button)
+    filtered = filtered.slice(0, 100);
 
     renderResults(filtered, hasQuery, hasActiveFilters);
   }
@@ -201,24 +255,65 @@ function searchSubject(subject) {
     return escaped.replace(new RegExp(`(${pattern})`, 'gi'), (match) => '<mark>' + match + '</mark>');
   }
 
-  // Render results
+  // ============================================================================
+  // RENDER RESULTS
+  // ============================================================================
+  // V1: Render .paper-card elements to match server-rendered format
+  // V2 TODO: When adding "Load More", split this into renderBatch() function
+  // ============================================================================
   function renderResults(hits, hasQuery, hasActiveFilters) {
-    toggleArticleList(hasQuery || hasActiveFilters);
     if (!hits.length) {
       // Use filter message only when dropdown filters are active
       const msg = hasActiveFilters
         ? 'No papers match with selected filters. Try adjusting them.'
         : 'No papers found. Try different keywords.';
-      results.innerHTML = `<div class="res"><div>${msg}</div></div>`;
+      container.innerHTML = `<div class="no-results" style="padding: 40px; text-align: center; color: #777;">${msg}</div>`;
     } else {
-      const count = `<div class="search-results-count">Found ${hits.length} paper${hits.length > 1 ? 's' : ''}</div>`;
-      results.innerHTML = count + hits.map(hit => `
-        <div class="res">
-          <div class="res-title"><a href="/items/${hit.id}/">${highlightTerms(hit.title || '', currentQuery)}</a></div>
-          <div class="res-meta">${hit.date || ''} — ${escapeHtml(hit.authors || '')}</div>
-          <div class="res-abstract">${highlightTerms((hit.abstract || '').slice(0, 280), currentQuery)}…</div>
-        </div>`).join('');
+      // V1: Render all filtered results as .paper-card elements
+      // V2 TODO: Replace with renderBatch(hits, 0, 200) + "Load More" button
+      const count = `<div class="search-results-count" style="margin-bottom: 1rem; color: #666;">Found ${hits.length} paper${hits.length > 1 ? 's' : ''}</div>`;
+      container.innerHTML = count + hits.map(hit => createPaperCard(hit, hasQuery)).join('');
     }
+  }
+
+  // Create a .paper-card element matching the server-rendered HTML format
+  function createPaperCard(hit, hasQuery) {
+    const title = highlightTerms(hit.title || 'Untitled', currentQuery);
+    const authors = escapeHtml(hit.authors || 'Unknown');
+    const date = formatDate(hit.date);
+    const abstract = highlightTerms((hit.abstract || '').slice(0, 300), currentQuery);
+    const abstractEllipsis = (hit.abstract || '').length > 300 ? '…' : '';
+
+    // Parse subjects (comma-separated string)
+    const subjects = (hit.subjects || '').split(',').map(s => s.trim()).filter(s => s);
+    const subjectTags = subjects.slice(0, 3).map(s =>
+      `<span class="subject-tag" data-subject="${escapeHtml(s)}">${escapeHtml(s)}</span>`
+    ).join('');
+
+    // PDF link if available (validate protocol to prevent XSS)
+    const pdfLink = hit.pdf_url && (hit.pdf_url.startsWith('http://') || hit.pdf_url.startsWith('https://'))
+      ? `<a href="${escapeHtml(hit.pdf_url)}" class="btn-sm">PDF</a>`
+      : '';
+
+    return `
+      <article class="paper-card">
+        <h3 class="paper-title">
+          <a href="/items/${hit.id}/" title="Abstract">${title}</a>
+        </h3>
+        <div class="paper-meta-row">
+          <span class="paper-authors">${authors}</span>
+        </div>
+        <div class="paper-meta-row secondary">
+          <span class="paper-date">${date}</span>
+          <span class="paper-id">ChinaXiv:${hit.id}</span>
+          ${subjectTags ? `<span class="paper-subjects">${subjectTags}</span>` : ''}
+          <div class="paper-links">
+            <a href="/items/${hit.id}/" class="btn-sm">Abstract</a>
+            ${pdfLink}
+          </div>
+        </div>
+        <p class="paper-abstract">${abstract}${abstractEllipsis}</p>
+      </article>`;
   }
 
   function performSearch(query) {
@@ -232,7 +327,10 @@ function searchSubject(subject) {
       applyFiltersAndRender();
       return;
     }
-    if (!miniSearch) { results.innerHTML = '<div class="res search-loading"><div>Loading search index...</div></div>'; return; }
+    if (!miniSearch) {
+      showLoadingMessage();
+      return;
+    }
     lastSearchResults = miniSearch.search(currentQuery, { limit: 100 });
     applyFiltersAndRender();
   }
@@ -249,7 +347,53 @@ function searchSubject(subject) {
     timer = setTimeout(() => performSearch(input.value), 120);
   });
 
-  if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndRender);
+  // ============================================================================
+  // EVENT LISTENERS
+  // ============================================================================
+  // V1: Instant filtering on all changes (fast enough for small datasets)
+  // V2 TODO: Add debouncing to search input (increase timer from 120ms to 200ms)
+  // ============================================================================
+
+  // Subject navigation pills - sync with category dropdown
+  const subjectNav = document.querySelector('.subject-nav');
+  if (subjectNav) {
+    subjectNav.addEventListener('click', (e) => {
+      const pill = e.target.closest('.subject-nav-pill[data-subject]');
+      if (!pill) return;
+
+      // Update active state
+      subjectNav.querySelectorAll('.subject-nav-pill').forEach(p => {
+        p.classList.remove('active');
+      });
+      pill.classList.add('active');
+
+      // Sync dropdown
+      const subject = pill.dataset.subject;
+      if (categoryFilter) {
+        categoryFilter.value = subject;
+      }
+
+      // Filter immediately (V1 is fast enough)
+      applyFiltersAndRender();
+    });
+  }
+
+  // Category dropdown - sync with pills
+  if (categoryFilter) {
+    categoryFilter.addEventListener('change', () => {
+      const subject = categoryFilter.value;
+
+      // Sync pill highlighting
+      if (subjectNav) {
+        subjectNav.querySelectorAll('.subject-nav-pill').forEach(p => {
+          p.classList.toggle('active', p.dataset.subject === subject);
+        });
+      }
+
+      applyFiltersAndRender();
+    });
+  }
+
   if (dateFilter) dateFilter.addEventListener('change', applyFiltersAndRender);
   if (sortOrder) sortOrder.addEventListener('change', () => { userChangedSort = true; applyFiltersAndRender(); });
   if (figuresFilter) figuresFilter.addEventListener('change', applyFiltersAndRender);
@@ -259,9 +403,32 @@ function searchSubject(subject) {
     return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  function toggleArticleList(hide) {
-    if (!articleList) return;
-    articleList.style.display = hide ? 'none' : '';
+  // Format date like Jinja's human_date filter (e.g., "Jan 15, 2024")
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;  // Return original if invalid
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  }
+
+  // Restore server-rendered articles (called when no filters/search active)
+  function restoreServerRenderedArticles() {
+    // V1: Restore cached server-rendered HTML to show default newest-first list
+    container.innerHTML = initialHTML;
+    // V2 TODO: If implementing "Load More", may need to update pagination state here
+  }
+
+  // Show loading message
+  function showLoadingMessage() {
+    container.innerHTML = '<div class="loading-message" style="padding: 40px; text-align: center; color: #777;">Loading search index...</div>';
+  }
+
+  // Show error message
+  function showErrorMessage(msg) {
+    console.error(msg);
+    // Show toast notification instead of replacing container content
+    showToast(msg);
   }
 })();
 

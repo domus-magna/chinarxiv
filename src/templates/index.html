@@ -9,16 +9,25 @@
     <h1>Recent Translations from ChinaXiv</h1>
     <p class="page-description">
       Automatically translated preprints from the Chinese arXiv (ChinaXiv).
-      All translations are machine-generated—please verify with the original source.
     </p>
     <p class="paper-count">{{ items|length }} papers translated</p>
   </div>
+
+  {# ========================================================================
+     LAYOUT CHANGE: Search bar now appears BEFORE category pills
+     Rationale: Logical flow - search first, then filter by category
+     ======================================================================== #}
 
   <div class="search-block" id="search-section">
     <div class="search-input-group">
       <input id="search-input" placeholder="Search by title, authors, or abstract…" />
       <button class="search-btn">Search</button>
     </div>
+
+    {# V2 TODO: Consider removing redundant filter controls
+       - Category dropdown duplicates pills (below)
+       - Consider keeping only pills for major categories + "More" dropdown
+       - Or keep dropdown hidden and show on "Advanced Filters" click #}
     <div class="search-filters">
       <div class="filter-group">
         <label for="category-filter">Category:</label>
@@ -54,9 +63,29 @@
         </label>
       </div>
     </div>
-    <div id="search-results"></div>
   </div>
 
+  {# Category Pills - Moved BELOW search for better UX flow #}
+  <nav class="subject-nav" role="navigation" aria-label="Quick category filters">
+    <button class="subject-nav-pill active" data-subject="">All Recent</button>
+    {% for name, count in categories %}
+    <button class="subject-nav-pill" data-subject="{{ name }}">{{ name }}</button>
+    {% endfor %}
+  </nav>
+
+  {# ========================================================================
+     UNIFIED CONTAINER ARCHITECTURE
+     ======================================================================== #}
+  {# V1: Single container for all article display
+     - No more dual-container toggle between #articles and #search-results
+     - JavaScript will filter and re-render this same container
+     - Simpler, more maintainable architecture
+
+     V2 TODO (when dataset > 5K papers):
+     - Add "Load More" button after first 200 results
+     - Or implement virtual scrolling for smooth infinite scroll
+     - See project docs and assets/site.js for detailed V2 implementation notes
+     ======================================================================== #}
   <div id="articles" class="article-list">
     {% for it in items %}
       <article class="paper-card">
@@ -67,12 +96,12 @@
           <span class="paper-authors">{{ ', '.join(it.creators_en or it.creators or ['Unknown']) }}</span>
         </div>
         <div class="paper-meta-row secondary">
-          <span class="paper-date">{{ it.date }}</span>
+          <span class="paper-date">{{ it.date|human_date }}</span>
           <span class="paper-id">ChinaXiv:{{ it.id }}</span>
           {% if it.subjects or it.subjects_en %}
             <span class="paper-subjects">
               {% for s in (it.subjects_en or it.subjects)[:3] %}
-                <span class="subject-tag">{{ s }}</span>
+                <span class="subject-tag" data-subject="{{ s|e }}">{{ s }}</span>
               {% endfor %}
             </span>
           {% endif %}

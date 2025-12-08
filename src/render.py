@@ -376,7 +376,8 @@ def load_figure_manifest() -> Dict[str, Any]:
         try:
             with open(manifest_cache) as f:
                 data = json.load(f)
-                manifest = data.get("papers", {})
+                # Coerce None to {} in case manifest has {"papers": null}
+                manifest = data.get("papers") or {}
                 log(
                     f"Loaded figure manifest: {len(manifest)} papers with translated figures"
                 )
@@ -711,6 +712,30 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
         )
 
     env.filters["markdown"] = markdown_filter
+
+    # Add human-readable date filter
+    def human_date_filter(date_str):
+        """Convert ISO date to human-readable format (e.g., 'Nov 2, 2025')"""
+        from datetime import datetime as dt_class
+        if not date_str or not isinstance(date_str, str):
+            return ""
+        try:
+            # Handle various date formats
+            normalized = date_str.replace("Z", "+00:00")
+            dt = dt_class.fromisoformat(normalized)
+            # Format as "Nov 2, 2025" (portable - works on Windows)
+            # Use dt.day to avoid leading zeros (cross-platform)
+            return f"{dt.strftime('%b')} {dt.day}, {dt.year}"
+        except ValueError:
+            try:
+                # Fallback for date-only format
+                dt = dt_class.strptime(date_str[:10], "%Y-%m-%d")
+                return f"{dt.strftime('%b')} {dt.day}, {dt.year}"
+            except ValueError:
+                # If all parsing fails, return original
+                return date_str
+
+    env.filters["human_date"] = human_date_filter
 
     base_out = "site"
     ensure_dir(base_out)
