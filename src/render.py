@@ -773,9 +773,9 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
 
     build_version = int(time.time())
 
-    # Collect categories for dynamic filter (min 10 papers)
-    categories = collect_categories(items, min_count=10)
-    log(f"Found {len(categories)} categories with 10+ papers")
+    # Collect categories for dynamic filter (min 1 paper for small datasets)
+    categories = collect_categories(items, min_count=1)
+    log(f"Found {len(categories)} categories with 1+ papers")
 
     # Generate figure manifest for future extraction pipeline
     figure_manifest = generate_figure_manifest(items)
