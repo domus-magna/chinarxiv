@@ -119,19 +119,28 @@ export async function onRequestPost(context) {
       expirationTtl: 60
     });
 
-    // Log the request to daily log
+    // Log the request with unique per-request key to prevent race conditions
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    const logKey = `requests:${today}`;
+    const requestId = crypto.randomUUID();
+    const logKey = `requests:${today}:${requestId}`;
 
     const entry = JSON.stringify({
       paper_id,
       timestamp: new Date().toISOString(),
       ip_hash: ipHash.substring(0, 16) // First 16 chars for privacy
-    }) + '\n';
+    });
 
-    // Append to existing log
-    const existingLog = await env.FIGURE_REQUESTS.get(logKey) || '';
-    await env.FIGURE_REQUESTS.put(logKey, existingLog + entry);
+    // TODO(future): Automate aggregation and management of per-request keys
+    // - Current: Manual aggregation via scripts/aggregate_figure_requests.py
+    // - Keys auto-expire after 90 days (7776000 seconds)
+    // - Future ideas:
+    //   - Cron job to run aggregation daily/weekly
+    //   - Cloudflare Workers Cron Trigger for automatic aggregation
+    //   - Move to Durable Objects for real-time batching (no aggregation needed)
+    //   - Archive to R2 for long-term analytics
+    await env.FIGURE_REQUESTS.put(logKey, entry, {
+      expirationTtl: 7776000  // 90 days in seconds
+    });
 
     // Success response
     return new Response(JSON.stringify({
@@ -144,6 +153,19 @@ export async function onRequestPost(context) {
 
   } catch (error) {
     console.error('Error processing request:', error);
+
+    // Malformed JSON = client error (400)
+    if (error instanceof SyntaxError) {
+      return new Response(JSON.stringify({
+        success: false,
+        message: 'Invalid JSON in request body'
+      }), {
+        status: 400,
+        headers: createHeaders(origin)
+      });
+    }
+
+    // Other errors = server error (500)
     return new Response(JSON.stringify({
       success: false,
       message: 'Internal server error'
