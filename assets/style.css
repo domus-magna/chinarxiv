@@ -287,7 +287,7 @@ main {
 
 /* V1: Subject Navigation Pills - moved below search for logical flow */
 /* V2 TODO: When adding "More" dropdown, keep top 5-7 categories as pills */
-.subject-nav {
+.search-filters .subject-nav {
   display: flex;
   gap: 0;
   padding: 1rem 0;
@@ -299,11 +299,11 @@ main {
   -webkit-overflow-scrolling: touch; /* Smooth iOS momentum scrolling */
 }
 
-.subject-nav::-webkit-scrollbar {
+.search-filters .subject-nav::-webkit-scrollbar {
   display: none; /* Chrome/Safari */
 }
 
-.subject-nav-pill {
+.search-filters .subject-nav-pill {
   padding: 0.75rem 1.25rem;  /* V1: 44px min height for touch targets */
   font-size: 0.9rem;
   font-weight: 600;  /* V1: Same weight for all states (prevents wiggle) */
@@ -319,12 +319,12 @@ main {
   min-height: 44px; /* iOS touch target minimum */
 }
 
-.subject-nav-pill:hover {
+.search-filters .subject-nav-pill:hover {
   color: #495057;
   border-bottom-color: #dee2e6;
 }
 
-.subject-nav-pill.active {
+.search-filters .subject-nav-pill.active {
   color: #212529;
   border-bottom-color: #b31b1b;
 }
@@ -1324,8 +1324,7 @@ main {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 0.5rem 0 1.5rem;
-  border-top: 1px solid var(--border-color);
+  padding: 0 1.5rem;
 }
 
 .category-tab {
