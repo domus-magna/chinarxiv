@@ -543,6 +543,11 @@
 
           showToast('Request submitted! We\'ll prioritize this paper for figure translation.');
 
+        } else if (response.status === 400) {
+          // Invalid paper_id format
+          showToast('Invalid paper ID. Please contact support.');
+          btn.disabled = false;
+          btn.textContent = 'Request Figure Translation';
         } else if (response.status === 409) {
           // Duplicate detected by server
           showToast('Request already submitted recently. Please wait a moment.');

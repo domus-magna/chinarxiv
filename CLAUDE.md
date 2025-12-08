@@ -421,9 +421,13 @@ python scripts/aggregate_figure_requests.py --output data/high_priority_papers.t
 
 Two-layer protection (V1):
 
-1. **Client-side:** localStorage tracks requested papers - button shows "Request Submitted" permanently
+1. **Client-side:** localStorage tracks requested papers - button shows "Request Submitted" persistently
 2. **Server-side:** Simple duplicate detection - same IP can't request same paper within 60 seconds (Cloudflare KV)
 3. **Future:** Can add more sophisticated rate limiting later if spam becomes an issue
+
+**Known Limitations:**
+
+- **Race condition in log appending:** The log append operation (read-modify-write to `requests:{date}`) is not atomic. Under high concurrent load, some log entries may be lost. This is acceptable for V1 since the logs are primarily for analytics, not billing. If analytics accuracy becomes critical, consider migrating to Durable Objects (atomic operations) or a Queue-based system.
 
 ### Integration with Figure Pipeline
 
