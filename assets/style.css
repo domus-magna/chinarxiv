@@ -1447,6 +1447,7 @@ main {
 /* MODAL FOR ADVANCED SEARCH (different from citation modal) */
 .modal-overlay .modal {
   background: white;
+  color-scheme: light;  /* Force light mode for all form controls */
   border-radius: 8px;
   max-width: 900px;
   width: 100%;
@@ -1461,14 +1462,14 @@ main {
   justify-content: space-between;
   align-items: center;
   padding: 1.5rem;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid #e9ecef;
   background: white;
 }
 
 .modal-overlay .modal-title {
   font-size: 20px;
   font-weight: 600;
-  color: var(--secondary-color);
+  color: #2c3e50;
   margin: 0;
 }
 
@@ -1476,7 +1477,7 @@ main {
   background: none;
   border: none;
   font-size: 24px;
-  color: var(--text-muted);
+  color: #666;
   cursor: pointer;
   padding: 0;
   width: 32px;
@@ -1488,7 +1489,7 @@ main {
 }
 
 .modal-overlay .modal-close:hover {
-  background: var(--bg-light);
+  background: #f8f9fa;
 }
 
 .modal-overlay .modal-body {
@@ -1524,13 +1525,13 @@ main {
 .modal-section-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--secondary-color);
+  color: #2c3e50;
   margin-bottom: 1rem;
 }
 
 .modal-divider {
   height: 1px;
-  background: var(--border-color);
+  background: #e9ecef;
   margin: 2rem 0;
 }
 
@@ -1543,7 +1544,7 @@ main {
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-color);
+  color: #222;
   margin-bottom: 0.5rem;
 }
 
@@ -1555,7 +1556,7 @@ main {
   font-size: 14px;
   min-height: 44px;
   background: white;
-  color: var(--text-color);
+  color: #222;
 }
 
 .form-input::placeholder {
@@ -1579,7 +1580,7 @@ main {
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem;
-  border: 1px solid var(--border-color);
+  border: 1px solid #e9ecef;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1587,7 +1588,7 @@ main {
 }
 
 .radio-option:hover {
-  background: var(--bg-light);
+  background: #f8f9fa;
   border-color: var(--primary-color);
 }
 
@@ -1602,7 +1603,7 @@ main {
   flex: 1;
   cursor: pointer;
   font-size: 14px;
-  color: var(--text-color);
+  color: #222;
 }
 
 .date-range {
@@ -1616,7 +1617,7 @@ main {
 }
 
 .date-range-separator {
-  color: var(--text-muted);
+  color: #666;
   font-size: 14px;
 }
 
@@ -1643,14 +1644,14 @@ main {
   flex: 1;
   cursor: pointer;
   font-size: 14px;
-  color: var(--text-color);
+  color: #222;
 }
 
 /* CATEGORY ACCORDION */
 .category-section {
   max-height: 400px;
   overflow-y: auto;
-  border: 1px solid var(--border-color);
+  border: 1px solid #e9ecef;
   border-radius: 8px;
   background: #fafafa;
   margin-top: 0.5rem;
@@ -1662,7 +1663,7 @@ main {
   z-index: 10;
   padding: 12px;
   background: white;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid #e9ecef;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1817,7 +1818,7 @@ main {
   justify-content: space-between;
   gap: 1rem;
   padding: 1rem;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid #e9ecef;
   background: white;
   position: sticky;
   bottom: 0;
@@ -1828,8 +1829,8 @@ main {
 .btn-secondary {
   padding: 0.6rem 1.5rem;
   background: white;
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
+  color: #222;
+  border: 1px solid #e9ecef;
   border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
@@ -1838,7 +1839,7 @@ main {
 }
 
 .btn-secondary:hover {
-  background: var(--bg-light);
+  background: #f8f9fa;
 }
 
 .btn-primary {
