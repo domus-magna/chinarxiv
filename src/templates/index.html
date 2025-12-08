@@ -26,10 +26,10 @@
 
     <!-- Tabs Row -->
     <div class="tabs-row">
-      <nav class="subject-nav">
-        <button class="category-tab active" data-category="">All Recent</button>
+      <nav class="subject-nav" role="tablist" aria-label="Category filters">
+        <button class="category-tab active" role="tab" aria-selected="true" aria-controls="articles" data-category="">All Recent</button>
         {% for category_id, category in categories.items()|sort(attribute='1.order') %}
-        <button class="category-tab" data-category="{{ category_id }}">
+        <button class="category-tab" role="tab" aria-selected="false" aria-controls="articles" data-category="{{ category_id }}">
           {{ category.label }}
         </button>
         {% endfor %}
@@ -49,7 +49,7 @@
   </div>
 
   <!-- Paper count below filter pills -->
-  <p class="paper-count" id="paperCount">Showing {{ items|length }} paper{% if items|length != 1 %}s{% endif %}</p>
+  <p class="paper-count" id="paperCount" aria-live="polite" aria-atomic="true">Showing {{ items|length }} paper{% if items|length != 1 %}s{% endif %}</p>
 
   {# Expose category data to JavaScript for modal accordion #}
   <script>
