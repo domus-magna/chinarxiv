@@ -78,6 +78,17 @@ function searchSubject(subject) {
   let userChangedSort = false; // Track if user explicitly changed sort
   let initialHTML = container.innerHTML; // Cache server-rendered HTML for restore
 
+  // Global filter state shared across all filtering UI components (modal, tabs, search)
+  // This ensures filters persist when switching between different UI controls
+  let globalFilterState = {
+    searchTerm: '',
+    sortOrder: 'relevance',
+    dateRange: { start: '', end: '' },
+    searchField: 'all',
+    onlyFigures: false,
+    categories: null  // null = all categories, array = specific category IDs
+  };
+
   // Date filter: days ago lookup (relative to today)
   const dateDays = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
 
@@ -98,7 +109,7 @@ function searchSubject(subject) {
     try {
       miniSearch = new MiniSearch({
         fields: ['title', 'authors', 'abstract', 'subjects'],
-        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date', 'has_figures', 'pdf_url'],
+        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'subjects_en', 'date', 'submission_date', 'has_figures', '_has_translated_figures', 'pdf_url'],
         searchOptions: { boost: { title: 3, authors: 2, subjects: 1.5, abstract: 1 }, fuzzy: 0.2, prefix: true }
       });
       miniSearch.addAll(docs);
@@ -184,6 +195,7 @@ function searchSubject(subject) {
     // V2 TODO: When adding "Load More", may need to re-render here to reset pagination
     if (!isActive) {
       restoreServerRenderedArticles();
+      updatePaperCount(allDocs.length);
       return;
     }
 
@@ -250,6 +262,94 @@ function searchSubject(subject) {
     const paperCountEl = document.getElementById('paperCount');
     if (paperCountEl) {
       paperCountEl.textContent = `Showing ${count} paper${count !== 1 ? 's' : ''}`;
+    }
+  }
+
+  /**
+   * Unified search and filter function for both category tabs and modal.
+   * @param {Object} filterState - Filter configuration
+   * @param {string} filterState.searchTerm - Search query
+   * @param {string[]} filterState.categories - Category names to filter by
+   * @param {Object} filterState.dateRange - Date range {start, end}
+   * @param {boolean} filterState.onlyFigures - Filter to papers with figures
+   * @param {string} filterState.searchField - Field to search ('all', 'title', 'author', 'abstract')
+   * @param {string} filterState.sortOrder - Sort order ('relevance', 'newest', 'oldest')
+   */
+  function searchAndRender(filterState) {
+    const searchTerm = filterState.searchTerm || '';
+
+    // Create unified filter function
+    const filterFn = (doc) => {
+      // Category check
+      if (filterState.categories?.length > 0) {
+        const docSubjects = doc.subjects_en || [];
+        if (!filterState.categories.some(cat => docSubjects.includes(cat))) {
+          return false;
+        }
+      }
+
+      // Date check - IMPORTANT: Exclude docs without dates when date filter active
+      const docDate = doc.date || doc.submission_date;
+      if (filterState.dateRange?.start || filterState.dateRange?.end) {
+        if (!docDate) return false; // Exclude if no date and date filter active
+        if (filterState.dateRange.start && docDate < filterState.dateRange.start) return false;
+        if (filterState.dateRange.end && docDate > filterState.dateRange.end) return false;
+      }
+
+      // Figure check
+      if (filterState.onlyFigures && !doc._has_translated_figures) {
+        return false;
+      }
+
+      return true;
+    };
+
+    let results;
+
+    if (searchTerm) {
+      // Apply search with integrated filtering
+      const searchFields = filterState.searchField === 'all'
+        ? ['title', 'authors', 'abstract', 'subjects_en']
+        : [filterState.searchField];
+
+      results = miniSearch.search(searchTerm, {
+        fields: searchFields,
+        fuzzy: 0.2,
+        prefix: true,
+        filter: filterFn  // Apply filters DURING search (efficient!)
+      });
+    } else {
+      // No search term, just filter
+      results = allDocs.filter(filterFn);
+    }
+
+    // Apply sorting on final results
+    const sortOrder = filterState.sortOrder || 'relevance';
+    if (sortOrder === 'newest') {
+      results.sort((a, b) => {
+        const dateA = a.date || a.submission_date || '';
+        const dateB = b.date || b.submission_date || '';
+        return dateB.localeCompare(dateA);
+      });
+    } else if (sortOrder === 'oldest') {
+      results.sort((a, b) => {
+        const dateA = a.date || a.submission_date || '';
+        const dateB = b.date || b.submission_date || '';
+        return dateA.localeCompare(dateB);
+      });
+    }
+    // 'relevance' keeps MiniSearch order
+
+    // Render results
+    renderResults(results);
+    updatePaperCount(results.length);
+
+    // Show empty state if no results
+    if (results.length === 0) {
+      const articlesContainer = document.getElementById('articles');
+      if (articlesContainer && articlesContainer.children.length === 0) {
+        articlesContainer.innerHTML = '<p class="no-results">No papers found matching your filters. Try adjusting your search criteria.</p>';
+      }
     }
   }
 
@@ -349,13 +449,22 @@ function searchSubject(subject) {
   let timer = null;
   input.addEventListener('input', () => {
     clearTimeout(timer);
-    if (!input.value.trim()) {
-      currentQuery = '';
-      lastSearchResults = [];
-      applyFiltersAndRender();
+    const searchTerm = input.value.trim();
+
+    // Update global filter state with current search term
+    globalFilterState.searchTerm = searchTerm;
+
+    if (!searchTerm) {
+      // Clear search immediately
+      searchAndRender(globalFilterState);
       return;
     }
-    timer = setTimeout(() => performSearch(input.value), 120);
+
+    // Debounce search for performance (120ms is fast enough for current dataset)
+    timer = setTimeout(() => {
+      globalFilterState.searchTerm = searchTerm;
+      searchAndRender(globalFilterState);
+    }, 120);
   });
 
   // ============================================================================
@@ -408,7 +517,10 @@ function searchSubject(subject) {
   if (dateFilter) dateFilter.addEventListener('change', applyFiltersAndRender);
   if (sortOrder) sortOrder.addEventListener('change', () => { userChangedSort = true; applyFiltersAndRender(); });
   if (figuresFilter) figuresFilter.addEventListener('change', applyFiltersAndRender);
-  if (searchBtn) searchBtn.addEventListener('click', () => performSearch(input.value));
+  if (searchBtn) searchBtn.addEventListener('click', () => {
+    globalFilterState.searchTerm = input.value.trim();
+    searchAndRender(globalFilterState);
+  });
 
   function escapeHtml(s) {
     return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -723,11 +835,28 @@ function showCopyFeedback() {
         }
       }
 
+      // Update global filter state from modal inputs
+      globalFilterState.searchTerm = searchInput ? searchInput.value.trim() : '';
+      globalFilterState.sortOrder = selectedSort ? selectedSort.value : 'relevance';
+      globalFilterState.dateRange = {
+        start: startDate ? startDate.value : '',
+        end: endDate ? endDate.value : ''
+      };
+      globalFilterState.searchField = selectedField ? selectedField.value : 'all';
+      globalFilterState.onlyFigures = onlyFigures ? onlyFigures.checked : false;
+      globalFilterState.categories = Array.from(selectedCategories).map(cb => cb.value);
+
+      // Apply unified filter state
+      searchAndRender(globalFilterState);
+
       // Close modal
       modalOverlay.classList.remove('active');
 
-      // TODO: Trigger actual filtering based on modal state
-      // This will need to be wired into the MiniSearch filtering logic
+      // Return focus to trigger button for accessibility
+      const modalTriggerBtn = document.getElementById('advancedSearchBtn');
+      if (modalTriggerBtn) {
+        modalTriggerBtn.focus();
+      }
     });
   }
 
@@ -833,42 +962,34 @@ function showCopyFeedback() {
     }
   });
 
-  // Category tab toggle (for main navigation tabs)
-  document.querySelectorAll('.category-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const categoryId = tab.dataset.category;
+  // Category tab filtering (unified with modal filtering)
+  const categoryTabs = document.querySelectorAll('.category-tab');
+  categoryTabs.forEach(tab => {
+    tab.addEventListener('click', function() {
+      const categoryId = this.getAttribute('data-category');
 
-      // Update active state
-      document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
+      // Update active state + ARIA
+      categoryTabs.forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      this.classList.add('active');
+      this.setAttribute('aria-selected', 'true');
 
-      // Filter papers by category group
-      const articles = document.querySelectorAll('#articles .paper-card');
+      // Get child categories for this top-level category
+      const childCategories = categoryId
+        ? (window.categoryTaxonomy?.[categoryId]?.children.map(c => c.name) || [])
+        : null;
 
-      if (!categoryId) {
-        // Show all papers
-        articles.forEach(article => article.style.display = '');
-      } else {
-        // Get child categories for this top-level category
-        const childCategories = window.categoryTaxonomy?.[categoryId]?.children.map(c => c.name) || [];
+      // Update only the categories in global state, preserve other filters
+      globalFilterState.categories = childCategories;
 
-        articles.forEach(article => {
-          const subjects = article.querySelector('.paper-subjects');
-          if (!subjects) {
-            article.style.display = 'none';
-            return;
-          }
+      // Update search term if changed (sync with search input)
+      const searchTerm = searchInput ? searchInput.value.trim() : '';
+      globalFilterState.searchTerm = searchTerm;
 
-          // Check if any subject matches child categories
-          const subjectTags = Array.from(subjects.querySelectorAll('.subject-tag'));
-          const hasMatch = subjectTags.some(tag => {
-            const subject = tag.getAttribute('data-subject');
-            return childCategories.includes(subject);
-          });
-
-          article.style.display = hasMatch ? '' : 'none';
-        });
-      }
+      // Apply unified filter state (preserves date range, figures filter, sort order, etc.)
+      searchAndRender(globalFilterState);
     });
   });
 })();
