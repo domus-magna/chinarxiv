@@ -131,7 +131,7 @@
           <ul class="sidebar-actions">
             <li><a href="#" class="sidebar-btn" onclick="openReportModal(); return false;" aria-label="Report a problem with this paper">Report Problem</a></li>
             {% if not item._has_translated_figures %}
-            <li><a href="#" id="request-figures-btn" class="sidebar-btn" onclick="requestFigureTranslation('{{ item.id }}'); return false;" aria-label="Request figure translation for this paper">Request Figure Translation</a></li>
+            <li><button id="request-figures-btn" class="sidebar-btn" onclick="requestFigureTranslation('{{ item.id }}')" aria-label="Request figure translation for this paper">Request Figure Translation</button></li>
             {% endif %}
           </ul>
         </div>
@@ -500,11 +500,34 @@
     }
 
     // Figure Translation Request Functions
+    let figRequestInProgress = {};  // Track in-flight requests per paper
+
+    // Safe localStorage helper (handles private mode)
+    function safeLocalStorage(operation, key, value = undefined) {
+      try {
+        if (operation === 'get') {
+          return localStorage.getItem(key);
+        } else if (operation === 'set') {
+          localStorage.setItem(key, value);
+          return true;
+        }
+      } catch (e) {
+        if (e.name === 'SecurityError') {
+          console.warn('localStorage unavailable (private mode)');
+        } else if (e.name === 'QuotaExceededError') {
+          console.warn('localStorage quota exceeded');
+        } else {
+          console.warn('localStorage error:', e);
+        }
+        return null;
+      }
+    }
+
     function checkFigureRequestStatus(paperId) {
       const btn = document.getElementById('request-figures-btn');
       if (!btn) return;
 
-      const requested = localStorage.getItem(`fig_requested_${paperId}`);
+      const requested = safeLocalStorage('get', `fig_requested_${paperId}`);
       if (requested === 'true') {
         btn.textContent = 'Request Submitted';
         btn.disabled = true;
@@ -515,11 +538,20 @@
     async function requestFigureTranslation(paperId) {
       const btn = document.getElementById('request-figures-btn');
 
+      // In-flight check (catches rapid clicks)
+      if (figRequestInProgress[paperId]) {
+        showToast('Request already in progress...');
+        return;
+      }
+
       // Check if already requested
-      if (localStorage.getItem(`fig_requested_${paperId}`) === 'true') {
+      if (safeLocalStorage('get', `fig_requested_${paperId}`) === 'true') {
         showToast('Already requested!');
         return;
       }
+
+      // Mark as in-flight
+      figRequestInProgress[paperId] = true;
 
       // Disable button immediately
       btn.disabled = true;
@@ -535,13 +567,17 @@
 
         if (response.ok) {
           // Success - mark as submitted in localStorage
-          localStorage.setItem(`fig_requested_${paperId}`, 'true');
+          const stored = safeLocalStorage('set', `fig_requested_${paperId}`, 'true');
 
           // Update button permanently
           btn.textContent = 'Request Submitted';
           btn.classList.add('disabled');
 
-          showToast('Request submitted! We\'ll prioritize this paper for figure translation.');
+          if (stored === null) {
+            showToast('Request submitted (couldn\'t save locally - private mode?)');
+          } else {
+            showToast('Request submitted! We\'ll prioritize this paper for figure translation.');
+          }
 
         } else if (response.status === 400) {
           // Invalid paper_id format
@@ -549,10 +585,11 @@
           btn.disabled = false;
           btn.textContent = 'Request Figure Translation';
         } else if (response.status === 409) {
-          // Duplicate detected by server
-          showToast('Request already submitted recently. Please wait a moment.');
-          btn.disabled = false;
-          btn.textContent = 'Request Figure Translation';
+          // Server caught duplicate - still mark as submitted
+          safeLocalStorage('set', `fig_requested_${paperId}`, 'true');
+          btn.textContent = 'Request Submitted';
+          btn.classList.add('disabled');
+          showToast('Request already submitted recently.');
         } else {
           // Error - re-enable button
           showToast('Failed to submit request. Please try again.');
@@ -565,6 +602,9 @@
         showToast('Network error. Please try again.');
         btn.disabled = false;
         btn.textContent = 'Request Figure Translation';
+      } finally {
+        // Clear in-flight flag
+        delete figRequestInProgress[paperId];
       }
     }
 
