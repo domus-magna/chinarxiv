@@ -1767,9 +1767,9 @@ main {
   transform: rotate(0deg);
 }
 
-/* Collapsed state - right-pointing caret */
+/* Collapsed state - upward caret */
 .category-group:not(.active) .category-group-toggle {
-  transform: rotate(-90deg);
+  transform: rotate(180deg);
 }
 
 /* Category group name */
