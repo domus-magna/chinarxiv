@@ -382,7 +382,8 @@ function resetFilterState() {
 
       // Set current category and trigger filter
       const category = tab.dataset.category || '';
-      currentCategory = category;
+      setFilterState({ category }); // PHASE 2: Use filter state
+      currentCategory = category; // Keep for backward compat
 
       // Update URL without page reload
       const url = new URL(window.location);
@@ -404,7 +405,8 @@ function resetFilterState() {
   // Initialize category from URL on page load
   const urlCategory = new URLSearchParams(window.location.search).get('category');
   if (urlCategory) {
-    currentCategory = urlCategory;
+    setFilterState({ category: urlCategory }); // PHASE 2: Use filter state
+    currentCategory = urlCategory; // Keep for backward compat
     // Update tab UI to match URL
     categoryTabs.forEach(tab => {
       if (tab.dataset.category === urlCategory) {
@@ -420,9 +422,11 @@ function resetFilterState() {
   }
 
   // Handle browser back/forward buttons
+  // TODO Phase 6: Add skipPushState flag to prevent URL loop (Codex fix)
   window.addEventListener('popstate', () => {
     const urlCategory = new URLSearchParams(window.location.search).get('category') || '';
-    currentCategory = urlCategory;
+    setFilterState({ category: urlCategory }); // PHASE 2: Use filter state
+    currentCategory = urlCategory; // Keep for backward compat
 
     // Update tab UI
     categoryTabs.forEach(tab => {
