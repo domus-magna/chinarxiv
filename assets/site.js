@@ -345,16 +345,21 @@ function resetFilterState() {
     applyFiltersAndRender();
   }
 
+  // PHASE 3: Search Box - integrate with filterState
   let timer = null;
   input.addEventListener('input', () => {
     clearTimeout(timer);
     if (!input.value.trim()) {
-      currentQuery = '';
+      setFilterState({ query: '' }); // PHASE 3: Clear query in state
+      currentQuery = ''; // Keep for backward compat
       lastSearchResults = [];
       applyFiltersAndRender();
       return;
     }
-    timer = setTimeout(() => performSearch(input.value), 120);
+    timer = setTimeout(() => {
+      setFilterState({ query: input.value }); // PHASE 3: Store query in state
+      performSearch(input.value);
+    }, 120);
   });
 
   if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndRender);
