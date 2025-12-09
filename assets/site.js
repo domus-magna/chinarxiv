@@ -281,10 +281,9 @@ function searchSubject(subject) {
     timer = setTimeout(() => performSearch(input.value), 120);
   });
 
-  if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndRender);
-  if (dateFilter) dateFilter.addEventListener('change', applyFiltersAndRender);
-  if (sortOrder) sortOrder.addEventListener('change', () => { userChangedSort = true; applyFiltersAndRender(); });
-  if (figuresFilter) figuresFilter.addEventListener('change', applyFiltersAndRender);
+  // Removed event listeners for non-existent dropdown elements
+  // (categoryFilter, dateFilter, sortOrder, figuresFilter were removed - see lines 32-36)
+  // Category filtering now handled by tab click handlers (lines 300-370)
   if (searchBtn) searchBtn.addEventListener('click', () => performSearch(input.value));
 
   // Category tab click handlers
@@ -372,12 +371,12 @@ function searchSubject(subject) {
   // - Category accordion (hierarchical category tree)
   // - Figures-only filter
   //
-  // Integration approach:
+  // Integration approach (Phase 3 - Future):
   // 1. Wire up modal open/close handlers (advancedSearchBtn, modalClose)
-  // 2. Sync modal state with current filters (currentCategory, dateFilter, etc.)
+  // 2. Sync modal state with current filters (currentCategory, modal inputs, etc.)
   // 3. Apply modal filters via applyFiltersAndRender()
   // 4. Update filter indicator pills (filterIndicators div)
-  // See TODO.md for detailed implementation plan
+  // See plan file and PR #106 for detailed implementation plan
 
   // Advanced Search Modal
   const advancedSearchBtn = document.getElementById('advancedSearchBtn');
