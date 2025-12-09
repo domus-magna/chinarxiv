@@ -73,6 +73,21 @@ function searchSubject(subject) {
     });
   });
 
+  // ========================================================================
+  // SCALABILITY NOTE: Client-side search with MiniSearch
+  // ========================================================================
+  // - Works well for <5K papers (~2-3 MB compressed index)
+  // - Current: 8 papers (dev), ~500 papers (prod), 4.8 KB index
+  // - Production estimate: ~300 KB compressed index
+  // - Target: 40,000 papers would be ~23 MB compressed (TOO LARGE)
+  //
+  // MIGRATION TRIGGER: When compressed index exceeds 10 MB (~15K papers)
+  // - Move to server-side search API (Cloudflare Workers + D1)
+  // - Implement pagination (50 results/page)
+  // - Keep this as fallback for offline/API failure
+  // - See TODO.md "Search Architecture Migration" for full plan
+  // ========================================================================
+
   // Initialize MiniSearch with field boosting
   function initMiniSearch(docs) {
     try {
@@ -118,6 +133,17 @@ function searchSubject(subject) {
     .catch(() => fetch('search-index.json').then(r => r.json()).then(onIndexLoaded).catch(onIndexFailed));
 
   // Apply filters and render
+  // ========================================================================
+  // SCALABILITY NOTE: Filtering on full dataset in-memory
+  // ========================================================================
+  // Current implementation filters entire dataset client-side
+  // Migration path when moving to server-side:
+  // 1. Send filters to API: ?category=X&date=Y&figures=Z
+  // 2. API returns pre-filtered results from D1 database
+  // 3. Reduces browser memory usage significantly
+  // 4. Enables more complex filters (date ranges, field-specific search)
+  // See TODO.md "Search Architecture Migration" for full plan
+  // ========================================================================
   function applyFiltersAndRender() {
     // If index load failed, preserve failure message and don't hide article list
     if (indexLoadState === 'failed') {
@@ -177,37 +203,24 @@ function searchSubject(subject) {
           if (!subjects.includes(cat.toLowerCase())) return false;
         }
       }
-      // Date filter (reset to start of day to include papers from today)
-      if (dateRange && dateDays[dateRange] !== undefined) {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - dateDays[dateRange]);
-        cutoff.setHours(0, 0, 0, 0);
-        const hitDate = new Date(hit.date);
-        if (isNaN(hitDate.getTime())) return true; // Keep papers with invalid dates
-        if (hitDate < cutoff) return false;
-      }
-      // Figures filter
-      if (figuresOnly && !hit.has_figures) return false;
+      // Date filter removed - dateRange variable no longer exists (dropdown removed)
+      // Figures filter removed - figuresOnly variable no longer exists (dropdown removed)
       return true;
     });
 
-    // Sort results based on user selection
-    const sort = sortOrder?.value || 'newest';
+    // Sort results - currently only "newest first" is supported (sortOrder dropdown removed)
+    // Future: Add sort options via advanced search modal
     const toTimestamp = (hit) => {
       const t = Date.parse(hit.date || '');
       return Number.isNaN(t) ? 0 : t;
     };
 
-    // With a query: preserve MiniSearch relevance ranking unless user explicitly changed sort
-    // Without a query: "Relevance" falls back to "Newest First"
-    if (hasQuery && !userChangedSort) {
-      // Keep MiniSearch ranking order - user hasn't touched sort dropdown
-    } else if (sort === 'relevance' && hasQuery) {
-      // User explicitly selected "Relevance" - keep MiniSearch order
-    } else if (sort === 'oldest') {
-      filtered.sort((a, b) => toTimestamp(a) - toTimestamp(b) || String(a.id || '').localeCompare(String(b.id || '')));
+    // With a query: preserve MiniSearch relevance ranking
+    // Without a query: sort by newest first
+    if (hasQuery) {
+      // Keep MiniSearch ranking order for search results
     } else {
-      // Newest first (explicit selection or fallback for no-query relevance)
+      // Newest first for category filtering
       filtered.sort((a, b) => toTimestamp(b) - toTimestamp(a) || String(a.id || '').localeCompare(String(b.id || '')));
     }
     filtered = filtered.slice(0, 100); // Limit results
@@ -233,15 +246,38 @@ function searchSubject(subject) {
       const msg = hasActiveFilters
         ? 'No papers match with selected filters. Try adjusting them.'
         : 'No papers found. Try different keywords.';
-      results.innerHTML = `<div class="res"><div>${msg}</div></div>`;
+      results.innerHTML = `<div class="paper-card"><div>${msg}</div></div>`;
     } else {
-      const count = `<div class="search-results-count">Found ${hits.length} paper${hits.length > 1 ? 's' : ''}</div>`;
-      results.innerHTML = count + hits.map(hit => `
-        <div class="res">
-          <div class="res-title"><a href="/items/${escapeHtml(hit.id)}/">${highlightTerms(hit.title || '', currentQuery)}</a></div>
-          <div class="res-meta">${escapeHtml(hit.date || '')} — ${escapeHtml(hit.authors || '')}</div>
-          <div class="res-abstract">${highlightTerms((hit.abstract || '').slice(0, 280), currentQuery)}…</div>
-        </div>`).join('');
+      // Match server-rendered HTML structure (lines 82-108 in src/templates/index.html)
+      // Uses .paper-card, .paper-title, .paper-meta-row, .paper-abstract classes
+      results.innerHTML = hits.map(hit => `
+        <article class="paper-card">
+          <h3 class="paper-title">
+            <a href="/items/${escapeHtml(hit.id)}/" title="Abstract">${highlightTerms(hit.title || '', currentQuery)}</a>
+          </h3>
+          <div class="paper-meta-row">
+            <span class="paper-authors">${escapeHtml(hit.authors || 'Unknown')}</span>
+          </div>
+          <div class="paper-meta-row secondary">
+            <span class="paper-date">${escapeHtml(hit.date || '')}</span>
+            <span class="paper-id">ChinaXiv:${escapeHtml(hit.id)}</span>
+            ${hit.subjects ? `
+              <span class="paper-subjects">
+                ${hit.subjects.split(',').slice(0, 3).map(s =>
+                  `<span class="subject-tag" data-subject="${escapeHtml(s.trim())}">${escapeHtml(s.trim())}</span>`
+                ).join('')}
+              </span>
+            ` : ''}
+            <div class="paper-links">
+              <a href="/items/${escapeHtml(hit.id)}/" class="btn-sm">Abstract</a>
+              ${hit.pdf_url ? `<a href="${escapeHtml(hit.pdf_url)}" class="btn-sm">PDF</a>` : ''}
+            </div>
+          </div>
+          <p class="paper-abstract">
+            ${highlightTerms((hit.abstract || '').substring(0, 300), currentQuery)}${hit.abstract && hit.abstract.length > 300 ? '…' : ''}
+          </p>
+        </article>
+      `).join('');
     }
 
     // Update paper count
@@ -253,6 +289,16 @@ function searchSubject(subject) {
     }
   }
 
+  // ========================================================================
+  // SCALABILITY NOTE: This searches entire index in-memory
+  // ========================================================================
+  // Migration path when moving to server-side:
+  // 1. Replace with: fetch('/api/search?q=' + encodeURIComponent(query))
+  // 2. Handle pagination in response (page 1 of N)
+  // 3. Update renderResults() to show page controls
+  // 4. Keep this function as fallback if API unavailable
+  // See TODO.md "Search Architecture Migration" for full plan
+  // ========================================================================
   function performSearch(query) {
     // If index load failed, preserve failure message
     if (indexLoadState === 'failed') {
@@ -409,13 +455,169 @@ function searchSubject(subject) {
     });
   }
 
+  // ========================================================================
+  // ADVANCED SEARCH MODAL FUNCTIONALITY (Minimal Client-Side Implementation)
+  // ========================================================================
+  // SCALABILITY NOTE: Modal currently syncs with client-side filter state
+  // Migration path when moving to server-side:
+  // 1. Build query params from modal form: ?category=X&dateFrom=Y&dateTo=Z
+  // 2. POST to /api/search with filters
+  // 3. Render paginated results
+  // 4. Update URL with filter state for shareability
+  // See TODO.md "Search Architecture Migration" for full plan
+
+  // Populate category accordion from window.categoryData
+  function populateCategoryAccordion() {
+    const accordion = document.getElementById('categoryAccordion');
+    if (!accordion || !window.categoryData) return;
+
+    // Calculate total paper count for "All Recent"
+    const totalCount = Object.values(window.categoryData).reduce((sum, cat) => sum + (cat.count || 0), 0);
+
+    // Build HTML with "All Recent" + all categories
+    const html = `
+      <div class="category-group">
+        <div class="category-group-header">
+          <input type="radio" name="category" value="" id="cat-all" checked>
+          <label for="cat-all">All Recent</label>
+          <span class="category-count">${totalCount} papers</span>
+        </div>
+      </div>
+    ` + Object.entries(window.categoryData)
+      .sort((a, b) => (a[1].order || 99) - (b[1].order || 99))
+      .map(([catId, catData]) => `
+        <div class="category-group">
+          <div class="category-group-header">
+            <input type="radio" name="category" value="${catId}" id="cat-${catId}">
+            <label for="cat-${catId}">${catData.label || catData.name || catId}</label>
+            <span class="category-count">${catData.count || 0} papers</span>
+          </div>
+        </div>
+      `).join('');
+
+    accordion.innerHTML = html;
+  }
+
+  // Apply filters from modal and close
+  function applyModalFilters() {
+    // Get selected category from radio buttons
+    const selectedRadio = document.querySelector('input[name="category"]:checked');
+    const newCategory = selectedRadio ? selectedRadio.value : '';
+
+    // Update main search state
+    currentCategory = newCategory;
+
+    // Update tab UI to match modal selection
+    const categoryTabs = document.querySelectorAll('.category-tab');
+    categoryTabs.forEach(tab => {
+      if (tab.dataset.category === newCategory) {
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+      } else {
+        tab.classList.remove('active');
+        tab.setAttribute('aria-selected', 'false');
+      }
+    });
+
+    // Update URL
+    const url = new URL(window.location);
+    if (newCategory) {
+      url.searchParams.set('category', newCategory);
+    } else {
+      url.searchParams.delete('category');
+    }
+    window.history.pushState({}, '', url);
+
+    // Apply filters and render
+    applyFiltersAndRender();
+
+    // Close modal
+    if (modalOverlay) {
+      modalOverlay.style.display = 'none';
+    }
+  }
+
+  // Clear all modal filters
+  function clearModalFilters() {
+    // Clear category selection - select "All Recent"
+    const allRadio = document.querySelector('input[name="category"][value=""]');
+    if (allRadio) allRadio.checked = true;
+
+    // Clear search field in modal
+    const modalSearchInput = document.getElementById('modalSearchInput');
+    if (modalSearchInput) modalSearchInput.value = '';
+
+    // Apply cleared state (which will update tabs, URL, and render)
+    applyModalFilters();
+  }
+
+  // Sync modal state when modal opens
+  if (advancedSearchBtn && modalOverlay) {
+    const originalOpenHandler = advancedSearchBtn.onclick;
+    advancedSearchBtn.addEventListener('click', () => {
+      // Sync modal category selection with current tab state
+      const currentRadio = document.querySelector(`input[name="category"][value="${currentCategory}"]`);
+      if (currentRadio) {
+        currentRadio.checked = true;
+      } else {
+        // No category selected - check "All Recent"
+        const allRadio = document.querySelector('input[name="category"][value=""]');
+        if (allRadio) allRadio.checked = true;
+      }
+    });
+  }
+
+  // Sync modal state when tabs are clicked
+  // This is added to the existing tab click handler
+  const originalTabHandler = categoryTabs.length > 0;
+  if (originalTabHandler) {
+    categoryTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        // After tab click, update modal selection to match
+        const category = tab.dataset.category || '';
+        const modalRadio = document.querySelector(`input[name="category"][value="${category}"]`);
+        if (modalRadio) modalRadio.checked = true;
+      });
+    });
+  }
+
+  // Wire up Apply and Clear buttons
+  const applyFiltersBtn = document.getElementById('applyFiltersBtn');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+
+  if (applyFiltersBtn) {
+    applyFiltersBtn.addEventListener('click', applyModalFilters);
+  }
+
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', clearModalFilters);
+  }
+
+  // Initialize modal on page load
+  if (typeof window.categoryData !== 'undefined') {
+    populateCategoryAccordion();
+  }
+
   function escapeHtml(s) {
     return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   function toggleArticleList(hide) {
     if (!articleList) return;
-    articleList.style.display = hide ? 'none' : '';
+
+    // Hide/show only server-rendered paper cards, not #search-results
+    // Problem: #search-results is nested inside #articles, so hiding the parent
+    // would also hide filtered results. Solution: target cards individually.
+    const serverRenderedCards = articleList.querySelectorAll('article.paper-card:not(#search-results article)');
+    serverRenderedCards.forEach(card => {
+      card.style.display = hide ? 'none' : '';
+    });
+
+    // Show/hide #search-results container independently
+    const searchResults = document.getElementById('search-results');
+    if (searchResults) {
+      searchResults.style.display = hide ? '' : 'none';
+    }
   }
 })();
 

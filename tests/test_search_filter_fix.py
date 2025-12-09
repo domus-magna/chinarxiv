@@ -251,5 +251,108 @@ class TestDocumentation:
             "Missing documentation of container architecture"
 
 
+class TestAdvancedSearchModal:
+    """Test that advanced search modal functionality is properly wired"""
+
+    def test_modal_population_function_exists(self):
+        """Verify populateCategoryAccordion function exists"""
+        js_path = Path("assets/site.js")
+        content = js_path.read_text()
+
+        assert 'function populateCategoryAccordion()' in content, \
+            "populateCategoryAccordion function not found"
+
+        # Should populate from window.categoryData
+        assert 'window.categoryData' in content, \
+            "Modal should use window.categoryData"
+
+    def test_modal_apply_button_handler_exists(self):
+        """Verify applyModalFilters function exists"""
+        js_path = Path("assets/site.js")
+        content = js_path.read_text()
+
+        assert 'function applyModalFilters()' in content, \
+            "applyModalFilters function not found"
+
+        # Should update tabs and URL
+        assert 'applyFiltersBtn' in content, \
+            "Apply button should be wired up"
+
+    def test_modal_clear_button_handler_exists(self):
+        """Verify clearModalFilters function exists"""
+        js_path = Path("assets/site.js")
+        content = js_path.read_text()
+
+        assert 'function clearModalFilters()' in content, \
+            "clearModalFilters function not found"
+
+        # Should clear to "All Recent"
+        assert 'clearAllBtn' in content, \
+            "Clear All button should be wired up"
+
+    def test_modal_syncs_with_tabs(self):
+        """Verify modal state syncs with category tabs"""
+        js_path = Path("assets/site.js")
+        content = js_path.read_text()
+
+        # Should have code to sync modal when tabs are clicked
+        assert 'modalRadio' in content, \
+            "Modal should sync with tab selection"
+
+    def test_scalability_comments_present(self):
+        """Verify scalability documentation was added"""
+        js_path = Path("assets/site.js")
+        content = js_path.read_text()
+
+        # Check for scalability notes at key locations
+        assert 'SCALABILITY NOTE' in content, \
+            "Missing scalability documentation"
+
+        # Should reference TODO.md migration plan
+        assert 'TODO.md' in content and 'Search Architecture Migration' in content, \
+            "Should reference migration plan in TODO.md"
+
+
+class TestScalabilityDocumentation:
+    """Test that scalability warnings and migration plans are documented"""
+
+    def test_search_index_has_scalability_warning(self):
+        """Verify src/search_index.py has scalability warning"""
+        py_path = Path("src/search_index.py")
+        content = py_path.read_text()
+
+        assert 'SCALABILITY WARNING' in content, \
+            "Missing scalability warning in search_index.py"
+
+        # Should mention migration trigger
+        assert '5,000' in content or '5000' in content, \
+            "Should mention 5K paper threshold"
+
+    def test_todo_has_migration_plan(self):
+        """Verify TODO.md has comprehensive migration plan"""
+        todo_path = Path("TODO.md")
+        content = todo_path.read_text()
+
+        assert 'Search Architecture Migration' in content, \
+            "Missing migration section in TODO.md"
+
+        # Should have key sections
+        assert 'Current State' in content, \
+            "Should document current state"
+
+        assert 'Trigger for Migration' in content, \
+            "Should document migration triggers"
+
+        assert 'Server-Side Architecture Plan' in content, \
+            "Should have architecture plan"
+
+        assert 'Cloudflare' in content and 'D1' in content, \
+            "Should mention Cloudflare D1"
+
+        # Should have migration checklist
+        assert 'Migration Checklist' in content, \
+            "Should have migration checklist"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

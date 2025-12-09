@@ -1,3 +1,23 @@
+"""
+Search index builder for client-side MiniSearch.
+
+SCALABILITY WARNING:
+- Current approach: Build full index JSON for client-side search
+- Works for: <5,000 papers (~2-3 MB compressed)
+- Breaks at: ~15,000 papers (10+ MB compressed, slow browser parsing)
+
+Current stats:
+- Papers: 8 (dev), ~500 papers (prod)
+- Index size: 4.8 KB (dev), ~300 KB estimated (prod)
+
+Future migration needed when papers > 5,000:
+1. Stop generating search-index.json
+2. Populate Cloudflare D1 database instead
+3. Build inverted index for full-text search
+4. See TODO.md "Search Architecture Migration" for full plan
+
+For now, this approach is optimal and performant.
+"""
 from __future__ import annotations
 
 import glob
