@@ -27,14 +27,14 @@ function searchSubject(subject) {
 
 (() => {
   const input = document.getElementById('search-input');
-  const results = document.getElementById('search-results');
+  const results = document.getElementById('search-results'); // Legacy - may not exist
   const articleList = document.getElementById('articles');
   const categoryFilter = document.getElementById('category-filter');
   const dateFilter = document.getElementById('date-filter');
   const sortOrder = document.getElementById('sort-order');
   const figuresFilter = document.getElementById('figures-filter');
   const searchBtn = document.querySelector('.search-btn');
-  if (!input || !results) return;
+  if (!input || !articleList) return; // Use articleList instead of results
 
   let miniSearch = null;
   let allDocs = [];
@@ -50,7 +50,7 @@ function searchSubject(subject) {
   if (window.categoryData) {
     for (const [categoryId, categoryDef] of Object.entries(window.categoryData)) {
       categorySubjects[categoryId] = (categoryDef.children || [])
-        .map(child => child.name.toLowerCase());
+        .map(child => typeof child === 'string' ? child.toLowerCase() : child.name.toLowerCase());
     }
   }
 
@@ -62,11 +62,14 @@ function searchSubject(subject) {
   if (urlQuery) input.value = urlQuery;
 
   // Event delegation for subject tag clicks (prevents XSS from inline onclick)
-  results.addEventListener('click', (e) => {
-    const tag = e.target.closest('.subject-tag[data-subject]');
-    if (tag) {
-      searchSubject(tag.dataset.subject);
-    }
+  // Listen on both articleList (server-rendered) and results (search-rendered)
+  [articleList, results].filter(Boolean).forEach(container => {
+    container.addEventListener('click', (e) => {
+      const tag = e.target.closest('.subject-tag[data-subject]');
+      if (tag) {
+        searchSubject(tag.dataset.subject);
+      }
+    });
   });
 
   // Initialize MiniSearch with field boosting
@@ -383,6 +386,37 @@ function searchSubject(subject) {
   // 3. Apply modal filters via applyFiltersAndRender()
   // 4. Update filter indicator pills (filterIndicators div)
   // See TODO.md for detailed implementation plan
+
+  // Advanced Search Modal
+  const advancedSearchBtn = document.getElementById('advancedSearchBtn');
+  const modalOverlay = document.getElementById('modalOverlay');
+  const modalClose = document.getElementById('modalClose');
+
+  if (advancedSearchBtn && modalOverlay && modalClose) {
+    // Open modal
+    advancedSearchBtn.addEventListener('click', () => {
+      modalOverlay.style.display = 'flex';
+    });
+
+    // Close modal
+    modalClose.addEventListener('click', () => {
+      modalOverlay.style.display = 'none';
+    });
+
+    // Close on overlay click
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) {
+        modalOverlay.style.display = 'none';
+      }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modalOverlay.style.display === 'flex') {
+        modalOverlay.style.display = 'none';
+      }
+    });
+  }
 
   function escapeHtml(s) {
     return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
