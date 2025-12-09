@@ -339,13 +339,11 @@ function resetFilterState() {
   function initFromURL({ skipPushState = false } = {}) {
     const params = new URLSearchParams(window.location.search);
 
-    // Parse query parameter
+    // CODEX FIX: Always set query (clear if absent from URL)
     const query = params.get('q') || '';
-    if (query) {
-      if (input) input.value = query;
-      currentQuery = query;
-      setFilterState({ query });
-    }
+    if (input) input.value = query;
+    currentQuery = query;
+    setFilterState({ query });
 
     // Parse category parameter
     const category = params.get('category') || '';
@@ -369,9 +367,20 @@ function resetFilterState() {
       }
     });
 
-    // Apply filters (with skipPushState to prevent loop in popstate)
+    // CODEX FIX: Always pass skipPushState through to prevent popstate loops
     if (query) {
-      performSearch(query);
+      // Perform search but skip URL push in popstate context
+      if (skipPushState) {
+        // Manually trigger search without URL update
+        if (!miniSearch) {
+          // Index not ready yet - will be handled by onIndexLoaded
+          return;
+        }
+        lastSearchResults = miniSearch.search(query, { limit: 100 });
+        applyFilters({ skipPushState: true });
+      } else {
+        performSearch(query);
+      }
     } else {
       applyFilters({ skipPushState });
     }
@@ -549,10 +558,12 @@ function resetFilterState() {
       setFilterState({ category }); // PHASE 2: Use filter state
       currentCategory = category; // Keep for backward compat
 
-      // Clear search and apply category filter
+      // CODEX FIX: Clear search in filterState too (not just UI)
       currentQuery = '';
       lastSearchResults = [];
       if (input) input.value = '';
+      setFilterState({ query: '' }); // Clear query from state so URL updates correctly
+
       applyFilters(); // PHASE 5: URL update now handled inside applyFilters()
     });
   });
