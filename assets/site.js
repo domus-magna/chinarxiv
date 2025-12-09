@@ -85,10 +85,20 @@ function setFilterState(updates) {
     filterState.category = updates.category;
   }
   if (updates.hasOwnProperty('dateFrom')) {
-    filterState.dateFrom = updates.dateFrom;  // Already normalized by normalizeDate()
+    // Validate: must be Date object or null
+    if (updates.dateFrom === null || updates.dateFrom instanceof Date) {
+      filterState.dateFrom = updates.dateFrom;
+    } else {
+      console.warn('[Filter] Invalid dateFrom type:', typeof updates.dateFrom);
+    }
   }
   if (updates.hasOwnProperty('dateTo')) {
-    filterState.dateTo = updates.dateTo;  // Already normalized by normalizeDate()
+    // Validate: must be Date object or null
+    if (updates.dateTo === null || updates.dateTo instanceof Date) {
+      filterState.dateTo = updates.dateTo;
+    } else {
+      console.warn('[Filter] Invalid dateTo type:', typeof updates.dateTo);
+    }
   }
 }
 
