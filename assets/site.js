@@ -493,6 +493,90 @@ function resetFilterState() {
         modalOverlay.style.display = 'none';
       }
     });
+
+    // PHASE 4: Wire up Apply and Clear buttons
+    const applyFiltersBtn = document.getElementById('applyFiltersBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+
+    if (applyFiltersBtn) {
+      applyFiltersBtn.addEventListener('click', () => {
+        // Read category from modal radio buttons
+        const selectedCategory = document.querySelector('input[name="category"]:checked');
+        const category = selectedCategory ? selectedCategory.value : '';
+
+        // Read date range (if date inputs exist in modal)
+        const dateFromInput = document.getElementById('dateFrom');
+        const dateToInput = document.getElementById('dateTo');
+        const dateFrom = dateFromInput ? normalizeDate(dateFromInput.value) : null;
+        const dateTo = dateToInput ? normalizeDate(dateToInput.value) : null;
+
+        // Update filter state (Phase 1 foundation)
+        setFilterState({ category, dateFrom, dateTo });
+
+        // Sync legacy variables
+        currentCategory = category;
+
+        // Update tab highlighting to match modal selection
+        categoryTabs.forEach(tab => {
+          if (tab.dataset.category === category) {
+            tab.classList.add('active');
+            tab.setAttribute('aria-selected', 'true');
+          } else {
+            tab.classList.remove('active');
+            tab.setAttribute('aria-selected', 'false');
+          }
+        });
+
+        // Update URL
+        const url = new URL(window.location);
+        if (category) {
+          url.searchParams.set('category', category);
+        } else {
+          url.searchParams.delete('category');
+        }
+        window.history.pushState({}, '', url);
+
+        // Apply filters and close modal
+        applyFiltersAndRender();
+        modalOverlay.style.display = 'none';
+      });
+    }
+
+    if (clearAllBtn) {
+      clearAllBtn.addEventListener('click', () => {
+        // Reset filter state (Phase 1 foundation)
+        resetFilterState();
+
+        // Sync legacy variables
+        currentCategory = '';
+        currentQuery = '';
+        lastSearchResults = [];
+
+        // Clear search input
+        if (input) input.value = '';
+
+        // Update tab highlighting (select "All Recent")
+        categoryTabs.forEach(tab => {
+          if (tab.dataset.category === '') {
+            tab.classList.add('active');
+            tab.setAttribute('aria-selected', 'true');
+          } else {
+            tab.classList.remove('active');
+            tab.setAttribute('aria-selected', 'false');
+          }
+        });
+
+        // Clear URL parameters
+        const url = new URL(window.location);
+        url.searchParams.delete('category');
+        url.searchParams.delete('q');
+        window.history.pushState({}, '', url);
+
+        // Apply filters and close modal
+        applyFiltersAndRender();
+        modalOverlay.style.display = 'none';
+      });
+    }
   }
 
   function escapeHtml(s) {
