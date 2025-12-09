@@ -51,7 +51,9 @@ function normalizeDate(dateStr) {
 
 // Helper: Subject normalization (Codex fix: case/whitespace consistency)
 function normalizeSubject(subject) {
-  return subject?.toLowerCase().trim() || '';
+  // FIX: Gemini review found bug - subject?.toLowerCase().trim() throws TypeError
+  // if subject is null/undefined (trim() called on undefined)
+  return (subject || '').toLowerCase().trim();
 }
 
 // Helper: XSS prevention - escape HTML entities
