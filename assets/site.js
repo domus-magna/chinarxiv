@@ -75,8 +75,21 @@ function getFilterState() {
 }
 
 // State setter (merge updates)
+// SECURITY FIX (Codex): Whitelist keys to prevent prototype pollution
 function setFilterState(updates) {
-  Object.assign(filterState, updates);
+  // Only allow known filter keys (prevents __proto__ injection)
+  if (updates.hasOwnProperty('query') && typeof updates.query === 'string') {
+    filterState.query = updates.query;
+  }
+  if (updates.hasOwnProperty('category') && typeof updates.category === 'string') {
+    filterState.category = updates.category;
+  }
+  if (updates.hasOwnProperty('dateFrom')) {
+    filterState.dateFrom = updates.dateFrom;  // Already normalized by normalizeDate()
+  }
+  if (updates.hasOwnProperty('dateTo')) {
+    filterState.dateTo = updates.dateTo;  // Already normalized by normalizeDate()
+  }
 }
 
 // State reset
@@ -527,12 +540,22 @@ function resetFilterState() {
           }
         });
 
-        // Update URL
+        // Update URL (GEMINI FIX: Add date params for bookmarkability)
         const url = new URL(window.location);
         if (category) {
           url.searchParams.set('category', category);
         } else {
           url.searchParams.delete('category');
+        }
+        if (dateFrom) {
+          url.searchParams.set('from', dateFrom.toISOString().split('T')[0]);
+        } else {
+          url.searchParams.delete('from');
+        }
+        if (dateTo) {
+          url.searchParams.set('to', dateTo.toISOString().split('T')[0]);
+        } else {
+          url.searchParams.delete('to');
         }
         window.history.pushState({}, '', url);
 
