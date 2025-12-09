@@ -57,19 +57,21 @@ function setFilterState(updates) {
     testFilterState.category = updates.category;
   }
   if (updates.hasOwnProperty('dateFrom')) {
-    // Validate: must be Date object or null
-    if (updates.dateFrom === null || updates.dateFrom instanceof Date) {
+    // Validate: must be Date object or null, AND must be valid (not NaN)
+    if (updates.dateFrom === null ||
+        (updates.dateFrom instanceof Date && !isNaN(updates.dateFrom.getTime()))) {
       testFilterState.dateFrom = updates.dateFrom;
     } else {
-      console.warn('[Filter] Invalid dateFrom type:', typeof updates.dateFrom);
+      console.warn('[Filter] Invalid dateFrom:', updates.dateFrom);
     }
   }
   if (updates.hasOwnProperty('dateTo')) {
-    // Validate: must be Date object or null
-    if (updates.dateTo === null || updates.dateTo instanceof Date) {
+    // Validate: must be Date object or null, AND must be valid (not NaN)
+    if (updates.dateTo === null ||
+        (updates.dateTo instanceof Date && !isNaN(updates.dateTo.getTime()))) {
       testFilterState.dateTo = updates.dateTo;
     } else {
-      console.warn('[Filter] Invalid dateTo type:', typeof updates.dateTo);
+      console.warn('[Filter] Invalid dateTo:', updates.dateTo);
     }
   }
 }
@@ -325,6 +327,30 @@ describe('setFilterState() - Type Validation', () => {
   setFilterState({ dateTo: '2022-12-31' });
   assertEqual(testFilterState.dateTo, null,
     'rejects string for dateTo (must be Date object)');
+
+  // Test Invalid Date objects (CRITICAL BUG FIX - Codex review)
+  resetTestState();
+  const invalidDateFrom = new Date('not-a-date');
+  setFilterState({ dateFrom: invalidDateFrom });
+  assertEqual(testFilterState.dateFrom, null,
+    'rejects Invalid Date for dateFrom (prevents updateURL crash)');
+
+  resetTestState();
+  const invalidDateTo = new Date('bad-date');
+  setFilterState({ dateTo: invalidDateTo });
+  assertEqual(testFilterState.dateTo, null,
+    'rejects Invalid Date for dateTo (prevents updateURL crash)');
+
+  // Test undefined date inputs (Codex review - edge case)
+  resetTestState();
+  setFilterState({ dateFrom: undefined });
+  assertEqual(testFilterState.dateFrom, null,
+    'treats undefined as rejection for dateFrom');
+
+  resetTestState();
+  setFilterState({ dateTo: undefined });
+  assertEqual(testFilterState.dateTo, null,
+    'treats undefined as rejection for dateTo');
 });
 
 // ============================================================================
