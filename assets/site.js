@@ -178,7 +178,7 @@ function resetFilterState() {
       performSearch(urlQuery);
     } else {
       // Always re-render to handle any filter/sort changes made while loading
-      applyFiltersAndRender();
+      applyFilters();
     }
   }
 
@@ -195,8 +195,10 @@ function resetFilterState() {
     .then(onIndexLoaded)
     .catch(() => fetch('search-index.json').then(r => r.json()).then(onIndexLoaded).catch(onIndexFailed));
 
-  // Apply filters and render
-  function applyFiltersAndRender() {
+  // PHASE 5: Core filter function with security hardening
+  // Apply filters and render results
+  // skipPushState: prevent URL loop when calling from popstate handler
+  function applyFilters({ skipPushState = false } = {}) {
     // If index load failed, preserve failure message and don't hide article list
     if (indexLoadState === 'failed') {
       return;
@@ -222,23 +224,18 @@ function resetFilterState() {
     // Compute sortChanged AFTER any auto-reset (fixes stale state bug)
     const sortChanged = sortOrder?.value && sortOrder.value !== 'newest';
 
+    // Check for absolute date filters from filterState (Phase 1)
+    const hasAbsoluteDateFilter = Boolean(filterState.dateFrom || filterState.dateTo);
+
     // Any filter/sort change triggers browse mode (consistent behavior)
-    const hasActiveFilters = Boolean(cat || dateRange || figuresOnly || sortChanged);
+    const hasActiveFilters = Boolean(cat || dateRange || figuresOnly || sortChanged || hasAbsoluteDateFilter);
     const isActive = hasQuery || hasActiveFilters;
 
     // No active search/filters → show the default list
     if (!isActive) {
       toggleArticleList(false);
       results.innerHTML = '';
-      // Paper count display logic
-      // Format: "Showing X papers" (never "X of Y")
-      // Applies to ALL filtering scenarios: category tabs, search queries, advanced filters (future)
-      const paperCountEl = document.getElementById('paperCount');
-      if (paperCountEl) {
-        const total = allDocs.length;
-        const plural = total !== 1 ? 's' : '';
-        paperCountEl.textContent = `Showing ${total} paper${plural}`;
-      }
+      updatePaperCount(allDocs.length);
       return;
     }
 
@@ -255,19 +252,42 @@ function resetFilterState() {
       if (cat) {
         // If it's a hierarchical category ID, check against child subjects
         if (categorySubjects[cat]) {
-          const hitSubjects = (hit.subjects || '').split(',').map(s => s.trim().toLowerCase());
+          const hitSubjects = (hit.subjects || '').split(',').map(s => normalizeSubject(s));
           const hasMatch = categorySubjects[cat].some(childSubject =>
-            hitSubjects.includes(childSubject)
+            hitSubjects.includes(normalizeSubject(childSubject))
           );
           if (!hasMatch) return false;
         } else {
           // Fallback: direct subject match (for dropdown compatibility)
-          const subjects = (hit.subjects || '').split(',').map(s => s.trim().toLowerCase());
-          if (!subjects.includes(cat.toLowerCase())) return false;
+          const subjects = (hit.subjects || '').split(',').map(s => normalizeSubject(s));
+          if (!subjects.includes(normalizeSubject(cat))) return false;
         }
       }
-      // Date filter (reset to start of day to include papers from today)
-      if (dateRange && dateDays[dateRange] !== undefined) {
+
+      // PHASE 5: Absolute date filter (from filterState)
+      if (filterState.dateFrom || filterState.dateTo) {
+        const hitDate = new Date(hit.date);
+        if (isNaN(hitDate.getTime())) {
+          // Invalid date - keep paper to avoid hiding content
+          return true;
+        }
+        // Set to start of day for comparison
+        hitDate.setHours(0, 0, 0, 0);
+
+        if (filterState.dateFrom) {
+          const fromDate = new Date(filterState.dateFrom);
+          fromDate.setHours(0, 0, 0, 0);
+          if (hitDate < fromDate) return false;
+        }
+
+        if (filterState.dateTo) {
+          const toDate = new Date(filterState.dateTo);
+          toDate.setHours(23, 59, 59, 999); // Include entire day
+          if (hitDate > toDate) return false;
+        }
+      }
+      // Relative date filter (legacy dropdown - 7d/30d/90d/1y)
+      else if (dateRange && dateDays[dateRange] !== undefined) {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - dateDays[dateRange]);
         cutoff.setHours(0, 0, 0, 0);
@@ -275,6 +295,7 @@ function resetFilterState() {
         if (isNaN(hitDate.getTime())) return true; // Keep papers with invalid dates
         if (hitDate < cutoff) return false;
       }
+
       // Figures filter
       if (figuresOnly && !hit.has_figures) return false;
       return true;
@@ -302,6 +323,59 @@ function resetFilterState() {
     filtered = filtered.slice(0, 100); // Limit results
 
     renderResults(filtered, hasQuery, hasActiveFilters);
+    updatePaperCount(filtered.length);
+
+    // PHASE 5: Update URL with filter state (unless skipPushState)
+    if (!skipPushState) {
+      updateURL();
+    }
+  }
+
+  // PHASE 5: Update paper count with accessibility
+  function updatePaperCount(count) {
+    const paperCountEl = document.getElementById('paperCount');
+    if (paperCountEl) {
+      const plural = count !== 1 ? 's' : '';
+      paperCountEl.textContent = `Showing ${count} paper${plural}`;
+      // Add aria-live for screen readers
+      if (!paperCountEl.hasAttribute('aria-live')) {
+        paperCountEl.setAttribute('aria-live', 'polite');
+      }
+    }
+  }
+
+  // PHASE 5: Centralized URL state management
+  function updateURL() {
+    const url = new URL(window.location);
+
+    // Query parameter
+    if (filterState.query) {
+      url.searchParams.set('q', filterState.query);
+    } else {
+      url.searchParams.delete('q');
+    }
+
+    // Category parameter
+    if (filterState.category) {
+      url.searchParams.set('category', filterState.category);
+    } else {
+      url.searchParams.delete('category');
+    }
+
+    // Date range parameters (ISO format for bookmarkability)
+    if (filterState.dateFrom) {
+      url.searchParams.set('from', filterState.dateFrom.toISOString().split('T')[0]);
+    } else {
+      url.searchParams.delete('from');
+    }
+
+    if (filterState.dateTo) {
+      url.searchParams.set('to', filterState.dateTo.toISOString().split('T')[0]);
+    } else {
+      url.searchParams.delete('to');
+    }
+
+    window.history.pushState({}, '', url);
   }
 
   // Highlight search terms (using function replacement for safety)
@@ -314,32 +388,64 @@ function resetFilterState() {
     return escaped.replace(new RegExp(`(${pattern})`, 'gi'), (match) => '<mark>' + match + '</mark>');
   }
 
-  // Render results
+  // PHASE 5: Render results using DOM API (XSS prevention)
+  // Security: Use createElement/textContent instead of innerHTML with template literals
   function renderResults(hits, hasQuery, hasActiveFilters) {
     toggleArticleList(hasQuery || hasActiveFilters);
+
+    // Clear existing results
+    results.innerHTML = '';
+
     if (!hits.length) {
-      // Use filter message only when dropdown filters are active
-      const msg = hasActiveFilters
+      // Empty state
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'res';
+      const msg = document.createElement('div');
+      msg.textContent = hasActiveFilters
         ? 'No papers match with selected filters. Try adjusting them.'
         : 'No papers found. Try different keywords.';
-      results.innerHTML = `<div class="res"><div>${msg}</div></div>`;
-    } else {
-      const count = `<div class="search-results-count">Found ${hits.length} paper${hits.length > 1 ? 's' : ''}</div>`;
-      results.innerHTML = count + hits.map(hit => `
-        <div class="res">
-          <div class="res-title"><a href="/items/${escapeHtml(hit.id)}/">${highlightTerms(hit.title || '', currentQuery)}</a></div>
-          <div class="res-meta">${escapeHtml(hit.date || '')} — ${escapeHtml(hit.authors || '')}</div>
-          <div class="res-abstract">${highlightTerms((hit.abstract || '').slice(0, 280), currentQuery)}…</div>
-        </div>`).join('');
+      emptyDiv.appendChild(msg);
+      results.appendChild(emptyDiv);
+      return;
     }
 
-    // Update paper count
-    const paperCountEl = document.getElementById('paperCount');
-    if (paperCountEl) {
-      const shown = hits.length;
-      const plural = shown !== 1 ? 's' : '';
-      paperCountEl.textContent = `Showing ${shown} paper${plural}`;
-    }
+    // Results count header
+    const countDiv = document.createElement('div');
+    countDiv.className = 'search-results-count';
+    countDiv.textContent = `Found ${hits.length} paper${hits.length > 1 ? 's' : ''}`;
+    results.appendChild(countDiv);
+
+    // Render each result using DOM API
+    hits.forEach(hit => {
+      const resDiv = document.createElement('div');
+      resDiv.className = 'res';
+
+      // Title with link
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'res-title';
+      const link = document.createElement('a');
+      link.href = `/items/${escapeHtml(hit.id)}/`;
+      // Use innerHTML only for highlighted terms (already escaped by highlightTerms)
+      link.innerHTML = highlightTerms(hit.title || '', currentQuery);
+      titleDiv.appendChild(link);
+      resDiv.appendChild(titleDiv);
+
+      // Metadata (date and authors)
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'res-meta';
+      metaDiv.textContent = `${hit.date || ''} — ${hit.authors || ''}`;
+      resDiv.appendChild(metaDiv);
+
+      // Abstract (truncated)
+      const abstractDiv = document.createElement('div');
+      abstractDiv.className = 'res-abstract';
+      const abstractText = (hit.abstract || '').slice(0, 280);
+      // Use innerHTML only for highlighted terms (already escaped by highlightTerms)
+      abstractDiv.innerHTML = highlightTerms(abstractText, currentQuery) + '…';
+      resDiv.appendChild(abstractDiv);
+
+      results.appendChild(resDiv);
+    });
   }
 
   function performSearch(query) {
@@ -350,12 +456,12 @@ function resetFilterState() {
     currentQuery = (query || '').trim();
     if (!currentQuery) {
       lastSearchResults = [];
-      applyFiltersAndRender();
+      applyFilters();
       return;
     }
     if (!miniSearch) { results.innerHTML = '<div class="res search-loading"><div>Loading search index...</div></div>'; return; }
     lastSearchResults = miniSearch.search(currentQuery, { limit: 100 });
-    applyFiltersAndRender();
+    applyFilters();
   }
 
   // PHASE 3: Search Box - integrate with filterState
@@ -366,7 +472,7 @@ function resetFilterState() {
       setFilterState({ query: '' }); // PHASE 3: Clear query in state
       currentQuery = ''; // Keep for backward compat
       lastSearchResults = [];
-      applyFiltersAndRender();
+      applyFilters();
       return;
     }
     timer = setTimeout(() => {
@@ -375,10 +481,10 @@ function resetFilterState() {
     }, 120);
   });
 
-  if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndRender);
-  if (dateFilter) dateFilter.addEventListener('change', applyFiltersAndRender);
-  if (sortOrder) sortOrder.addEventListener('change', () => { userChangedSort = true; applyFiltersAndRender(); });
-  if (figuresFilter) figuresFilter.addEventListener('change', applyFiltersAndRender);
+  if (categoryFilter) categoryFilter.addEventListener('change', applyFilters);
+  if (dateFilter) dateFilter.addEventListener('change', applyFilters);
+  if (sortOrder) sortOrder.addEventListener('change', () => { userChangedSort = true; applyFilters(); });
+  if (figuresFilter) figuresFilter.addEventListener('change', applyFilters);
   if (searchBtn) searchBtn.addEventListener('click', () => performSearch(input.value));
 
   // Category tab click handlers
@@ -405,20 +511,11 @@ function resetFilterState() {
       setFilterState({ category }); // PHASE 2: Use filter state
       currentCategory = category; // Keep for backward compat
 
-      // Update URL without page reload
-      const url = new URL(window.location);
-      if (category) {
-        url.searchParams.set('category', category);
-      } else {
-        url.searchParams.delete('category');
-      }
-      window.history.pushState({}, '', url);
-
       // Clear search and apply category filter
       currentQuery = '';
       lastSearchResults = [];
       if (input) input.value = '';
-      applyFiltersAndRender();
+      applyFilters(); // PHASE 5: URL update now handled inside applyFilters()
     });
   });
 
@@ -438,11 +535,10 @@ function resetFilterState() {
       }
     });
     // Actually apply the filter to show filtered papers
-    applyFiltersAndRender();
+    applyFilters();
   }
 
-  // Handle browser back/forward buttons
-  // TODO Phase 6: Add skipPushState flag to prevent URL loop (Codex fix)
+  // PHASE 5: Handle browser back/forward buttons with skipPushState to prevent URL loop
   window.addEventListener('popstate', () => {
     const urlCategory = new URLSearchParams(window.location.search).get('category') || '';
     setFilterState({ category: urlCategory }); // PHASE 2: Use filter state
@@ -459,7 +555,8 @@ function resetFilterState() {
       }
     });
 
-    applyFiltersAndRender();
+    // PHASE 5: skipPushState prevents infinite loop (popstate → pushState → popstate)
+    applyFilters({ skipPushState: true });
   });
 
   // TODO: Advanced filters integration
@@ -540,27 +637,8 @@ function resetFilterState() {
           }
         });
 
-        // Update URL (GEMINI FIX: Add date params for bookmarkability)
-        const url = new URL(window.location);
-        if (category) {
-          url.searchParams.set('category', category);
-        } else {
-          url.searchParams.delete('category');
-        }
-        if (dateFrom) {
-          url.searchParams.set('from', dateFrom.toISOString().split('T')[0]);
-        } else {
-          url.searchParams.delete('from');
-        }
-        if (dateTo) {
-          url.searchParams.set('to', dateTo.toISOString().split('T')[0]);
-        } else {
-          url.searchParams.delete('to');
-        }
-        window.history.pushState({}, '', url);
-
-        // Apply filters and close modal
-        applyFiltersAndRender();
+        // PHASE 5: Apply filters and close modal (URL update handled inside applyFilters)
+        applyFilters();
         modalOverlay.style.display = 'none';
       });
     }
@@ -589,14 +667,8 @@ function resetFilterState() {
           }
         });
 
-        // Clear URL parameters
-        const url = new URL(window.location);
-        url.searchParams.delete('category');
-        url.searchParams.delete('q');
-        window.history.pushState({}, '', url);
-
-        // Apply filters and close modal
-        applyFiltersAndRender();
+        // PHASE 5: Apply filters and close modal (URL update handled inside applyFilters)
+        applyFilters();
         modalOverlay.style.display = 'none';
       });
     }
