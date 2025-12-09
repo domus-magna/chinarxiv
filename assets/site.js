@@ -170,7 +170,9 @@ function resetFilterState() {
       miniSearch.addAll(docs);
     } catch (e) {
       console.error('Failed to initialize search index:', e);
-      results.innerHTML = '<div class="res"><div>Search initialization failed. Please refresh the page.</div></div>';
+      if (results) {
+        results.innerHTML = '<div class="res"><div>Search initialization failed. Please refresh the page.</div></div>';
+      }
     }
   }
 
@@ -188,7 +190,9 @@ function resetFilterState() {
   function onIndexFailed() {
     indexLoadState = 'failed';
     toggleArticleList(false);  // Restore article list if hidden during loading
-    results.innerHTML = '<div class="res"><div>Failed to load search index.</div></div>';
+    if (results) {
+      results.innerHTML = '<div class="res"><div>Failed to load search index.</div></div>';
+    }
   }
 
   // Load index (try compressed first)
@@ -236,7 +240,7 @@ function resetFilterState() {
     // No active search/filters → show the default list
     if (!isActive) {
       toggleArticleList(false);
-      results.innerHTML = '';
+      if (results) results.innerHTML = '';
       updatePaperCount(allDocs.length);
       return;
     }
@@ -244,7 +248,7 @@ function resetFilterState() {
     // Use all docs when filters are applied without a query
     const baseResults = hasQuery ? lastSearchResults : allDocs;
     if (!baseResults.length && !allDocs.length) {
-      results.innerHTML = '<div class="res"><div>Loading search index...</div></div>';
+      if (results) results.innerHTML = '<div class="res"><div>Loading search index...</div></div>';
       toggleArticleList(true);
       return;
     }
@@ -445,6 +449,10 @@ function resetFilterState() {
   // PHASE 5: Render results using DOM API (XSS prevention)
   // Security: Use createElement/textContent instead of innerHTML with template literals
   function renderResults(hits, hasQuery, hasActiveFilters) {
+    // Early return if results element doesn't exist (legacy pages)
+    // Don't hide article list if we can't show results
+    if (!results) return;
+
     toggleArticleList(hasQuery || hasActiveFilters);
 
     // Clear existing results
@@ -518,7 +526,10 @@ function resetFilterState() {
       applyFilters();
       return;
     }
-    if (!miniSearch) { results.innerHTML = '<div class="res search-loading"><div>Loading search index...</div></div>'; return; }
+    if (!miniSearch) {
+      if (results) results.innerHTML = '<div class="res search-loading"><div>Loading search index...</div></div>';
+      return;
+    }
     lastSearchResults = miniSearch.search(currentQuery, { limit: 100 });
     applyFilters();
   }
