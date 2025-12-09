@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pill Styles Comparison - ChinaRxiv</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            background: #f5f5f5;
+            color: #212529;
+            padding: 2rem;
+        }
+        .comparison-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 2rem;
+            border-radius: 8px;
+        }
+        h1 {
+            color: #b31b1b;
+            margin-bottom: 2rem;
+            font-size: 1.8rem;
+        }
+        .style-section {
+            margin-bottom: 3rem;
+            padding: 2rem;
+            background: #fafafa;
+            border-radius: 4px;
+            border-left: 4px solid #b31b1b;
+        }
+        .style-section h2 {
+            font-size: 1.2rem;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        .style-description {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 1.5rem;
+            font-style: italic;
+        }
+        .pills-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            padding: 1.5rem;
+            background: #ffffff;
+            border-radius: 4px;
+        }
+
+        /* Current Style (Reference) */
+        .current-pill {
+            padding: 0.5rem 1.25rem;
+            background: #f1f3f5;
+            border: 2px solid transparent;
+            border-radius: 20px;
+            color: #495057;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .current-pill:hover {
+            background: #e9ecef;
+            border-color: #dee2e6;
+        }
+        .current-pill.active {
+            background: #b31b1b;
+            color: white;
+            border-color: #b31b1b;
+        }
+
+        /* Option 1: Subtle & Sharp Rectangle */
+        .sharp-rect-pill {
+            padding: 0.35rem 0.8rem;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #6c757d;
+            background: #f1f3f5;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .sharp-rect-pill:hover {
+            background: #e9ecef;
+            color: #495057;
+        }
+        .sharp-rect-pill.active {
+            background: #495057;
+            color: #fff;
+            border-color: #495057;
+            font-weight: 600;
+        }
+
+        /* Option 2: Minimalist Outline */
+        .outline-pill {
+            padding: 0.4rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #6c757d;
+            background: transparent;
+            border: 1px solid #dee2e6;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .outline-pill:hover {
+            background: #f8f9fa;
+            border-color: #ccc;
+            color: #495057;
+        }
+        .outline-pill.active {
+            background: #495057;
+            color: #fff;
+            border-color: #495057;
+        }
+
+        /* Option 3: Journal Uppercase Tab */
+        .uppercase-pill {
+            padding: 0.3rem 0.7rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #6c757d;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            border-radius: 2px 2px 0 0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .uppercase-pill:hover {
+            color: #495057;
+        }
+        .uppercase-pill.active {
+            color: #b31b1b;
+            border-bottom-color: #b31b1b;
+            font-weight: 700;
+        }
+
+        /* Option 4: Subtle Tabs (Like arXiv) */
+        .subtle-tab {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #6c757d;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .subtle-tab:hover {
+            color: #495057;
+            border-bottom-color: #dee2e6;
+        }
+        .subtle-tab.active {
+            color: #212529;
+            border-bottom-color: #b31b1b;
+            font-weight: 600;
+        }
+
+        /* Option 5: Compact Rounded */
+        .compact-pill {
+            padding: 0.3rem 0.75rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #495057;
+            background: #f1f3f5;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .compact-pill:hover {
+            background: #e9ecef;
+        }
+        .compact-pill.active {
+            background: #343a40;
+            color: #fff;
+            border-color: #343a40;
+            font-weight: 600;
+        }
+
+        /* Meta info */
+        .meta-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #e7f3ff;
+            border-left: 3px solid #0066cc;
+            font-size: 0.85rem;
+            color: #333;
+        }
+        .meta-info strong {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #0066cc;
+        }
+        .pros-cons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+        .pros, .cons {
+            padding: 0.5rem;
+        }
+        .pros h4 {
+            color: #28a745;
+            font-size: 0.8rem;
+            margin-bottom: 0.25rem;
+        }
+        .cons h4 {
+            color: #dc3545;
+            font-size: 0.8rem;
+            margin-bottom: 0.25rem;
+        }
+        .pros ul, .cons ul {
+            margin-left: 1.25rem;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="comparison-container">
+        <h1>Pill Styles Comparison - ChinaRxiv English</h1>
+
+        <!-- Current Style (Reference) -->
+        <div class="style-section">
+            <h2>Current Style (Reference)</h2>
+            <p class="style-description">Rounded pills with high border-radius - feels consumer-facing and casual</p>
+            <div class="pills-container">
+                <button class="current-pill active">All Recent</button>
+                <button class="current-pill">Physics</button>
+                <button class="current-pill">Computer Science</button>
+                <button class="current-pill">Biology</button>
+                <button class="current-pill">Chemistry</button>
+                <button class="current-pill">Mathematics</button>
+                <button class="current-pill">Artificial Intelligence</button>
+            </div>
+            <div class="meta-info">
+                <strong>CSS:</strong> padding: 0.5rem 1.25rem | font-size: 0.9rem | border-radius: 20px
+                <div class="pros-cons">
+                    <div class="pros">
+                        <h4>✓ Pros</h4>
+                        <ul>
+                            <li>Friendly and approachable</li>
+                            <li>Clear active state</li>
+                            <li>Good touch targets</li>
+                        </ul>
+                    </div>
+                    <div class="cons">
+                        <h4>✗ Cons</h4>
+                        <ul>
+                            <li>Too casual for academic context</li>
+                            <li>Feels like social media</li>
+                            <li>Larger than necessary</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Option 1: Subtle & Sharp Rectangle -->
+        <div class="style-section">
+            <h2>Option 1: Subtle & Sharp Rectangle</h2>
+            <p class="style-description">Professional, utilitarian design with sharp corners and subtle colors</p>
+            <div class="pills-container">
+                <button class="sharp-rect-pill active">All Recent</button>
+                <button class="sharp-rect-pill">Physics</button>
+                <button class="sharp-rect-pill">Computer Science</button>
+                <button class="sharp-rect-pill">Biology</button>
+                <button class="sharp-rect-pill">Chemistry</button>
+                <button class="sharp-rect-pill">Mathematics</button>
+                <button class="sharp-rect-pill">Artificial Intelligence</button>
+            </div>
+            <div class="meta-info">
+                <strong>CSS:</strong> padding: 0.35rem 0.8rem | font-size: 0.85rem | border-radius: 4px
+                <div class="pros-cons">
+                    <div class="pros">
+                        <h4>✓ Pros</h4>
+                        <ul>
+                            <li>Clean, professional appearance</li>
+                            <li>Smaller, more compact</li>
+                            <li>Aligns with data table aesthetics</li>
+                            <li>Works well in dense UIs</li>
+                        </ul>
+                    </div>
+                    <div class="cons">
+                        <h4>✗ Cons</h4>
+                        <ul>
+                            <li>Can feel generic/corporate</li>
+                            <li>May blend in too much</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Option 2: Minimalist Outline -->
+        <div class="style-section">
+            <h2>Option 2: Minimalist Outline (Ghost Button)</h2>
+            <p class="style-description">Lightweight, sophisticated design using borders instead of fills</p>
+            <div class="pills-container">
+                <button class="outline-pill active">All Recent</button>
+                <button class="outline-pill">Physics</button>
+                <button class="outline-pill">Computer Science</button>
+                <button class="outline-pill">Biology</button>
+                <button class="outline-pill">Chemistry</button>
+                <button class="outline-pill">Mathematics</button>
+                <button class="outline-pill">Artificial Intelligence</button>
+            </div>
+            <div class="meta-info">
+                <strong>CSS:</strong> padding: 0.4rem 1rem | font-size: 0.875rem | border-radius: 16px | transparent background
+                <div class="pros-cons">
+                    <div class="pros">
+                        <h4>✓ Pros</h4>
+                        <ul>
+                            <li>Modern and clean</li>
+                            <li>Reduces visual noise</li>
+                            <li>Works well with many filters</li>
+                            <li>Elegant and minimal</li>
+                        </ul>
+                    </div>
+                    <div class="cons">
+                        <h4>✗ Cons</h4>
+                        <ul>
+                            <li>Lower scannability when inactive</li>
+                            <li>Relies heavily on active state</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Option 3: Journal Uppercase Tab -->
+        <div class="style-section">
+            <h2>Option 3: Journal Uppercase Tab</h2>
+            <p class="style-description">Academic, formal design inspired by scientific journals with uppercase typography</p>
+            <div class="pills-container">
+                <button class="uppercase-pill active">All Recent</button>
+                <button class="uppercase-pill">Physics</button>
+                <button class="uppercase-pill">Computer Science</button>
+                <button class="uppercase-pill">Biology</button>
+                <button class="uppercase-pill">Chemistry</button>
+                <button class="uppercase-pill">Mathematics</button>
+                <button class="uppercase-pill">Artificial Intelligence</button>
+            </div>
+            <div class="meta-info">
+                <strong>CSS:</strong> padding: 0.3rem 0.7rem | font-size: 0.75rem | uppercase | letter-spacing: 0.05em | border-bottom only
+                <div class="pros-cons">
+                    <div class="pros">
+                        <h4>✓ Pros</h4>
+                        <ul>
+                            <li>Very academic/authoritative</li>
+                            <li>Distinctive and formal</li>
+                            <li>Minimal design, print-like feel</li>
+                            <li>Clear hierarchy</li>
+                        </ul>
+                    </div>
+                    <div class="cons">
+                        <h4>✗ Cons</h4>
+                        <ul>
+                            <li>Uppercase harder to read</li>
+                            <li>Small font size accessibility concern</li>
+                            <li>Less scannable</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Option 4: Subtle Tabs -->
+        <div class="style-section">
+            <h2>Option 4: Subtle Tabs (arXiv Style)</h2>
+            <p class="style-description">Simple underline tabs - clean, professional, familiar pattern for academics</p>
+            <div class="pills-container">
+                <button class="subtle-tab active">All Recent</button>
+                <button class="subtle-tab">Physics</button>
+                <button class="subtle-tab">Computer Science</button>
+                <button class="subtle-tab">Biology</button>
+                <button class="subtle-tab">Chemistry</button>
+                <button class="subtle-tab">Mathematics</button>
+                <button class="subtle-tab">Artificial Intelligence</button>
+            </div>
+            <div class="meta-info">
+                <strong>CSS:</strong> padding: 0.5rem 1rem | font-size: 0.9rem | transparent background | border-bottom for active
+                <div class="pros-cons">
+                    <div class="pros">
+                        <h4>✓ Pros</h4>
+                        <ul>
+                            <li>Familiar to researchers (arXiv uses this)</li>
+                            <li>Very clean and minimal</li>
+                            <li>Professional and understated</li>
+                            <li>Excellent scannability</li>
+                        </ul>
+                    </div>
+                    <div class="cons">
+                        <h4>✗ Cons</h4>
+                        <ul>
+                            <li>Inactive pills almost invisible</li>
+                            <li>Requires strong active state</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Option 5: Compact Rounded -->
+        <div class="style-section">
+            <h2>Option 5: Compact Rounded</h2>
+            <p class="style-description">Smaller version of current style with tighter radius - balances friendly and professional</p>
+            <div class="pills-container">
+                <button class="compact-pill active">All Recent</button>
+                <button class="compact-pill">Physics</button>
+                <button class="compact-pill">Computer Science</button>
+                <button class="compact-pill">Biology</button>
+                <button class="compact-pill">Chemistry</button>
+                <button class="compact-pill">Mathematics</button>
+                <button class="compact-pill">Artificial Intelligence</button>
+            </div>
+            <div class="meta-info">
+                <strong>CSS:</strong> padding: 0.3rem 0.75rem | font-size: 0.8rem | border-radius: 8px
+                <div class="pros-cons">
+                    <div class="pros">
+                        <h4>✓ Pros</h4>
+                        <ul>
+                            <li>Smaller and denser than current</li>
+                            <li>Still feels approachable</li>
+                            <li>Clear visual hierarchy</li>
+                            <li>Good balance of friendly/professional</li>
+                        </ul>
+                    </div>
+                    <div class="cons">
+                        <h4>✗ Cons</h4>
+                        <ul>
+                            <li>Still might feel too casual</li>
+                            <li>Smaller touch targets on mobile</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="style-section" style="border-left-color: #28a745;">
+            <h2 style="color: #28a745;">💡 Recommendations</h2>
+            <ul style="margin-left: 1.5rem; line-height: 1.8;">
+                <li><strong>Most Academic:</strong> Option 3 (Journal Uppercase) or Option 4 (Subtle Tabs)</li>
+                <li><strong>Best Balance:</strong> Option 1 (Sharp Rectangle) - professional but not intimidating</li>
+                <li><strong>Most Modern:</strong> Option 2 (Minimalist Outline)</li>
+                <li><strong>Safest Choice:</strong> Option 4 (Subtle Tabs) - familiar to researchers from arXiv</li>
+                <li><strong>If you like current style:</strong> Option 5 (Compact Rounded) - same feel, smaller size</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

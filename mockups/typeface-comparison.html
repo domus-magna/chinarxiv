@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Typeface Comparison - Academic Paper Cards</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            line-height: 1.6;
+            background: #f5f5f5;
+            color: #212529;
+            padding: 2rem;
+        }
+        .comparison-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 2rem;
+            border-radius: 8px;
+        }
+        h1 {
+            font-family: system-ui, -apple-system, sans-serif;
+            color: #b31b1b;
+            margin-bottom: 2rem;
+            font-size: 1.8rem;
+        }
+        .typeface-section {
+            margin-bottom: 3rem;
+            padding: 2rem;
+            background: #fafafa;
+            border-radius: 4px;
+            border-left: 4px solid #b31b1b;
+        }
+        .typeface-section h2 {
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 1.3rem;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        .typeface-description {
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 1.5rem;
+            font-style: italic;
+        }
+        .paper-list {
+            background: #ffffff;
+            padding: 1.5rem;
+            border-radius: 4px;
+        }
+
+        /* Common card styles */
+        .paper-card {
+            padding: 1.25rem 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .paper-card:last-child {
+            border-bottom: none;
+        }
+        .paper-title {
+            color: #212529;
+            font-size: 1.1rem;
+            font-weight: 600;
+            line-height: 1.4;
+            margin-bottom: 0.5rem;
+            text-decoration: none;
+            display: block;
+        }
+        .paper-title:hover {
+            color: #b31b1b;
+            text-decoration: underline;
+        }
+        .paper-meta {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 0.5rem;
+        }
+        .paper-date {
+            color: #999;
+            font-size: 0.85rem;
+        }
+        .paper-tags {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .paper-tag {
+            padding: 0.25rem 0.6rem;
+            background: #f1f3f5;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+        .paper-abstract {
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 0.75rem;
+        }
+        .paper-links {
+            display: flex;
+            gap: 1rem;
+        }
+        .paper-link {
+            color: #b31b1b;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-decoration: none;
+        }
+        .paper-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Font Option 1: Georgia (Classic Serif) */
+        .font-georgia {
+            font-family: Georgia, 'Times New Roman', Times, serif;
+        }
+
+        /* Font Option 2: Merriweather (Modern Serif) */
+        @import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&display=swap');
+        .font-merriweather {
+            font-family: 'Merriweather', Georgia, serif;
+        }
+
+        /* Font Option 3: Inter (Refined Sans-Serif) */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        .font-inter {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        /* Font Option 4: Source Serif (Academic Serif) */
+        @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600&display=swap');
+        .font-source-serif {
+            font-family: 'Source Serif 4', Georgia, serif;
+        }
+
+        /* Font Option 5: IBM Plex Sans (Technical Sans) */
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+        .font-ibm-plex {
+            font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+        }
+
+        /* Font Option 6: Lora (Elegant Serif) */
+        @import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;600&display=swap');
+        .font-lora {
+            font-family: 'Lora', Georgia, serif;
+        }
+
+        /* Font Option 7: Crimson Text (Book Production Serif) */
+        @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&display=swap');
+        .font-crimson {
+            font-family: 'Crimson Text', Georgia, serif;
+        }
+
+        /* Font Option 8: Mixed Typography (CURRENT PRODUCTION) */
+        .font-mixed-production {
+            font-family: 'Charter', 'Bitstream Charter', 'Sitka Text', Cambria, serif;
+        }
+        .font-mixed-production .paper-title {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        /* Meta info */
+        .meta-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #e7f3ff;
+            border-left: 3px solid #0066cc;
+            font-size: 0.85rem;
+            color: #333;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .meta-info strong {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #0066cc;
+        }
+    </style>
+</head>
+<body>
+    <div class="comparison-container">
+        <h1>Typeface Comparison for Academic Paper Cards</h1>
+
+        <!-- Option 1: Georgia -->
+        <div class="typeface-section">
+            <h2>Option 1: Georgia (Classic Serif)</h2>
+            <p class="typeface-description">Traditional serif, system font, very readable, academic feel</p>
+            <div class="paper-list">
+                <div class="paper-card font-georgia">
+                    <a href="#" class="paper-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="paper-meta">
+                        <span class="paper-date">7 December 2025</span> · Zhang Wei, Li Ming, Wang Xiaoli
+                    </div>
+                    <div class="paper-tags">
+                        <span class="paper-tag">Physics</span>
+                        <span class="paper-tag">Quantum Computing</span>
+                    </div>
+                    <div class="paper-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="paper-links">
+                        <a href="#" class="paper-link">Abstract</a>
+                        <a href="#" class="paper-link">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="meta-info">
+                <strong>Characteristics:</strong>
+                ✓ Highly readable serif<br>
+                ✓ Professional, traditional academic feel<br>
+                ✓ System font (no loading delay)<br>
+                ✗ Can feel dated/old-fashioned
+            </div>
+        </div>
+
+        <!-- Option 2: Merriweather -->
+        <div class="typeface-section">
+            <h2>Option 2: Merriweather (Modern Serif)</h2>
+            <p class="typeface-description">Designed for screens, warm and readable, contemporary academic</p>
+            <div class="paper-list">
+                <div class="paper-card font-merriweather">
+                    <a href="#" class="paper-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="paper-meta">
+                        <span class="paper-date">7 December 2025</span> · Zhang Wei, Li Ming, Wang Xiaoli
+                    </div>
+                    <div class="paper-tags">
+                        <span class="paper-tag">Physics</span>
+                        <span class="paper-tag">Quantum Computing</span>
+                    </div>
+                    <div class="paper-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="paper-links">
+                        <a href="#" class="paper-link">Abstract</a>
+                        <a href="#" class="paper-link">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="meta-info">
+                <strong>Characteristics:</strong>
+                ✓ Modern serif optimized for web<br>
+                ✓ Warm, approachable yet professional<br>
+                ✓ Used by Medium, many academic sites<br>
+                ✗ Slightly wider spacing (takes more space)
+            </div>
+        </div>
+
+        <!-- Option 3: Inter -->
+        <div class="typeface-section">
+            <h2>Option 3: Inter (Refined Sans-Serif)</h2>
+            <p class="typeface-description">Clean, modern sans-serif designed for UI, highly legible</p>
+            <div class="paper-list">
+                <div class="paper-card font-inter">
+                    <a href="#" class="paper-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="paper-meta">
+                        <span class="paper-date">7 December 2025</span> · Zhang Wei, Li Ming, Wang Xiaoli
+                    </div>
+                    <div class="paper-tags">
+                        <span class="paper-tag">Physics</span>
+                        <span class="paper-tag">Quantum Computing</span>
+                    </div>
+                    <div class="paper-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="paper-links">
+                        <a href="#" class="paper-link">Abstract</a>
+                        <a href="#" class="paper-link">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="meta-info">
+                <strong>Characteristics:</strong>
+                ✓ Superior legibility at small sizes<br>
+                ✓ Clean, modern, professional<br>
+                ✓ Used by GitHub, Vercel, many tech sites<br>
+                ✗ Less traditional than serif fonts
+            </div>
+        </div>
+
+        <!-- Option 4: Source Serif -->
+        <div class="typeface-section">
+            <h2>Option 4: Source Serif 4 (Academic Serif)</h2>
+            <p class="typeface-description">Designed by Adobe for reading, scholarly and authoritative</p>
+            <div class="paper-list">
+                <div class="paper-card font-source-serif">
+                    <a href="#" class="paper-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="paper-meta">
+                        <span class="paper-date">7 December 2025</span> · Zhang Wei, Li Ming, Wang Xiaoli
+                    </div>
+                    <div class="paper-tags">
+                        <span class="paper-tag">Physics</span>
+                        <span class="paper-tag">Quantum Computing</span>
+                    </div>
+                    <div class="paper-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="paper-links">
+                        <a href="#" class="paper-link">Abstract</a>
+                        <a href="#" class="paper-link">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="meta-info">
+                <strong>Characteristics:</strong>
+                ✓ Specifically designed for reading<br>
+                ✓ Scholarly, authoritative feel<br>
+                ✓ Excellent readability<br>
+                ✓ Used by many academic publications
+            </div>
+        </div>
+
+        <!-- Option 5: IBM Plex Sans -->
+        <div class="typeface-section">
+            <h2>Option 5: IBM Plex Sans (Technical Sans)</h2>
+            <p class="typeface-description">Corporate sans-serif with technical precision, neutral and professional</p>
+            <div class="paper-list">
+                <div class="paper-card font-ibm-plex">
+                    <a href="#" class="paper-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="paper-meta">
+                        <span class="paper-date">7 December 2025</span> · Zhang Wei, Li Ming, Wang Xiaoli
+                    </div>
+                    <div class="paper-tags">
+                        <span class="paper-tag">Physics</span>
+                        <span class="paper-tag">Quantum Computing</span>
+                    </div>
+                    <div class="paper-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="paper-links">
+                        <a href="#" class="paper-link">Abstract</a>
+                        <a href="#" class="paper-link">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="meta-info">
+                <strong>Characteristics:</strong>
+                ✓ Technical, precise feel<br>
+                ✓ Slightly more distinctive than Inter<br>
+                ✓ Used by IBM Research, tech companies<br>
+                ~ More corporate than academic
+            </div>
+        </div>
+
+        <!-- Option 6: Lora -->
+        <div class="typeface-section">
+            <h2>Option 6: Lora (Elegant Serif)</h2>
+            <p class="typeface-description">Brushed curves, contemporary feel, balances modern and traditional</p>
+            <div class="paper-list">
+                <div class="paper-card font-lora">
+                    <a href="#" class="paper-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="paper-meta">
+                        <span class="paper-date">7 December 2025</span> · Zhang Wei, Li Ming, Wang Xiaoli
+                    </div>
+                    <div class="paper-tags">
+                        <span class="paper-tag">Physics</span>
+                        <span class="paper-tag">Quantum Computing</span>
+                    </div>
+                    <div class="paper-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="paper-links">
+                        <a href="#" class="paper-link">Abstract</a>
+                        <a href="#" class="paper-link">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="meta-info">
+                <strong>Characteristics:</strong>
+                ✓ Elegant, sophisticated<br>
+                ✓ More distinctive personality<br>
+                ✓ Excellent for long-form reading<br>
+                ~ May feel too stylized for some
+            </div>
+        </div>
+
+        <!-- Option 7: Crimson Text -->
+        <div class="typeface-section">
+            <h2>Option 7: Crimson Text (Book Production Serif)</h2>
+            <p class="typeface-description">Designed for book production, highly readable, classic scholarly aesthetic</p>
+            <div class="paper-list">
+                <div class="paper-card font-crimson">
+                    <a href="#" class="paper-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="paper-meta">
+                        <span class="paper-date">7 December 2025</span> · Zhang Wei, Li Ming, Wang Xiaoli
+                    </div>
+                    <div class="paper-tags">
+                        <span class="paper-tag">Physics</span>
+                        <span class="paper-tag">Quantum Computing</span>
+                    </div>
+                    <div class="paper-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="paper-links">
+                        <a href="#" class="paper-link">Abstract</a>
+                        <a href="#" class="paper-link">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="meta-info">
+                <strong>Characteristics:</strong>
+                ✓ Designed specifically for book typography<br>
+                ✓ Classic, timeless scholarly feel<br>
+                ✓ Excellent readability at extended lengths<br>
+                ✓ Larger x-height than Georgia<br>
+                ✓ Used by many academic publications and journals
+            </div>
+        </div>
+
+        <!-- Option 8: Mixed Typography (CURRENT PRODUCTION) -->
+        <div class="typeface-section" style="border-left-color: #28a745;">
+            <h2 style="color: #28a745;">Option 8: Mixed Typography ⭐ CURRENT PRODUCTION</h2>
+            <p class="typeface-description">Sans-serif titles (System UI) + Charter serif body text - your current production setup</p>
+            <div class="paper-list">
+                <div class="paper-card font-mixed-production">
+                    <a href="#" class="paper-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="paper-meta">
+                        <span class="paper-date">7 December 2025</span> · Zhang Wei, Li Ming, Wang Xiaoli
+                    </div>
+                    <div class="paper-tags">
+                        <span class="paper-tag">Physics</span>
+                        <span class="paper-tag">Quantum Computing</span>
+                    </div>
+                    <div class="paper-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="paper-links">
+                        <a href="#" class="paper-link">Abstract</a>
+                        <a href="#" class="paper-link">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="meta-info">
+                <strong>Characteristics:</strong>
+                ✓ <strong>Titles:</strong> System sans-serif (San Francisco on Mac, Segoe UI on Windows) - bold, scannable<br>
+                ✓ <strong>Body text:</strong> Charter serif - readable, scholarly<br>
+                ✓ Best of both worlds: clear hierarchy with sans titles, readable serif body<br>
+                ✓ All system fonts - fast loading, no web fonts needed<br>
+                ✓ Common pattern in modern academic sites<br>
+                ~ Mixed approach may feel less unified than single-font approach
+            </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="typeface-section" style="border-left-color: #28a745;">
+            <h2 style="color: #28a745;">💡 Recommendations</h2>
+            <ul style="margin-left: 1.5rem; line-height: 1.8; font-family: system-ui, -apple-system, sans-serif;">
+                <li><strong>Most Academic (Serif):</strong> Source Serif 4 or Merriweather - specifically designed for scholarly reading</li>
+                <li><strong>Best Readability (Sans):</strong> Inter - superior legibility, modern and clean</li>
+                <li><strong>Most Traditional:</strong> Georgia - classic academic feel, system font (fast)</li>
+                <li><strong>Best Balance:</strong> Source Serif 4 - combines readability, authority, and modern design</li>
+                <li><strong>If you prefer sans-serif:</strong> Inter over IBM Plex - more refined for body text</li>
+            </ul>
+            <div style="margin-top: 1.5rem; padding: 1rem; background: #fff3cd; border-left: 3px solid #ffc107;">
+                <strong style="color: #856404;">⚠️ What arXiv Uses:</strong>
+                <p style="margin-top: 0.5rem; color: #856404; font-size: 0.9rem;">
+                    arXiv uses Computer Modern (LaTeX default) for PDFs, but their web interface uses standard sans-serif
+                    (Arial/Helvetica). Many modern academic sites are moving to serif fonts (Georgia, Source Serif)
+                    for body text because they're more readable at length.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -6,8 +6,11 @@ filtering, pagination, and full-text search capabilities.
 """
 
 import sqlite3
+import logging
 from flask import g, current_app
 from .filters import get_category_subjects
+
+logger = logging.getLogger(__name__)
 
 
 def get_db():
@@ -128,8 +131,20 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
     # Count total (for pagination)
     try:
         total = db.execute(count_sql, params).fetchone()[0]
-    except sqlite3.OperationalError:
-        # Query error - return empty results
+    except sqlite3.OperationalError as e:
+        # Query error - log and return empty results (Codex P0 fix: add logging)
+        logger.error(f"Database count query failed: {e}", exc_info=True, extra={
+            'query': count_sql,
+            'params': params,
+            'filters': {
+                'category': category,
+                'date_from': date_from,
+                'date_to': date_to,
+                'search': search,
+                'has_figures': has_figures,
+                'page': page
+            }
+        })
         return [], 0
 
     # Get page of results
@@ -145,6 +160,19 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
     try:
         papers = db.execute(query_sql, params + [per_page, offset]).fetchall()
         return [dict(row) for row in papers], total
-    except sqlite3.OperationalError:
-        # Query error - return empty results
+    except sqlite3.OperationalError as e:
+        # Query error - log and return empty results (Codex P0 fix: add logging)
+        logger.error(f"Database result query failed: {e}", exc_info=True, extra={
+            'query': query_sql,
+            'params': params + [per_page, offset],
+            'filters': {
+                'category': category,
+                'date_from': date_from,
+                'date_to': date_to,
+                'search': search,
+                'has_figures': has_figures,
+                'page': page,
+                'per_page': per_page
+            }
+        })
         return [], 0

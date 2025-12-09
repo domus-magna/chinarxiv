@@ -1,5 +1,34 @@
 # ChinaRxiv Translation Pipeline
 
+## CRITICAL: Server-Side Filtering Migration (Dec 2025)
+
+```
++==============================================================================+
+|  ARCHITECTURE DECISION: Migrating from Client-Side to Server-Side Filtering |
+|                                                                              |
+|  STATUS: Planning phase - DO NOT implement client-side filtering            |
+|                                                                              |
+|  REASON: Planning for 40,000 papers (near-term future)                       |
+|  - Client-side would require 25-35MB initial download                        |
+|  - 5-10 second load times, mobile devices would crash                        |
+|  - No pagination possible with client-side approach                          |
+|                                                                              |
+|  TARGET ARCHITECTURE:                                                        |
+|  - SQLite database with indexed columns (data/papers.db)                    |
+|  - Flask web server with server-side filtering/pagination                   |
+|  - Deploy to Railway/Fly.io (real web server, not static pages)             |
+|  - Keep Jinja2 templates, discard client-side JavaScript filtering          |
+|                                                                              |
+|  CURRENT BRANCH: feat/client-side-search-v2 → WILL BE DISCARDED             |
+|  - Completed 7-phase client-side implementation (commits 4bd64d2-062af74)   |
+|  - Keep UI/UX patterns only (category tabs, search box, filters)            |
+|  - Discard all JavaScript filtering logic (MiniSearch, search index, etc.)  |
+|                                                                              |
+|  PLAN: /Users/alexanderhuth/.claude/plans/cosmic-splashing-papert.md        |
+|  Estimated timeline: 8-12 hours for migration + testing                      |
++==============================================================================+
+```
+
 ## CRITICAL: Full Pipeline = Text + Figures
 
 **MANDATORY**: When running ANY translation job (backfill, single paper, batch):

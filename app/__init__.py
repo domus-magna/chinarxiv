@@ -9,6 +9,11 @@ This module creates and configures the Flask application with:
 
 from flask import Flask, g
 import os
+from pathlib import Path
+import markdown as md
+from markupsafe import Markup
+import bleach
+import logging
 
 
 def create_app(config=None):
@@ -25,13 +30,46 @@ def create_app(config=None):
                 template_folder='../src/templates',
                 static_folder='../static')
 
-    # Default configuration
-    app.config['DATABASE'] = os.path.join('data', 'papers.db')
+    # Default configuration (use absolute path for database)
+    app_root = Path(__file__).parent.parent
+    app.config['DATABASE'] = str(app_root / 'data' / 'papers.db')
     app.config['PER_PAGE'] = 50  # Papers per page for pagination
 
     # Override with custom config if provided
     if config:
         app.config.update(config)
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    # Register Jinja2 filters
+    @app.template_filter('markdown')
+    def markdown_filter(text):
+        """
+        Convert markdown text to HTML with XSS protection.
+
+        Sanitizes HTML using bleach allowlist to prevent stored XSS attacks.
+        Only allows safe HTML tags (p, br, em, strong, ul, ol, li, code, pre, a, blockquote).
+        """
+        if not text:
+            return ""
+
+        # Convert markdown to HTML
+        html = md.markdown(text, extensions=['extra', 'nl2br'])
+
+        # Sanitize HTML with allowlist (XSS protection)
+        clean_html = bleach.clean(
+            html,
+            tags=['p', 'br', 'em', 'strong', 'ul', 'ol', 'li', 'code', 'pre',
+                  'a', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+            attributes={'a': ['href', 'title']},
+            strip=True  # Strip disallowed tags instead of escaping
+        )
+
+        return Markup(clean_html)
 
     # Connection teardown hook (Codex P2 fix: prevent connection leaks)
     @app.teardown_appcontext

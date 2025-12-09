@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Card Layout Comparison - ChinaRxiv English</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            background: #f5f5f5;
+            color: #212529;
+            padding: 2rem;
+        }
+        .comparison-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 2rem;
+            border-radius: 8px;
+        }
+        h1 {
+            color: #b31b1b;
+            margin-bottom: 2rem;
+            font-size: 1.8rem;
+        }
+        .layout-section {
+            margin-bottom: 3rem;
+            padding: 2rem;
+            background: #fafafa;
+            border-radius: 4px;
+            border-left: 4px solid #b31b1b;
+        }
+        .layout-section h2 {
+            font-size: 1.3rem;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        .layout-description {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 1.5rem;
+            font-style: italic;
+        }
+        .paper-list {
+            background: #ffffff;
+            padding: 1.5rem;
+            border-radius: 4px;
+        }
+
+        /* Layout 1: Red Titles, Compact */
+        .layout1-card {
+            padding: 1.25rem 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .layout1-card:last-child {
+            border-bottom: none;
+        }
+        .layout1-title {
+            color: #b31b1b;
+            font-size: 1.1rem;
+            font-weight: 600;
+            line-height: 1.4;
+            margin-bottom: 0.5rem;
+            text-decoration: none;
+        }
+        .layout1-title:hover {
+            text-decoration: underline;
+        }
+        .layout1-meta {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 0.5rem;
+        }
+        .layout1-date {
+            color: #999;
+        }
+        .layout1-abstract {
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 0.5rem;
+        }
+        .layout1-links {
+            font-size: 0.9rem;
+        }
+        .layout1-links a {
+            color: #0066cc;
+            text-decoration: none;
+            margin-right: 1rem;
+        }
+        .layout1-links a:hover {
+            text-decoration: underline;
+        }
+
+        /* Layout 2: Black Titles, Structured with Tags */
+        .layout2-card {
+            padding: 1.5rem 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .layout2-card:last-child {
+            border-bottom: none;
+        }
+        .layout2-title {
+            color: #212529;
+            font-size: 1.15rem;
+            font-weight: 600;
+            line-height: 1.4;
+            margin-bottom: 0.75rem;
+            text-decoration: none;
+        }
+        .layout2-title:hover {
+            color: #0066cc;
+            text-decoration: underline;
+        }
+        .layout2-meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+        }
+        .layout2-meta {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        .layout2-date {
+            color: #999;
+            font-size: 0.85rem;
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        .layout2-authors {
+            color: #666;
+        }
+        .layout2-tags {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .layout2-tag {
+            padding: 0.3rem 0.7rem;
+            background: #e3f2fd;
+            border: 1px solid #90caf9;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            color: #1976d2;
+            font-weight: 500;
+        }
+        .layout2-abstract {
+            color: #333;
+            line-height: 1.7;
+            margin-bottom: 0.75rem;
+        }
+        .layout2-links {
+            display: flex;
+            gap: 1rem;
+        }
+        .layout2-link {
+            color: #1976d2;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-decoration: none;
+        }
+        .layout2-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Recommended Hybrid: Best of Both */
+        .hybrid-card {
+            padding: 1.25rem 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .hybrid-card:last-child {
+            border-bottom: none;
+        }
+        .hybrid-title {
+            color: #212529;
+            font-size: 1.1rem;
+            font-weight: 600;
+            line-height: 1.4;
+            margin-bottom: 0.5rem;
+            text-decoration: none;
+            display: block;
+        }
+        .hybrid-title:hover {
+            color: #b31b1b;
+            text-decoration: underline;
+        }
+        .hybrid-meta {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 0.5rem;
+        }
+        .hybrid-date {
+            color: #999;
+            font-size: 0.85rem;
+        }
+        .hybrid-tags {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .hybrid-tag {
+            padding: 0.25rem 0.6rem;
+            background: #f1f3f5;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+        .hybrid-abstract {
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 0.75rem;
+        }
+        .hybrid-links {
+            display: flex;
+            gap: 1rem;
+        }
+        .hybrid-link {
+            color: #b31b1b;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-decoration: none;
+        }
+        .hybrid-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Analysis section */
+        .analysis-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #e7f3ff;
+            border-left: 3px solid #0066cc;
+            font-size: 0.85rem;
+            color: #333;
+        }
+        .analysis-info strong {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #0066cc;
+        }
+        .pros-cons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+        .pros, .cons {
+            padding: 0.5rem;
+        }
+        .pros h4 {
+            color: #28a745;
+            font-size: 0.8rem;
+            margin-bottom: 0.25rem;
+        }
+        .cons h4 {
+            color: #dc3545;
+            font-size: 0.8rem;
+            margin-bottom: 0.25rem;
+        }
+        .pros ul, .cons ul {
+            margin-left: 1.25rem;
+            font-size: 0.8rem;
+        }
+
+        /* Recommendations */
+        .recommendation-section {
+            border-left-color: #28a745 !important;
+        }
+        .recommendation-section h2 {
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="comparison-container">
+        <h1>Paper Card Layout Comparison - ChinaRxiv English</h1>
+
+        <!-- Layout 1: Red Titles (Current) -->
+        <div class="layout-section">
+            <h2>Layout 1: Red Titles (Compact)</h2>
+            <p class="layout-description">Red/maroon titles, simple inline metadata, compact format</p>
+            <div class="paper-list">
+                <div class="layout1-card">
+                    <a href="#" class="layout1-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="layout1-meta">
+                        <span class="layout1-date">2025-12-05</span> — Zhang Wei, Li Ming, Wang Xiaoli
+                    </div>
+                    <div class="layout1-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="layout1-links">
+                        <a href="#">Abstract</a>
+                        <a href="#">PDF</a>
+                    </div>
+                </div>
+
+                <div class="layout1-card">
+                    <a href="#" class="layout1-title">Deep Learning for Protein Structure Prediction: Advances and Challenges</a>
+                    <div class="layout1-meta">
+                        <span class="layout1-date">2025-12-04</span> — Chen Jing, Liu Hua, Zhao Feng
+                    </div>
+                    <div class="layout1-abstract">
+                        This paper reviews recent advances in deep learning methods for protein structure prediction, examining the latest transformer-based architectures and their performance on benchmark datasets. We identify key challenges and propose directions for future research.
+                    </div>
+                    <div class="layout1-links">
+                        <a href="#">Abstract</a>
+                        <a href="#">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="analysis-info">
+                <strong>Analysis:</strong>
+                <div class="pros-cons">
+                    <div class="pros">
+                        <h4>✓ Strengths</h4>
+                        <ul>
+                            <li>Eye-catching, distinctive</li>
+                            <li>Compact, shows more papers</li>
+                            <li>Simple, scannable</li>
+                        </ul>
+                    </div>
+                    <div class="cons">
+                        <h4>✗ Weaknesses</h4>
+                        <ul>
+                            <li>Red feels too casual/aggressive</li>
+                            <li>Doesn't follow academic conventions</li>
+                            <li>Less structured metadata</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Layout 2: Black Titles with Tags -->
+        <div class="layout-section">
+            <h2>Layout 2: Black Titles (Structured with Tags)</h2>
+            <p class="layout-description">Black/dark titles, subject tags as pills, structured layout with clear sections</p>
+            <div class="paper-list">
+                <div class="layout2-card">
+                    <a href="#" class="layout2-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="layout2-meta">
+                        <span class="layout2-date">2025-12-05T14:23:15Z</span>
+                        <div class="layout2-authors">Zhang Wei, Li Ming, Wang Xiaoli</div>
+                    </div>
+                    <div class="layout2-tags">
+                        <span class="layout2-tag">Physics</span>
+                        <span class="layout2-tag">Quantum Computing</span>
+                    </div>
+                    <div class="layout2-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="layout2-links">
+                        <a href="#" class="layout2-link">Abstract</a>
+                        <a href="#" class="layout2-link">PDF</a>
+                    </div>
+                </div>
+
+                <div class="layout2-card">
+                    <a href="#" class="layout2-title">Deep Learning for Protein Structure Prediction: Advances and Challenges</a>
+                    <div class="layout2-meta">
+                        <span class="layout2-date">2025-12-04T09:47:32Z</span>
+                        <div class="layout2-authors">Chen Jing, Liu Hua, Zhao Feng</div>
+                    </div>
+                    <div class="layout2-tags">
+                        <span class="layout2-tag">Biology</span>
+                        <span class="layout2-tag">Artificial Intelligence</span>
+                        <span class="layout2-tag">Bioinformatics</span>
+                    </div>
+                    <div class="layout2-abstract">
+                        This paper reviews recent advances in deep learning methods for protein structure prediction, examining the latest transformer-based architectures and their performance on benchmark datasets. We identify key challenges and propose directions for future research.
+                    </div>
+                    <div class="layout2-links">
+                        <a href="#" class="layout2-link">Abstract</a>
+                        <a href="#" class="layout2-link">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="analysis-info">
+                <strong>Analysis:</strong>
+                <div class="pros-cons">
+                    <div class="pros">
+                        <h4>✓ Strengths</h4>
+                        <ul>
+                            <li>Professional, traditional aesthetic</li>
+                            <li>Subject tags aid quick categorization</li>
+                            <li>Better information hierarchy</li>
+                            <li>More breathing room</li>
+                        </ul>
+                    </div>
+                    <div class="cons">
+                        <h4>✗ Weaknesses</h4>
+                        <ul>
+                            <li>Takes more vertical space</li>
+                            <li>Date format not user-friendly</li>
+                            <li>Tag colors too vibrant/casual</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recommended Hybrid -->
+        <div class="layout-section recommendation-section">
+            <h2>💡 Recommended: Hybrid Approach</h2>
+            <p class="layout-description">Black titles (professional), compact density (efficient), subtle tags (helpful), red accent for links only (purposeful)</p>
+            <div class="paper-list">
+                <div class="hybrid-card">
+                    <a href="#" class="hybrid-title">Quantum Entanglement in High-Dimensional Hilbert Spaces: A Novel Approach</a>
+                    <div class="hybrid-meta">
+                        <span class="hybrid-date">7 December 2025</span> · Zhang Wei, Li Ming, Wang Xiaoli
+                    </div>
+                    <div class="hybrid-tags">
+                        <span class="hybrid-tag">Physics</span>
+                        <span class="hybrid-tag">Quantum Computing</span>
+                    </div>
+                    <div class="hybrid-abstract">
+                        We present a comprehensive study of quantum entanglement in high-dimensional Hilbert spaces, introducing a novel mathematical framework that enables efficient computation of entanglement measures. Our results demonstrate significant improvements over existing methods.
+                    </div>
+                    <div class="hybrid-links">
+                        <a href="#" class="hybrid-link">Abstract</a>
+                        <a href="#" class="hybrid-link">PDF</a>
+                    </div>
+                </div>
+
+                <div class="hybrid-card">
+                    <a href="#" class="hybrid-title">Deep Learning for Protein Structure Prediction: Advances and Challenges</a>
+                    <div class="hybrid-meta">
+                        <span class="hybrid-date">4 December 2025</span> · Chen Jing, Liu Hua, Zhao Feng
+                    </div>
+                    <div class="hybrid-tags">
+                        <span class="hybrid-tag">Biology</span>
+                        <span class="hybrid-tag">AI</span>
+                        <span class="hybrid-tag">+1 more</span>
+                    </div>
+                    <div class="hybrid-abstract">
+                        This paper reviews recent advances in deep learning methods for protein structure prediction, examining the latest transformer-based architectures and their performance on benchmark datasets. We identify key challenges and propose directions for future research.
+                    </div>
+                    <div class="hybrid-links">
+                        <a href="#" class="hybrid-link">Abstract</a>
+                        <a href="#" class="hybrid-link">PDF</a>
+                    </div>
+                </div>
+            </div>
+            <div class="analysis-info">
+                <strong>Why This Works:</strong>
+                <div class="pros-cons">
+                    <div class="pros">
+                        <h4>✓ Key Strengths</h4>
+                        <ul>
+                            <li><strong>Black titles:</strong> Professional, follows arXiv/bioRxiv conventions</li>
+                            <li><strong>Red accent:</strong> Reserved for interactive elements (hover, links)</li>
+                            <li><strong>Compact layout:</strong> Shows more papers, saves vertical space</li>
+                            <li><strong>Subtle tags:</strong> Helpful categorization without visual noise</li>
+                            <li><strong>Human-readable dates:</strong> "7 December 2025" instead of ISO timestamp</li>
+                            <li><strong>Tag overflow:</strong> Shows 2-3 tags max, "+N more" for extras</li>
+                        </ul>
+                    </div>
+                    <div class="cons">
+                        <h4>✓ Design Decisions</h4>
+                        <ul>
+                            <li>Inline metadata (date + authors) for density</li>
+                            <li>Neutral gray tags (not blue) for academic feel</li>
+                            <li>Sharp 4px border-radius on tags (professional)</li>
+                            <li>Title hover = red color (brand interaction)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="layout-section recommendation-section">
+            <h2>📊 Summary & Recommendation</h2>
+            <ul style="margin-left: 1.5rem; line-height: 1.8;">
+                <li><strong>Title Color:</strong> Use BLACK (#212529), not red. Red on hover only.</li>
+                <li><strong>Layout Density:</strong> Keep it COMPACT (like Layout 1) - researchers want to see more papers.</li>
+                <li><strong>Subject Tags:</strong> INCLUDE them (like Layout 2), but make them subtle and limit to 2-3 visible.</li>
+                <li><strong>Red Accent:</strong> Reserve for INTERACTIVE elements (links, hover states) only.</li>
+                <li><strong>Date Format:</strong> Use HUMAN-READABLE format ("7 December 2025"), not ISO timestamp.</li>
+                <li><strong>Metadata:</strong> Keep date + authors on ONE LINE for compactness.</li>
+            </ul>
+            <div style="margin-top: 1.5rem; padding: 1rem; background: #fff3cd; border-left: 3px solid #ffc107;">
+                <strong style="color: #856404;">⚠️ Key Insight from arXiv/bioRxiv Analysis:</strong>
+                <p style="margin-top: 0.5rem; color: #856404; font-size: 0.9rem;">
+                    Neither major preprint site uses colored titles. This is the academic standard for good reason -
+                    neutral colors convey authority and trust. Red should be reserved for interactive elements,
+                    not static content like titles.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
