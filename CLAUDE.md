@@ -494,3 +494,13 @@ When working on frontend design and UI/UX tasks:
 **Always dispatch gemini subagents** to research and make design and front-end recommendations, as they are experts. Dispatch with `gemini -p "your prompt"`. Use these in addition to your explore agents.
 
 This ensures you get expert-level design input and recommendations for user interface work.
+
+## Feature Planning
+
+**Planned features and enhancements are tracked in `TODO.md`**. Before implementing new features:
+1. Check `TODO.md` for existing plans and context
+2. Update `TODO.md` with your implementation approach
+3. Mark items as completed when done
+4. Move completed items to the "Completed Features" section
+
+The TODO file provides implementation notes, file locations, and integration points for future work.
