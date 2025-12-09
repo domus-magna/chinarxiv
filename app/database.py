@@ -1,14 +1,16 @@
 """
 Database query helpers for ChinaRxiv English web server.
 
-This module provides functions for querying the SQLite database with
+This module provides functions for querying the database with
 filtering, pagination, and full-text search capabilities.
+
+Supports both SQLite (development) and PostgreSQL (production) via database adapter.
 """
 
-import sqlite3
 import logging
 from flask import g, current_app
 from .filters import get_category_subjects
+from .db_adapter import get_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +20,15 @@ def get_db():
     Get database connection for current request.
 
     Uses Flask's g object to store connection per-request.
-    Connection is automatically closed by teardown handler in app/__init__.py.
+    Connection is automatically released by teardown handler in app/__init__.py.
 
     Returns:
-        sqlite3.Connection: Database connection with Row factory
+        Database connection (sqlite3.Connection or psycopg2.connection)
+        with appropriate row factory (dict-like rows)
     """
     if 'db' not in g:
-        g.db = sqlite3.connect(current_app.config['DATABASE'])
-        g.db.row_factory = sqlite3.Row
+        adapter = get_adapter()
+        g.db = adapter.get_connection()
     return g.db
 
 
@@ -63,6 +66,7 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         - Uses DISTINCT only when needed (with JOIN)
     """
     db = get_db()
+    adapter = get_adapter()
 
     # FIX: Input validation (Codex P2 issue - prevent pagination abuse)
     page = max(1, min(page, 1000))  # Limit to 1000 pages
@@ -101,17 +105,14 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         # FIX: Validate search query (Codex P2 issue)
         search = search.strip()
         if search:  # Only add search if non-empty after strip
+            OperationalError = adapter.get_exception_class()
             try:
-                # Use FTS5 for full-text search with error handling
-                where_clauses.append("""
-                    p.id IN (
-                        SELECT id FROM papers_fts
-                        WHERE papers_fts MATCH ?
-                    )
-                """)
-                params.append(search)
-            except sqlite3.OperationalError:
-                # FTS MATCH syntax error - fallback to simple LIKE (Codex P2 issue)
+                # Use database-specific full-text search (FTS5 for SQLite, tsvector for PostgreSQL)
+                fts_clause, fts_params = adapter.adapt_fts_query(search)
+                where_clauses.append(fts_clause)
+                params.extend(fts_params)
+            except OperationalError:
+                # FTS syntax error - fallback to simple LIKE (Codex P2 issue)
                 where_clauses.append("(p.title_en LIKE ? OR p.abstract_en LIKE ?)")
                 params.extend([f'%{search}%', f'%{search}%'])
 
@@ -128,10 +129,16 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         count_sql = f"SELECT COUNT(*) FROM {from_clause} WHERE {where_sql}"
         select_distinct = "p.*"
 
+    # Adapt placeholders for database type (? for SQLite, %s for PostgreSQL)
+    count_sql = adapter.adapt_placeholder(count_sql)
+
     # Count total (for pagination)
+    OperationalError = adapter.get_exception_class()
     try:
-        total = db.execute(count_sql, params).fetchone()[0]
-    except sqlite3.OperationalError as e:
+        cursor = adapter.get_cursor(db)
+        cursor.execute(count_sql, params)
+        total = cursor.fetchone()[0]
+    except OperationalError as e:
         # Query error - log and return empty results (Codex P0 fix: add logging)
         logger.error(f"Database count query failed: {e}", exc_info=True, extra={
             'query': count_sql,
@@ -157,10 +164,15 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         LIMIT ? OFFSET ?
     """
 
+    # Adapt placeholders for database type
+    query_sql = adapter.adapt_placeholder(query_sql)
+
     try:
-        papers = db.execute(query_sql, params + [per_page, offset]).fetchall()
+        cursor = adapter.get_cursor(db)
+        cursor.execute(query_sql, params + [per_page, offset])
+        papers = cursor.fetchall()
         return [dict(row) for row in papers], total
-    except sqlite3.OperationalError as e:
+    except OperationalError as e:
         # Query error - log and return empty results (Codex P0 fix: add logging)
         logger.error(f"Database result query failed: {e}", exc_info=True, extra={
             'query': query_sql,
