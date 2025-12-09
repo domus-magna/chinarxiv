@@ -9,54 +9,67 @@
     <h1>Recent Translations from ChinaXiv</h1>
     <p class="page-description">
       Automatically translated preprints from the Chinese arXiv (ChinaXiv).
-      All translations are machine-generated—please verify with the original source.
     </p>
-    <p class="paper-count">{{ items|length }} papers translated</p>
   </div>
 
-  <div class="search-block" id="search-section">
-    <div class="search-input-group">
-      <input id="search-input" placeholder="Search by title, authors, or abstract…" />
+  {# ========================================================================
+     UNIFIED SEARCH CONTAINER - Recovered from mockup
+     Single cohesive container with search, tabs, and advanced filter button
+     ======================================================================== #}
+
+  <div class="unified-search-container">
+    <!-- Search Row -->
+    <div class="search-row">
+      <input type="text" class="search-input" placeholder="Search by title, authors, or abstract…" id="search-input">
       <button class="search-btn">Search</button>
     </div>
-    <div class="search-filters">
-      <div class="filter-group">
-        <label for="category-filter">Category:</label>
-        <select id="category-filter">
-          <option value="">All Categories</option>
-          {% for name, count in categories %}
-          <option value="{{ name }}">{{ name }} ({{ count }})</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="filter-group">
-        <label for="date-filter">Date:</label>
-        <select id="date-filter">
-          <option value="">All Dates</option>
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-          <option value="90d">Last 90 days</option>
-          <option value="1y">Last year</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label for="sort-order">Sort:</label>
-        <select id="sort-order">
-          <option value="relevance" selected>Relevance</option>
-          <option value="newest">Newest First</option>
-          <option value="oldest">Oldest First</option>
-        </select>
-      </div>
-      <div class="filter-group filter-checkbox">
-        <label>
-          <input type="checkbox" id="figures-filter" />
-          Only show papers with figures
-        </label>
-      </div>
+
+    <!-- Tabs Row -->
+    <div class="tabs-row">
+      <nav class="subject-nav" role="tablist" aria-label="Category filters">
+        <button class="category-tab active" role="tab" aria-selected="true" aria-controls="articles" data-category="">All Recent</button>
+        {% for category_id, category in categories.items()|sort(attribute='1.order') %}
+        <button class="category-tab" role="tab" aria-selected="false" aria-controls="articles" data-category="{{ category_id }}">
+          {{ category.label }}
+        </button>
+        {% endfor %}
+      </nav>
+
+      <button class="advanced-search-btn" id="advancedSearchBtn">
+        <span>⚙</span>
+        <span>Advanced Search and Filter</span>
+        <span class="badge" id="filterBadge" style="display: none;">0</span>
+      </button>
     </div>
-    <div id="search-results"></div>
+
+    <!-- Active Filter Indicators (shown when filters applied) -->
+    <div class="filter-indicators" id="filterIndicators" style="display: none;">
+      <!-- Filter pills will be dynamically added by JavaScript -->
+    </div>
   </div>
 
+  <!-- Paper count below filter pills -->
+  <p class="paper-count" id="paperCount" aria-live="polite" aria-atomic="true">Showing {{ items|length }} paper{% if items|length != 1 %}s{% endif %}</p>
+
+  {# Expose category data to JavaScript for modal accordion #}
+  <script>
+    window.categoryData = {{ categories | tojson | safe }};
+    window.categoryTaxonomy = {{ categories | tojson | safe }};
+  </script>
+
+  {# ========================================================================
+     UNIFIED CONTAINER ARCHITECTURE
+     ======================================================================== #}
+  {# V1: Single container for all article display
+     - No more dual-container toggle between #articles and #search-results
+     - JavaScript will filter and re-render this same container
+     - Simpler, more maintainable architecture
+
+     V2 TODO (when dataset > 5K papers):
+     - Add "Load More" button after first 200 results
+     - Or implement virtual scrolling for smooth infinite scroll
+     - See project docs and assets/site.js for detailed V2 implementation notes
+     ======================================================================== #}
   <div id="articles" class="article-list">
     {% for it in items %}
       <article class="paper-card">
@@ -67,12 +80,12 @@
           <span class="paper-authors">{{ ', '.join(it.creators_en or it.creators or ['Unknown']) }}</span>
         </div>
         <div class="paper-meta-row secondary">
-          <span class="paper-date">{{ it.date }}</span>
+          <span class="paper-date">{{ it.date|human_date }}</span>
           <span class="paper-id">ChinaXiv:{{ it.id }}</span>
           {% if it.subjects or it.subjects_en %}
             <span class="paper-subjects">
               {% for s in (it.subjects_en or it.subjects)[:3] %}
-                <span class="subject-tag">{{ s }}</span>
+                <span class="subject-tag" data-subject="{{ s|e }}">{{ s }}</span>
               {% endfor %}
             </span>
           {% endif %}
@@ -93,4 +106,129 @@
   {% if not items %}
     <p style="color: #777; font-style: italic; margin-top: 40px;">No translations available yet.</p>
   {% endif %}
+
+  {# ========================================================================
+     ADVANCED SEARCH MODAL - Recovered from mockup
+     ======================================================================== #}
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Advanced Search and Filter</h2>
+        <button class="modal-close" id="modalClose">×</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Search Term -->
+        <div class="modal-section full-width">
+          <div class="form-group">
+            <label class="form-label" for="modalSearchInput">Search term</label>
+            <input type="text" class="form-input" id="modalSearchInput" placeholder="Enter keywords...">
+          </div>
+        </div>
+
+        <!-- Field-Specific Search -->
+        <div class="modal-section">
+          <div class="modal-section-title">Search in</div>
+          <div class="radio-group">
+            <div class="radio-option">
+              <input type="radio" name="searchField" id="allFields" value="all" checked>
+              <label for="allFields">All fields (title, author, abstract)</label>
+            </div>
+            <div class="radio-option">
+              <input type="radio" name="searchField" id="titleOnly" value="title">
+              <label for="titleOnly">Title only</label>
+            </div>
+            <div class="radio-option">
+              <input type="radio" name="searchField" id="authorOnly" value="author">
+              <label for="authorOnly">Author only</label>
+            </div>
+            <div class="radio-option">
+              <input type="radio" name="searchField" id="abstractOnly" value="abstract">
+              <label for="abstractOnly">Abstract only</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-divider"></div>
+
+        <!-- Sort Order -->
+        <div class="modal-section">
+          <div class="modal-section-title">Sort by</div>
+          <div class="radio-group">
+            <div class="radio-option">
+              <input type="radio" name="sortOrder" id="sortRelevance" value="relevance" checked>
+              <label for="sortRelevance">Relevance (when searching)</label>
+            </div>
+            <div class="radio-option">
+              <input type="radio" name="sortOrder" id="sortNewest" value="newest">
+              <label for="sortNewest">Newest first</label>
+            </div>
+            <div class="radio-option">
+              <input type="radio" name="sortOrder" id="sortOldest" value="oldest">
+              <label for="sortOldest">Oldest first</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-divider"></div>
+
+        <!-- Date Range -->
+        <div class="modal-section">
+          <div class="modal-section-title">Date range</div>
+          <div class="date-range">
+            <input type="date" class="form-input" id="startDate" placeholder="Start date">
+            <span class="date-range-separator">to</span>
+            <input type="date" class="form-input" id="endDate" placeholder="End date">
+          </div>
+        </div>
+
+        <div class="modal-divider"></div>
+
+        <!-- Filters -->
+        <div class="modal-section">
+          <div class="modal-section-title">Filters</div>
+          <div class="checkbox-group">
+            <div class="checkbox-option">
+              <input type="checkbox" id="onlyFigures" value="figures">
+              <label for="onlyFigures">Only papers with figures</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-divider"></div>
+
+        <!-- Detailed Categories -->
+        <div class="modal-section full-width">
+          <div class="modal-section-title">Detailed categories<span class="summary-count"></span></div>
+
+          <div class="category-section">
+            <!-- Sticky search filter with buttons -->
+            <div class="category-filter">
+              <div class="search-input-wrapper">
+                <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M7 12C9.76142 12 12 9.76142 12 7C12 4.23858 9.76142 2 7 2C4.23858 2 2 4.23858 2 7C2 9.76142 4.23858 12 7 12Z" stroke="#999" stroke-width="1.5"/>
+                  <path d="M10.5 10.5L14 14" stroke="#999" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <input type="text" id="categoryFilter" placeholder="Filter categories..." aria-label="Filter categories">
+              </div>
+              <div class="control-buttons">
+                <button class="collapse-all-categories" type="button">Collapse all</button>
+                <button class="clear-categories" type="button">Clear all</button>
+              </div>
+            </div>
+
+            <!-- Category accordion groups will be populated by JavaScript -->
+            <div class="category-groups" id="categoryAccordion">
+              <!-- JavaScript will populate category groups based on actual data -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" id="clearAllBtn">Clear All</button>
+        <button class="btn-primary" id="applyFiltersBtn">Apply</button>
+      </div>
+    </div>
+  </div>
 {% endblock %}

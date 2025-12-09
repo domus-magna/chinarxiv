@@ -376,7 +376,16 @@ def load_figure_manifest() -> Dict[str, Any]:
         try:
             with open(manifest_cache) as f:
                 data = json.load(f)
-                manifest = data.get("papers", {})
+                papers = data.get("papers") or []
+
+                # Normalize to dict: {paper_id: paper_info}
+                if isinstance(papers, list):
+                    manifest = {p["id"]: p for p in papers if "id" in p}
+                elif isinstance(papers, dict):
+                    manifest = papers
+                else:
+                    manifest = {}
+
                 log(
                     f"Loaded figure manifest: {len(manifest)} papers with translated figures"
                 )
@@ -568,6 +577,110 @@ def collect_categories(items: List[Dict[str, Any]], min_count: int = 10) -> List
     return categories
 
 
+def build_hierarchical_categories(items: List[Dict[str, Any]], min_count: int = 1) -> Dict[str, Any]:
+    """Build hierarchical category structure from flat categories using taxonomy.
+
+    Gracefully handles missing or invalid taxonomy files by falling back to flat categories.
+    """
+    import json
+    from pathlib import Path
+
+    # Load taxonomy with error handling
+    taxonomy_path = Path(__file__).parent / "category_taxonomy.json"
+    try:
+        with open(taxonomy_path, 'r') as f:
+            taxonomy = json.load(f)
+    except FileNotFoundError:
+        log(f"Warning: Taxonomy file not found at {taxonomy_path}, using flat categories")
+        return _fallback_to_flat_categories(items, min_count)
+    except json.JSONDecodeError as e:
+        log(f"Warning: Invalid JSON in taxonomy file: {e}, using flat categories")
+        return _fallback_to_flat_categories(items, min_count)
+    except Exception as e:
+        log(f"Warning: Unexpected error loading taxonomy: {e}, using flat categories")
+        return _fallback_to_flat_categories(items, min_count)
+
+    # Get flat categories with counts
+    flat_categories = collect_categories(items, min_count=min_count)
+    category_counts = {name: count for name, count in flat_categories}
+
+    # Build hierarchical structure with validation
+    hierarchical = {}
+    try:
+        for category_id, category_def in taxonomy.items():
+            # Validate required fields
+            if not isinstance(category_def, dict):
+                log(f"Warning: Invalid category definition for {category_id}, skipping")
+                continue
+
+            children = category_def.get('children', [])
+            if not isinstance(children, list):
+                log(f"Warning: Invalid children list for {category_id}, skipping")
+                continue
+
+            # Count papers in this top-level category
+            total_count = sum(
+                category_counts.get(child, 0)
+                for child in children
+            )
+
+            if total_count > 0:
+                hierarchical[category_id] = {
+                    'label': category_def.get('label', category_id),
+                    'count': total_count,
+                    'pinned': category_def.get('pinned', False),
+                    'children': [
+                        {'name': child, 'count': category_counts.get(child, 0)}
+                        for child in children
+                        if category_counts.get(child, 0) > 0
+                    ]
+                }
+    except Exception as e:
+        log(f"Warning: Error building hierarchical categories: {e}, using flat categories")
+        return _fallback_to_flat_categories(items, min_count)
+
+    # Assign dynamic order: pinned first (by taxonomy order), then by count descending
+    pinned_cats = [(cid, cat) for cid, cat in hierarchical.items() if cat.get('pinned')]
+    unpinned_cats = [(cid, cat) for cid, cat in hierarchical.items() if not cat.get('pinned')]
+
+    # Helper function for safe order extraction (handles None values)
+    def get_order_safe(cat_id):
+        order = taxonomy.get(cat_id, {}).get('order')
+        return order if order is not None else 999
+
+    # Sort pinned by their taxonomy order (preserve user intent for multiple pinned)
+    pinned_cats.sort(key=lambda x: get_order_safe(x[0]))
+
+    # Sort unpinned by count (descending), then label (ascending) for deterministic tie-breaking
+    unpinned_cats.sort(key=lambda x: (-x[1]['count'], x[1]['label']))
+
+    # Assign final order values
+    order_index = 1
+    for cid, _cat in pinned_cats + unpinned_cats:
+        hierarchical[cid]['order'] = order_index
+        order_index += 1
+
+    return hierarchical
+
+
+def _fallback_to_flat_categories(items: List[Dict[str, Any]], min_count: int = 1) -> Dict[str, Any]:
+    """Fallback when taxonomy file is unavailable - returns flat category structure."""
+    flat_categories = collect_categories(items, min_count=min_count)
+
+    # Convert flat list to hierarchical-like structure for template compatibility
+    hierarchical = {}
+    for idx, (name, count) in enumerate(flat_categories, start=1):
+        category_id = name.lower().replace(' ', '_').replace('&', 'and')
+        hierarchical[category_id] = {
+            'label': name,
+            'order': idx,
+            'count': count,
+            'children': [{'name': name, 'count': count}]
+        }
+
+    return hierarchical
+
+
 def generate_figure_manifest(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Generate a manifest of all papers with figures for later processing.
@@ -712,6 +825,30 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
 
     env.filters["markdown"] = markdown_filter
 
+    # Add human-readable date filter
+    def human_date_filter(date_str):
+        """Convert ISO date to human-readable format (e.g., 'Nov 2, 2025')"""
+        from datetime import datetime as dt_class
+        if not date_str or not isinstance(date_str, str):
+            return ""
+        try:
+            # Handle various date formats
+            normalized = date_str.replace("Z", "+00:00")
+            dt = dt_class.fromisoformat(normalized)
+            # Format as "Nov 2, 2025" (portable - works on Windows)
+            # Use dt.day to avoid leading zeros (cross-platform)
+            return f"{dt.strftime('%b')} {dt.day}, {dt.year}"
+        except ValueError:
+            try:
+                # Fallback for date-only format
+                dt = dt_class.strptime(date_str[:10], "%Y-%m-%d")
+                return f"{dt.strftime('%b')} {dt.day}, {dt.year}"
+            except ValueError:
+                # If all parsing fails, return original
+                return date_str
+
+    env.filters["human_date"] = human_date_filter
+
     base_out = "site"
     ensure_dir(base_out)
 
@@ -748,9 +885,9 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
 
     build_version = int(time.time())
 
-    # Collect categories for dynamic filter (min 10 papers)
-    categories = collect_categories(items, min_count=10)
-    log(f"Found {len(categories)} categories with 10+ papers")
+    # Build hierarchical categories for tabs and modal
+    categories = build_hierarchical_categories(items, min_count=1)
+    log(f"Found {len(categories)} top-level categories")
 
     # Generate figure manifest for future extraction pipeline
     figure_manifest = generate_figure_manifest(items)

@@ -149,4 +149,5 @@ class Translation:
             "abstract": self._strip_para_tags(self.get_abstract()),
             "subjects": self._strip_para_tags(self.get_subjects_string()),
             "date": self.date or "",
+            "pdf_url": self.pdf_url or "",  # Include PDF link for search results
         }
