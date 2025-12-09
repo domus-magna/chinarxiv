@@ -236,6 +236,9 @@ main {
   font-size: 0.9rem;
   margin-top: 0.75rem;
   margin-bottom: 1.5rem;
+  /* Align with search bar left edge (1.5rem padding from .search-row) */
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
 }
 
 .page-header {
@@ -1326,7 +1329,11 @@ main {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 1.5rem;
+  padding: 0 1.5rem 0 1.5rem;
+}
+
+.subject-nav {
+  flex: 1;
 }
 
 .category-tab {
@@ -1358,7 +1365,7 @@ main {
   border: none;
   color: var(--primary-color);
   font-size: 14px;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem;
   cursor: pointer;
   font-weight: 500;
   transition: all 0.15s ease;
@@ -1366,6 +1373,7 @@ main {
   align-items: center;
   gap: 0.5rem;
   white-space: nowrap;
+  margin-right: -0.75rem;
 }
 
 .advanced-search-btn:hover {

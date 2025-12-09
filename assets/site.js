@@ -25,50 +25,16 @@ function searchSubject(subject) {
   }
 }
 
-// ============================================================================
-// UNIFIED FILTERING ARCHITECTURE
-// ============================================================================
-// V1 (Current): Simple client-side filtering for small datasets (<5K papers)
-//   - Single unified container (#articles) for all display states
-//   - Filter all docs on every change
-//   - Render all filtered results immediately (up to 100)
-//   - Fast enough for current dataset size
-//
-// V2 (Future, when dataset > 5K papers):
-//   1. ADD DATA NORMALIZATION:
-//      - On page load, create normalized copies with lowercase fields
-//      - Store as: { ...paper, lc_title, lc_abstract, lc_authors, timestamp }
-//      - Prevents repeated .toLowerCase() calls during filtering
-//      - Add to onIndexLoaded(): allDocs = data.map(d => ({ ...d, lc_title: d.title.toLowerCase(), ... }))
-//
-//   2. ADD DEBOUNCING TO SEARCH INPUT:
-//      - Current: 120ms timeout (line 249) - works for small datasets
-//      - V2: Increase to 200ms to reduce filtering frequency
-//      - Keep category/date/figures filters instant (no debouncing)
-//
-//   3. ADD PROGRESSIVE RENDERING:
-//      - Filter → slice(0, 200) → "Load More" button
-//      - Or implement virtual scrolling for infinite scroll
-//      - Example: https://github.com/virtual-list-js or similar libraries
-//      - Add CSS for .load-more-btn (min-height: 44px, full width, clear styling)
-//
-//   4. PERFORMANCE MONITORING:
-//      - Add console.time('filter') before filtering (line 150)
-//      - Add console.timeEnd('filter') after filtering (line 189)
-//      - If consistently > 50ms, trigger V2 optimizations
-//
-// Detailed V2 implementation notes available in project documentation
-// ============================================================================
-
 (() => {
   const input = document.getElementById('search-input');
-  const container = document.getElementById('articles');  // V1: Single unified container
+  const results = document.getElementById('search-results'); // Legacy - may not exist
+  const articleList = document.getElementById('articles');
   const categoryFilter = document.getElementById('category-filter');
   const dateFilter = document.getElementById('date-filter');
   const sortOrder = document.getElementById('sort-order');
   const figuresFilter = document.getElementById('figures-filter');
   const searchBtn = document.querySelector('.search-btn');
-  if (!input || !container) return;
+  if (!input || !articleList) return; // Use articleList instead of results
 
   let miniSearch = null;
   let allDocs = [];
@@ -76,18 +42,17 @@ function searchSubject(subject) {
   let currentQuery = '';
   let indexLoadState = 'loading'; // 'loading' | 'success' | 'failed'
   let userChangedSort = false; // Track if user explicitly changed sort
-  let initialHTML = container.innerHTML; // Cache server-rendered HTML for restore
+  let currentCategory = ''; // Tracks active category tab
 
-  // Global filter state shared across all filtering UI components (modal, tabs, search)
-  // This ensures filters persist when switching between different UI controls
-  let globalFilterState = {
-    searchTerm: '',
-    sortOrder: 'relevance',
-    dateRange: { start: '', end: '' },
-    searchField: 'all',
-    onlyFigures: false,
-    categories: null  // null = all categories, array = specific category IDs
-  };
+  // Build mapping: category_id -> [child subjects]
+  // This enables hierarchical category filtering (e.g., "ai_computing" maps to ["computer science", "computer software", ...])
+  const categorySubjects = {};
+  if (window.categoryData) {
+    for (const [categoryId, categoryDef] of Object.entries(window.categoryData)) {
+      categorySubjects[categoryId] = (categoryDef.children || [])
+        .map(child => typeof child === 'string' ? child.toLowerCase() : child.name.toLowerCase());
+    }
+  }
 
   // Date filter: days ago lookup (relative to today)
   const dateDays = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
@@ -97,11 +62,14 @@ function searchSubject(subject) {
   if (urlQuery) input.value = urlQuery;
 
   // Event delegation for subject tag clicks (prevents XSS from inline onclick)
-  container.addEventListener('click', (e) => {
-    const tag = e.target.closest('.subject-tag[data-subject]');
-    if (tag) {
-      searchSubject(tag.dataset.subject);
-    }
+  // Listen on both articleList (server-rendered) and results (search-rendered)
+  [articleList, results].filter(Boolean).forEach(container => {
+    container.addEventListener('click', (e) => {
+      const tag = e.target.closest('.subject-tag[data-subject]');
+      if (tag) {
+        searchSubject(tag.dataset.subject);
+      }
+    });
   });
 
   // Initialize MiniSearch with field boosting
@@ -109,21 +77,13 @@ function searchSubject(subject) {
     try {
       miniSearch = new MiniSearch({
         fields: ['title', 'authors', 'abstract', 'subjects'],
-        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'subjects_en', 'date', 'submission_date', 'has_figures', '_has_translated_figures', 'pdf_url'],
+        storeFields: ['id', 'title', 'authors', 'abstract', 'subjects', 'date', 'has_figures'],
         searchOptions: { boost: { title: 3, authors: 2, subjects: 1.5, abstract: 1 }, fuzzy: 0.2, prefix: true }
       });
       miniSearch.addAll(docs);
-      // V2 TODO: Add data normalization here
-      // allDocs = docs.map(d => ({
-      //   ...d,
-      //   lc_title: (d.title || '').toLowerCase(),
-      //   lc_abstract: (d.abstract || '').toLowerCase(),
-      //   lc_authors: (d.authors || '').toLowerCase(),
-      //   timestamp: Date.parse(d.date || '') || 0
-      // }));
     } catch (e) {
       console.error('Failed to initialize search index:', e);
-      showErrorMessage('Search initialization failed. Please refresh the page.');
+      results.innerHTML = '<div class="res"><div>Search initialization failed. Please refresh the page.</div></div>';
     }
   }
 
@@ -146,8 +106,8 @@ function searchSubject(subject) {
   // Handle index load failure
   function onIndexFailed() {
     indexLoadState = 'failed';
-    // V1: Show error without hiding server-rendered articles
-    showErrorMessage('Failed to load search index. Showing default article list.');
+    toggleArticleList(false);  // Restore article list if hidden during loading
+    results.innerHTML = '<div class="res"><div>Failed to load search index.</div></div>';
   }
 
   // Load index (try compressed first)
@@ -156,19 +116,15 @@ function searchSubject(subject) {
     .then(onIndexLoaded)
     .catch(() => fetch('search-index.json').then(r => r.json()).then(onIndexLoaded).catch(onIndexFailed));
 
-  // ============================================================================
-  // APPLY FILTERS AND RENDER
-  // ============================================================================
-  // V1: Simple filtering logic - fast enough for <5K papers
-  // V2 TODO: Add performance monitoring (console.time/timeEnd) when scaling
-  // ============================================================================
+  // Apply filters and render
   function applyFiltersAndRender() {
-    // If index load failed, preserve server-rendered articles
+    // If index load failed, preserve failure message and don't hide article list
     if (indexLoadState === 'failed') {
       return;
     }
 
-    const cat = categoryFilter?.value || '';
+    // Category: prioritize tab selection over dropdown
+    const cat = currentCategory || categoryFilter?.value || '';
     const dateRange = dateFilter?.value || '';
     const figuresOnly = figuresFilter?.checked || false;
     const hasQuery = Boolean(currentQuery);
@@ -187,35 +143,51 @@ function searchSubject(subject) {
     // Compute sortChanged AFTER any auto-reset (fixes stale state bug)
     const sortChanged = sortOrder?.value && sortOrder.value !== 'newest';
 
-    // Any filter/sort change triggers filtering
+    // Any filter/sort change triggers browse mode (consistent behavior)
     const hasActiveFilters = Boolean(cat || dateRange || figuresOnly || sortChanged);
     const isActive = hasQuery || hasActiveFilters;
 
-    // V1: No active search/filters → restore server-rendered articles (already in DOM)
-    // V2 TODO: When adding "Load More", may need to re-render here to reset pagination
+    // No active search/filters → show the default list
     if (!isActive) {
-      restoreServerRenderedArticles();
-      updatePaperCount(allDocs.length);
+      toggleArticleList(false);
+      results.innerHTML = '';
+      // Paper count display logic
+      // Format: "Showing X papers" (never "X of Y")
+      // Applies to ALL filtering scenarios: category tabs, search queries, advanced filters (future)
+      const paperCountEl = document.getElementById('paperCount');
+      if (paperCountEl) {
+        const total = allDocs.length;
+        const plural = total !== 1 ? 's' : '';
+        paperCountEl.textContent = `Showing ${total} paper${plural}`;
+      }
       return;
     }
 
     // Use all docs when filters are applied without a query
     const baseResults = hasQuery ? lastSearchResults : allDocs;
     if (!baseResults.length && !allDocs.length) {
-      showLoadingMessage();
+      results.innerHTML = '<div class="res"><div>Loading search index...</div></div>';
+      toggleArticleList(true);
       return;
     }
 
-    // V2 TODO: Add console.time('filter') here for performance monitoring
     let filtered = baseResults.filter(hit => {
-      // Category filter - exact match (subjects is comma-separated string like "Physics, Nuclear Physics")
-      // V2 TODO: Use pre-normalized fields for faster filtering
+      // Category filter - supports both hierarchical IDs (ai_computing) and direct subject names (Computer Science)
       if (cat) {
-        const subjects = (hit.subjects || '').split(',').map(s => s.trim().toLowerCase());
-        if (!subjects.includes(cat.toLowerCase())) return false;
+        // If it's a hierarchical category ID, check against child subjects
+        if (categorySubjects[cat]) {
+          const hitSubjects = (hit.subjects || '').split(',').map(s => s.trim().toLowerCase());
+          const hasMatch = categorySubjects[cat].some(childSubject =>
+            hitSubjects.includes(childSubject)
+          );
+          if (!hasMatch) return false;
+        } else {
+          // Fallback: direct subject match (for dropdown compatibility)
+          const subjects = (hit.subjects || '').split(',').map(s => s.trim().toLowerCase());
+          if (!subjects.includes(cat.toLowerCase())) return false;
+        }
       }
       // Date filter (reset to start of day to include papers from today)
-      // V2 TODO: Use pre-computed timestamp field instead of Date.parse
       if (dateRange && dateDays[dateRange] !== undefined) {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - dateDays[dateRange]);
@@ -248,109 +220,9 @@ function searchSubject(subject) {
       // Newest first (explicit selection or fallback for no-query relevance)
       filtered.sort((a, b) => toTimestamp(b) - toTimestamp(a) || String(a.id || '').localeCompare(String(b.id || '')));
     }
-    // V2 TODO: Add console.timeEnd('filter') here
-
-    // V1: Limit to 100 results - renders instantly
-    // V2 TODO: Replace with progressive rendering (slice(0, 200) + "Load More" button)
-    filtered = filtered.slice(0, 100);
+    filtered = filtered.slice(0, 100); // Limit results
 
     renderResults(filtered, hasQuery, hasActiveFilters);
-  }
-
-  // Update global paper count display
-  function updatePaperCount(count) {
-    const paperCountEl = document.getElementById('paperCount');
-    if (paperCountEl) {
-      paperCountEl.textContent = `Showing ${count} paper${count !== 1 ? 's' : ''}`;
-    }
-  }
-
-  /**
-   * Unified search and filter function for both category tabs and modal.
-   * @param {Object} filterState - Filter configuration
-   * @param {string} filterState.searchTerm - Search query
-   * @param {string[]} filterState.categories - Category names to filter by
-   * @param {Object} filterState.dateRange - Date range {start, end}
-   * @param {boolean} filterState.onlyFigures - Filter to papers with figures
-   * @param {string} filterState.searchField - Field to search ('all', 'title', 'author', 'abstract')
-   * @param {string} filterState.sortOrder - Sort order ('relevance', 'newest', 'oldest')
-   */
-  function searchAndRender(filterState) {
-    const searchTerm = filterState.searchTerm || '';
-
-    // Create unified filter function
-    const filterFn = (doc) => {
-      // Category check
-      if (filterState.categories?.length > 0) {
-        const docSubjects = doc.subjects_en || [];
-        if (!filterState.categories.some(cat => docSubjects.includes(cat))) {
-          return false;
-        }
-      }
-
-      // Date check - IMPORTANT: Exclude docs without dates when date filter active
-      const docDate = doc.date || doc.submission_date;
-      if (filterState.dateRange?.start || filterState.dateRange?.end) {
-        if (!docDate) return false; // Exclude if no date and date filter active
-        if (filterState.dateRange.start && docDate < filterState.dateRange.start) return false;
-        if (filterState.dateRange.end && docDate > filterState.dateRange.end) return false;
-      }
-
-      // Figure check
-      if (filterState.onlyFigures && !doc._has_translated_figures) {
-        return false;
-      }
-
-      return true;
-    };
-
-    let results;
-
-    if (searchTerm) {
-      // Apply search with integrated filtering
-      const searchFields = filterState.searchField === 'all'
-        ? ['title', 'authors', 'abstract', 'subjects_en']
-        : [filterState.searchField];
-
-      results = miniSearch.search(searchTerm, {
-        fields: searchFields,
-        fuzzy: 0.2,
-        prefix: true,
-        filter: filterFn  // Apply filters DURING search (efficient!)
-      });
-    } else {
-      // No search term, just filter
-      results = allDocs.filter(filterFn);
-    }
-
-    // Apply sorting on final results
-    const sortOrder = filterState.sortOrder || 'relevance';
-    if (sortOrder === 'newest') {
-      results.sort((a, b) => {
-        const dateA = a.date || a.submission_date || '';
-        const dateB = b.date || b.submission_date || '';
-        return dateB.localeCompare(dateA);
-      });
-    } else if (sortOrder === 'oldest') {
-      results.sort((a, b) => {
-        const dateA = a.date || a.submission_date || '';
-        const dateB = b.date || b.submission_date || '';
-        return dateA.localeCompare(dateB);
-      });
-    }
-    // 'relevance' keeps MiniSearch order
-
-    // Render results
-    renderResults(results);
-    updatePaperCount(results.length);
-
-    // Show empty state if no results
-    if (results.length === 0) {
-      const articlesContainer = document.getElementById('articles');
-      if (articlesContainer && articlesContainer.children.length === 0) {
-        articlesContainer.innerHTML = '<p class="no-results">No papers found matching your filters. Try adjusting your search criteria.</p>';
-      }
-    }
   }
 
   // Highlight search terms (using function replacement for safety)
@@ -363,68 +235,32 @@ function searchSubject(subject) {
     return escaped.replace(new RegExp(`(${pattern})`, 'gi'), (match) => '<mark>' + match + '</mark>');
   }
 
-  // ============================================================================
-  // RENDER RESULTS
-  // ============================================================================
-  // V1: Render .paper-card elements to match server-rendered format
-  // V2 TODO: When adding "Load More", split this into renderBatch() function
-  // ============================================================================
+  // Render results
   function renderResults(hits, hasQuery, hasActiveFilters) {
-    // Update global paper count
-    updatePaperCount(hits.length);
-
+    toggleArticleList(hasQuery || hasActiveFilters);
     if (!hits.length) {
       // Use filter message only when dropdown filters are active
       const msg = hasActiveFilters
         ? 'No papers match with selected filters. Try adjusting them.'
         : 'No papers found. Try different keywords.';
-      container.innerHTML = `<div class="no-results" style="padding: 40px; text-align: center; color: #777;">${msg}</div>`;
+      results.innerHTML = `<div class="res"><div>${msg}</div></div>`;
     } else {
-      // V1: Render all filtered results as .paper-card elements
-      // V2 TODO: Replace with renderBatch(hits, 0, 200) + "Load More" button
-      const count = `<div class="search-results-count" style="margin-bottom: 1rem; color: #666;">Found ${hits.length} paper${hits.length > 1 ? 's' : ''}</div>`;
-      container.innerHTML = count + hits.map(hit => createPaperCard(hit, hasQuery)).join('');
+      const count = `<div class="search-results-count">Found ${hits.length} paper${hits.length > 1 ? 's' : ''}</div>`;
+      results.innerHTML = count + hits.map(hit => `
+        <div class="res">
+          <div class="res-title"><a href="/items/${escapeHtml(hit.id)}/">${highlightTerms(hit.title || '', currentQuery)}</a></div>
+          <div class="res-meta">${escapeHtml(hit.date || '')} — ${escapeHtml(hit.authors || '')}</div>
+          <div class="res-abstract">${highlightTerms((hit.abstract || '').slice(0, 280), currentQuery)}…</div>
+        </div>`).join('');
     }
-  }
 
-  // Create a .paper-card element matching the server-rendered HTML format
-  function createPaperCard(hit, hasQuery) {
-    const title = highlightTerms(hit.title || 'Untitled', currentQuery);
-    const authors = escapeHtml(hit.authors || 'Unknown');
-    const date = formatDate(hit.date);
-    const abstract = highlightTerms((hit.abstract || '').slice(0, 300), currentQuery);
-    const abstractEllipsis = (hit.abstract || '').length > 300 ? '…' : '';
-
-    // Parse subjects (comma-separated string)
-    const subjects = (hit.subjects || '').split(',').map(s => s.trim()).filter(s => s);
-    const subjectTags = subjects.slice(0, 3).map(s =>
-      `<span class="subject-tag" data-subject="${escapeHtml(s)}">${escapeHtml(s)}</span>`
-    ).join('');
-
-    // PDF link if available (validate protocol to prevent XSS)
-    const pdfLink = hit.pdf_url && (hit.pdf_url.startsWith('http://') || hit.pdf_url.startsWith('https://'))
-      ? `<a href="${escapeHtml(hit.pdf_url)}" class="btn-sm">PDF</a>`
-      : '';
-
-    return `
-      <article class="paper-card">
-        <h3 class="paper-title">
-          <a href="/items/${hit.id}/" title="Abstract">${title}</a>
-        </h3>
-        <div class="paper-meta-row">
-          <span class="paper-authors">${authors}</span>
-        </div>
-        <div class="paper-meta-row secondary">
-          <span class="paper-date">${date}</span>
-          <span class="paper-id">ChinaXiv:${hit.id}</span>
-          ${subjectTags ? `<span class="paper-subjects">${subjectTags}</span>` : ''}
-          <div class="paper-links">
-            <a href="/items/${hit.id}/" class="btn-sm">Abstract</a>
-            ${pdfLink}
-          </div>
-        </div>
-        <p class="paper-abstract">${abstract}${abstractEllipsis}</p>
-      </article>`;
+    // Update paper count
+    const paperCountEl = document.getElementById('paperCount');
+    if (paperCountEl) {
+      const shown = hits.length;
+      const plural = shown !== 1 ? 's' : '';
+      paperCountEl.textContent = `Showing ${shown} paper${plural}`;
+    }
   }
 
   function performSearch(query) {
@@ -438,10 +274,7 @@ function searchSubject(subject) {
       applyFiltersAndRender();
       return;
     }
-    if (!miniSearch) {
-      showLoadingMessage();
-      return;
-    }
+    if (!miniSearch) { results.innerHTML = '<div class="res search-loading"><div>Loading search index...</div></div>'; return; }
     lastSearchResults = miniSearch.search(currentQuery, { limit: 100 });
     applyFiltersAndRender();
   }
@@ -449,109 +282,151 @@ function searchSubject(subject) {
   let timer = null;
   input.addEventListener('input', () => {
     clearTimeout(timer);
-    const searchTerm = input.value.trim();
-
-    // Update global filter state with current search term
-    globalFilterState.searchTerm = searchTerm;
-
-    if (!searchTerm) {
-      // Clear search immediately
-      searchAndRender(globalFilterState);
+    if (!input.value.trim()) {
+      currentQuery = '';
+      lastSearchResults = [];
+      applyFiltersAndRender();
       return;
     }
-
-    // Debounce search for performance (120ms is fast enough for current dataset)
-    timer = setTimeout(() => {
-      globalFilterState.searchTerm = searchTerm;
-      searchAndRender(globalFilterState);
-    }, 120);
+    timer = setTimeout(() => performSearch(input.value), 120);
   });
 
-  // ============================================================================
-  // EVENT LISTENERS
-  // ============================================================================
-  // V1: Instant filtering on all changes (fast enough for small datasets)
-  // V2 TODO: Add debouncing to search input (increase timer from 120ms to 200ms)
-  // ============================================================================
-
-  // Subject navigation pills - sync with category dropdown
-  const subjectNav = document.querySelector('.subject-nav');
-  if (subjectNav) {
-    subjectNav.addEventListener('click', (e) => {
-      const pill = e.target.closest('.subject-nav-pill[data-subject]');
-      if (!pill) return;
-
-      // Update active state
-      subjectNav.querySelectorAll('.subject-nav-pill').forEach(p => {
-        p.classList.remove('active');
-      });
-      pill.classList.add('active');
-
-      // Sync dropdown
-      const subject = pill.dataset.subject;
-      if (categoryFilter) {
-        categoryFilter.value = subject;
-      }
-
-      // Filter immediately (V1 is fast enough)
-      applyFiltersAndRender();
-    });
-  }
-
-  // Category dropdown - sync with pills
-  if (categoryFilter) {
-    categoryFilter.addEventListener('change', () => {
-      const subject = categoryFilter.value;
-
-      // Sync pill highlighting
-      if (subjectNav) {
-        subjectNav.querySelectorAll('.subject-nav-pill').forEach(p => {
-          p.classList.toggle('active', p.dataset.subject === subject);
-        });
-      }
-
-      applyFiltersAndRender();
-    });
-  }
-
+  if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndRender);
   if (dateFilter) dateFilter.addEventListener('change', applyFiltersAndRender);
   if (sortOrder) sortOrder.addEventListener('change', () => { userChangedSort = true; applyFiltersAndRender(); });
   if (figuresFilter) figuresFilter.addEventListener('change', applyFiltersAndRender);
-  if (searchBtn) searchBtn.addEventListener('click', () => {
-    globalFilterState.searchTerm = input.value.trim();
-    searchAndRender(globalFilterState);
+  if (searchBtn) searchBtn.addEventListener('click', () => performSearch(input.value));
+
+  // Category tab click handlers
+  // URL state strategy:
+  // - Category: ?category=ai_computing
+  // - Future: ?category=physics&date=30d&figures=true
+  // - Uses URLSearchParams for safe query string handling
+  // - Shareable links restore filter state on page load
+  const categoryTabs = document.querySelectorAll('.category-tab');
+  categoryTabs.forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      e.preventDefault();
+
+      // Update active tab styling
+      categoryTabs.forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
+
+      // Set current category and trigger filter
+      const category = tab.dataset.category || '';
+      currentCategory = category;
+
+      // Update URL without page reload
+      const url = new URL(window.location);
+      if (category) {
+        url.searchParams.set('category', category);
+      } else {
+        url.searchParams.delete('category');
+      }
+      window.history.pushState({}, '', url);
+
+      // Clear search and apply category filter
+      currentQuery = '';
+      lastSearchResults = [];
+      if (input) input.value = '';
+      applyFiltersAndRender();
+    });
   });
+
+  // Initialize category from URL on page load
+  const urlCategory = new URLSearchParams(window.location.search).get('category');
+  if (urlCategory) {
+    currentCategory = urlCategory;
+    // Update tab UI to match URL
+    categoryTabs.forEach(tab => {
+      if (tab.dataset.category === urlCategory) {
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+      } else {
+        tab.classList.remove('active');
+        tab.setAttribute('aria-selected', 'false');
+      }
+    });
+    // Actually apply the filter to show filtered papers
+    applyFiltersAndRender();
+  }
+
+  // Handle browser back/forward buttons
+  window.addEventListener('popstate', () => {
+    const urlCategory = new URLSearchParams(window.location.search).get('category') || '';
+    currentCategory = urlCategory;
+
+    // Update tab UI
+    categoryTabs.forEach(tab => {
+      if (tab.dataset.category === urlCategory) {
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+      } else {
+        tab.classList.remove('active');
+        tab.setAttribute('aria-selected', 'false');
+      }
+    });
+
+    applyFiltersAndRender();
+  });
+
+  // TODO: Advanced filters integration
+  // The advanced filters modal (src/templates/index.html:113-233) contains:
+  // - Field-specific search (title/author/abstract)
+  // - Sort order options (relevance/newest/oldest)
+  // - Date range filters (7d/30d/90d/1y)
+  // - Category accordion (hierarchical category tree)
+  // - Figures-only filter
+  //
+  // Integration approach:
+  // 1. Wire up modal open/close handlers (advancedSearchBtn, modalClose)
+  // 2. Sync modal state with current filters (currentCategory, dateFilter, etc.)
+  // 3. Apply modal filters via applyFiltersAndRender()
+  // 4. Update filter indicator pills (filterIndicators div)
+  // See TODO.md for detailed implementation plan
+
+  // Advanced Search Modal
+  const advancedSearchBtn = document.getElementById('advancedSearchBtn');
+  const modalOverlay = document.getElementById('modalOverlay');
+  const modalClose = document.getElementById('modalClose');
+
+  if (advancedSearchBtn && modalOverlay && modalClose) {
+    // Open modal
+    advancedSearchBtn.addEventListener('click', () => {
+      modalOverlay.style.display = 'flex';
+    });
+
+    // Close modal
+    modalClose.addEventListener('click', () => {
+      modalOverlay.style.display = 'none';
+    });
+
+    // Close on overlay click
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) {
+        modalOverlay.style.display = 'none';
+      }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modalOverlay.style.display === 'flex') {
+        modalOverlay.style.display = 'none';
+      }
+    });
+  }
 
   function escapeHtml(s) {
     return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  // Format date like Jinja's human_date filter (e.g., "Jan 15, 2024")
-  function formatDate(dateStr) {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr;  // Return original if invalid
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
-  }
-
-  // Restore server-rendered articles (called when no filters/search active)
-  function restoreServerRenderedArticles() {
-    // V1: Restore cached server-rendered HTML to show default newest-first list
-    container.innerHTML = initialHTML;
-    // V2 TODO: If implementing "Load More", may need to update pagination state here
-  }
-
-  // Show loading message
-  function showLoadingMessage() {
-    container.innerHTML = '<div class="loading-message" style="padding: 40px; text-align: center; color: #777;">Loading search index...</div>';
-  }
-
-  // Show error message
-  function showErrorMessage(msg) {
-    console.error(msg);
-    // Show toast notification instead of replacing container content
-    showToast(msg);
+  function toggleArticleList(hide) {
+    if (!articleList) return;
+    articleList.style.display = hide ? 'none' : '';
   }
 })();
 
@@ -667,529 +542,3 @@ function showToast(message) {
 function showCopyFeedback() {
   showToast('Copied!');
 }
-
-// ============================================================================
-// ADVANCED SEARCH MODAL CONTROLS
-// ============================================================================
-// Modal overlay and advanced filter functionality
-// Integrated from recovered mockup (mockups-v3.html)
-// ============================================================================
-
-(() => {
-  // Modal controls
-  const modalOverlay = document.getElementById('modalOverlay');
-  const advancedSearchBtn = document.getElementById('advancedSearchBtn');
-  const modalClose = document.getElementById('modalClose');
-  const applyFiltersBtn = document.getElementById('applyFiltersBtn');
-  const clearAllBtn = document.getElementById('clearAllBtn');
-
-  // Filter indicators
-  const filterIndicators = document.getElementById('filterIndicators');
-  const filterBadge = document.getElementById('filterBadge');
-
-  // Form inputs
-  const modalSearchInput = document.getElementById('modalSearchInput');
-  const searchInput = document.getElementById('search-input');
-  const startDate = document.getElementById('startDate');
-  const endDate = document.getElementById('endDate');
-
-  // Guard: Only run if modal elements exist
-  if (!modalOverlay || !advancedSearchBtn) return;
-
-  // Open modal
-  advancedSearchBtn.addEventListener('click', () => {
-    modalOverlay.classList.add('active');
-    // Sync search input value from main search
-    if (modalSearchInput && searchInput) {
-      modalSearchInput.value = searchInput.value;
-    }
-  });
-
-  // Close modal
-  if (modalClose) {
-    modalClose.addEventListener('click', () => {
-      modalOverlay.classList.remove('active');
-    });
-  }
-
-  // Close on overlay click
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) {
-      modalOverlay.classList.remove('active');
-    }
-  });
-
-  // Close on Escape key
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modalOverlay.classList.contains('active')) {
-      modalOverlay.classList.remove('active');
-    }
-  });
-
-  // Apply filters
-  if (applyFiltersBtn) {
-    applyFiltersBtn.addEventListener('click', () => {
-      let activeFilters = 0;
-      const filterPillsHTML = [];
-
-      // Sync search term from modal to main input
-      if (modalSearchInput && searchInput) {
-        searchInput.value = modalSearchInput.value;
-        // Trigger search update
-        searchInput.dispatchEvent(new Event('input'));
-      }
-
-      // Check sort order
-      const selectedSort = document.querySelector('input[name="sortOrder"]:checked');
-      if (selectedSort && selectedSort.value !== 'relevance') {
-        const sortLabels = {
-          newest: 'Newest first',
-          oldest: 'Oldest first'
-        };
-        filterPillsHTML.push(`
-          <div class="filter-indicator" data-filter-type="sort">
-            Sort: ${sortLabels[selectedSort.value]} <span class="close-btn">×</span>
-          </div>
-        `);
-        activeFilters++;
-      }
-
-      // Check date range
-      if (startDate && endDate && (startDate.value || endDate.value)) {
-        let dateText = '';
-        if (startDate.value && endDate.value) {
-          dateText = `Date: ${startDate.value} to ${endDate.value}`;
-        } else if (startDate.value) {
-          dateText = `After: ${startDate.value}`;
-        } else {
-          dateText = `Before: ${endDate.value}`;
-        }
-        filterPillsHTML.push(`
-          <div class="filter-indicator" data-filter-type="date">
-            ${dateText} <span class="close-btn">×</span>
-          </div>
-        `);
-        activeFilters++;
-      }
-
-      // Check field-specific search
-      const selectedField = document.querySelector('input[name="searchField"]:checked');
-      if (selectedField && selectedField.value !== 'all') {
-        const fieldLabels = {
-          title: 'Title only',
-          author: 'Author only',
-          abstract: 'Abstract only'
-        };
-        filterPillsHTML.push(`
-          <div class="filter-indicator" data-filter-type="field">
-            ${fieldLabels[selectedField.value]} <span class="close-btn">×</span>
-          </div>
-        `);
-        activeFilters++;
-      }
-
-      // Check "only papers with figures" filter
-      const onlyFigures = document.getElementById('onlyFigures');
-      if (onlyFigures && onlyFigures.checked) {
-        filterPillsHTML.push(`
-          <div class="filter-indicator" data-filter-type="figures">
-            Papers with figures <span class="close-btn">×</span>
-          </div>
-        `);
-        activeFilters++;
-      }
-
-      // Check category selections from accordion
-      const selectedCategories = document.querySelectorAll('input[name="category"]:checked');
-      if (selectedCategories.length > 0) {
-        const categoryNames = Array.from(selectedCategories).map(cb => cb.value).join(', ');
-        const displayText = selectedCategories.length > 3
-          ? `${selectedCategories.length} categories selected`
-          : categoryNames;
-        filterPillsHTML.push(`
-          <div class="filter-indicator" data-filter-type="categories">
-            ${displayText} <span class="close-btn">×</span>
-          </div>
-        `);
-        activeFilters++;
-      }
-
-      // Render filter pills
-      if (filterIndicators) {
-        if (activeFilters > 0) {
-          filterIndicators.innerHTML = filterPillsHTML.join('');
-          filterIndicators.style.display = 'flex';
-        } else {
-          filterIndicators.innerHTML = '';
-          filterIndicators.style.display = 'none';
-        }
-      }
-
-      // Update badge count
-      if (filterBadge) {
-        if (activeFilters > 0) {
-          filterBadge.textContent = activeFilters;
-          filterBadge.style.display = 'inline-block';
-        } else {
-          filterBadge.style.display = 'none';
-        }
-      }
-
-      // Update global filter state from modal inputs
-      globalFilterState.searchTerm = searchInput ? searchInput.value.trim() : '';
-      globalFilterState.sortOrder = selectedSort ? selectedSort.value : 'relevance';
-      globalFilterState.dateRange = {
-        start: startDate ? startDate.value : '',
-        end: endDate ? endDate.value : ''
-      };
-      globalFilterState.searchField = selectedField ? selectedField.value : 'all';
-      globalFilterState.onlyFigures = onlyFigures ? onlyFigures.checked : false;
-      globalFilterState.categories = Array.from(selectedCategories).map(cb => cb.value);
-
-      // Apply unified filter state
-      searchAndRender(globalFilterState);
-
-      // Close modal
-      modalOverlay.classList.remove('active');
-
-      // Return focus to trigger button for accessibility
-      const modalTriggerBtn = document.getElementById('advancedSearchBtn');
-      if (modalTriggerBtn) {
-        modalTriggerBtn.focus();
-      }
-    });
-  }
-
-  // Clear all filters
-  if (clearAllBtn) {
-    clearAllBtn.addEventListener('click', () => {
-      // Reset form
-      if (modalSearchInput) modalSearchInput.value = '';
-
-      const allFields = document.getElementById('allFields');
-      if (allFields) allFields.checked = true;
-
-      const sortRelevance = document.getElementById('sortRelevance');
-      if (sortRelevance) sortRelevance.checked = true;
-
-      if (startDate) startDate.value = '';
-      if (endDate) endDate.value = '';
-
-      const onlyFigures = document.getElementById('onlyFigures');
-      if (onlyFigures) onlyFigures.checked = false;
-
-      // Clear all checkboxes in modal
-      document.querySelectorAll('.modal .checkbox-group input[type="checkbox"]').forEach(cb => {
-        cb.checked = false;
-      });
-
-      // Clear category accordion checkboxes
-      document.querySelectorAll('input[name="category"]:checked').forEach(cb => {
-        cb.checked = false;
-      });
-
-      // Clear category filter text
-      const categoryFilter = document.getElementById('categoryFilter');
-      if (categoryFilter) categoryFilter.value = '';
-
-      // Update category accordion counts
-      if (window.categoryAccordion) {
-        window.categoryAccordion.groups.forEach(group => {
-          window.categoryAccordion.updateGroupCount(group);
-        });
-        window.categoryAccordion.updateSummary();
-      }
-
-      // Hide indicators
-      if (filterIndicators) {
-        filterIndicators.innerHTML = '';
-        filterIndicators.style.display = 'none';
-      }
-      if (filterBadge) {
-        filterBadge.style.display = 'none';
-      }
-
-      // Note: Modal stays open so user can continue editing or apply cleared state
-    });
-  }
-
-  // Remove individual filter pills on close button click
-  document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('close-btn') && e.target.closest('.filter-indicator')) {
-      const pill = e.target.closest('.filter-indicator');
-      const filterType = pill.dataset.filterType;
-
-      // Clear the corresponding filter in the modal
-      if (filterType === 'sort') {
-        const sortRelevance = document.getElementById('sortRelevance');
-        if (sortRelevance) sortRelevance.checked = true;
-      } else if (filterType === 'date') {
-        if (startDate) startDate.value = '';
-        if (endDate) endDate.value = '';
-      } else if (filterType === 'field') {
-        const allFields = document.getElementById('allFields');
-        if (allFields) allFields.checked = true;
-      } else if (filterType === 'figures') {
-        const onlyFigures = document.getElementById('onlyFigures');
-        if (onlyFigures) onlyFigures.checked = false;
-      } else if (filterType === 'categories') {
-        document.querySelectorAll('input[name="category"]:checked').forEach(cb => {
-          cb.checked = false;
-        });
-        if (window.categoryAccordion) {
-          window.categoryAccordion.groups.forEach(group => {
-            window.categoryAccordion.updateGroupCount(group);
-          });
-          window.categoryAccordion.updateSummary();
-        }
-      }
-
-      // Remove the pill
-      pill.remove();
-
-      // Update badge count
-      const remainingPills = document.querySelectorAll('.filter-indicator').length;
-      if (filterBadge) {
-        if (remainingPills === 0) {
-          if (filterIndicators) filterIndicators.style.display = 'none';
-          filterBadge.style.display = 'none';
-        } else {
-          filterBadge.textContent = remainingPills;
-        }
-      }
-
-      // TODO: Re-apply filters to update results
-    }
-  });
-
-  // Category tab filtering (unified with modal filtering)
-  const categoryTabs = document.querySelectorAll('.category-tab');
-  categoryTabs.forEach(tab => {
-    tab.addEventListener('click', function() {
-      const categoryId = this.getAttribute('data-category');
-
-      // Update active state + ARIA
-      categoryTabs.forEach(t => {
-        t.classList.remove('active');
-        t.setAttribute('aria-selected', 'false');
-      });
-      this.classList.add('active');
-      this.setAttribute('aria-selected', 'true');
-
-      // Get child categories for this top-level category
-      const childCategories = categoryId
-        ? (window.categoryTaxonomy?.[categoryId]?.children.map(c => c.name) || [])
-        : null;
-
-      // Update only the categories in global state, preserve other filters
-      globalFilterState.categories = childCategories;
-
-      // Update search term if changed (sync with search input)
-      const searchTerm = searchInput ? searchInput.value.trim() : '';
-      globalFilterState.searchTerm = searchTerm;
-
-      // Apply unified filter state (preserves date range, figures filter, sort order, etc.)
-      searchAndRender(globalFilterState);
-    });
-  });
-})();
-
-// ============================================================================
-// CATEGORY ACCORDION (for modal's detailed categories section)
-// ============================================================================
-
-// Debounce helper function
-function debounce(func, wait) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
-
-// Category accordion class
-class CategoryAccordion {
-  constructor(container) {
-    this.container = container;
-    this.filterInput = document.getElementById('categoryFilter');
-    this.groups = document.querySelectorAll('.category-group');
-    this.summaryCount = document.querySelector('.summary-count');
-    this.clearCategoriesBtn = document.querySelector('.clear-categories');
-    this.collapseAllBtn = document.querySelector('.collapse-all-categories');
-
-    this.bindEvents();
-    this.updateSummary();
-  }
-
-  bindEvents() {
-    // Accordion toggle
-    this.groups.forEach(group => {
-      const header = group.querySelector('.category-group-header');
-      if (header) {
-        header.addEventListener('click', () => this.toggleGroup(group));
-      }
-    });
-
-    // Search filter with debounce
-    if (this.filterInput) {
-      this.filterInput.addEventListener('input', debounce(() => this.filterCategories(), 150));
-    }
-
-    // Checkbox changes
-    this.container.addEventListener('change', (e) => {
-      if (e.target.type === 'checkbox' && e.target.name === 'category') {
-        this.updateGroupCount(e.target.closest('.category-group'));
-        this.updateSummary();
-      }
-    });
-
-    // Clear all categories
-    if (this.clearCategoriesBtn) {
-      this.clearCategoriesBtn.addEventListener('click', () => this.clearAll());
-    }
-
-    // Collapse all categories
-    if (this.collapseAllBtn) {
-      this.collapseAllBtn.addEventListener('click', () => this.collapseAll());
-    }
-  }
-
-  toggleGroup(group) {
-    const header = group.querySelector('.category-group-header');
-    const content = group.querySelector('.category-group-content');
-    if (!header || !content) return;
-
-    const isExpanded = header.getAttribute('aria-expanded') === 'true';
-    header.setAttribute('aria-expanded', !isExpanded);
-    content.hidden = isExpanded;
-
-    // Toggle .active class for caret rotation
-    if (isExpanded) {
-      group.classList.remove('active');
-    } else {
-      group.classList.add('active');
-    }
-  }
-
-  filterCategories() {
-    const query = this.filterInput.value.toLowerCase().trim();
-
-    if (!query) {
-      // Show all, collapse all groups
-      this.groups.forEach(group => {
-        group.hidden = false;
-        const content = group.querySelector('.category-group-content');
-        const header = group.querySelector('.category-group-header');
-        if (content) content.hidden = true;
-        if (header) header.setAttribute('aria-expanded', 'false');
-      });
-      return;
-    }
-
-    this.groups.forEach(group => {
-      const items = group.querySelectorAll('.category-item');
-      let hasMatch = false;
-
-      items.forEach(item => {
-        const text = item.textContent.toLowerCase();
-        const matches = text.includes(query);
-        item.hidden = !matches;
-        if (matches) hasMatch = true;
-      });
-
-      // Hide group if no matches, expand if has matches
-      group.hidden = !hasMatch;
-      if (hasMatch) {
-        const content = group.querySelector('.category-group-content');
-        const header = group.querySelector('.category-group-header');
-        if (content) content.hidden = false;
-        if (header) header.setAttribute('aria-expanded', 'true');
-      }
-    });
-  }
-
-  updateGroupCount(group) {
-    if (!group) return;
-    const checked = group.querySelectorAll('input[name="category"]:checked').length;
-    const countEl = group.querySelector('.count');
-    if (countEl) {
-      countEl.textContent = checked ? `${checked} selected` : '0 selected';
-      countEl.classList.toggle('has-selected', checked > 0);
-    }
-  }
-
-  updateSummary() {
-    const total = document.querySelectorAll('input[name="category"]:checked').length;
-    if (this.summaryCount) {
-      this.summaryCount.textContent = total > 0 ? ` - ${total} selected` : '';
-    }
-  }
-
-  clearAll() {
-    document.querySelectorAll('input[name="category"]:checked').forEach(cb => {
-      cb.checked = false;
-    });
-    this.groups.forEach(group => this.updateGroupCount(group));
-    this.updateSummary();
-  }
-
-  collapseAll() {
-    this.groups.forEach(group => {
-      const header = group.querySelector('.category-group-header');
-      const content = group.querySelector('.category-group-content');
-      if (header) header.setAttribute('aria-expanded', 'false');
-      if (content) content.hidden = true;
-    });
-  }
-}
-
-/**
- * Populate category accordion from window.categoryTaxonomy (hierarchical structure)
- */
-function populateCategoryAccordion() {
-  const container = document.getElementById('categoryAccordion');
-  if (!container || !window.categoryTaxonomy || Object.keys(window.categoryTaxonomy).length === 0) {
-    console.warn('No category data available for accordion');
-    return;
-  }
-
-  // Sort by order
-  const sortedCategories = Object.entries(window.categoryTaxonomy)
-    .sort((a, b) => a[1].order - b[1].order);
-
-  // Build HTML for hierarchical categories
-  const html = sortedCategories.map(([id, category]) => `
-    <div class="category-group active">
-      <div class="category-group-header">
-        <span class="category-group-toggle">▼</span>
-        <span class="category-group-name">${category.label} (${category.count})</span>
-      </div>
-      <div class="category-group-content">
-        ${category.children.map(child => `
-          <div class="category-item">
-            <input type="checkbox" name="category" id="cat-${child.name.replace(/\s+/g, '-')}" value="${child.name}">
-            <label for="cat-${child.name.replace(/\s+/g, '-')}">
-              ${child.name}
-              <span class="category-item-count">(${child.count})</span>
-            </label>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `).join('');
-
-  container.innerHTML = html;
-}
-
-// Populate and initialize category accordion (if modal exists on this page)
-(() => {
-  populateCategoryAccordion();
-  const categorySection = document.querySelector('.category-section');
-  if (categorySection) {
-    window.categoryAccordion = new CategoryAccordion(categorySection);
-  }
-})();
