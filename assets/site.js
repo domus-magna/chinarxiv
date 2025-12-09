@@ -85,19 +85,21 @@ function setFilterState(updates) {
     filterState.category = updates.category;
   }
   if (updates.hasOwnProperty('dateFrom')) {
-    // Validate: must be Date object or null
-    if (updates.dateFrom === null || updates.dateFrom instanceof Date) {
+    // Validate: must be Date object or null, AND must be valid (not NaN)
+    if (updates.dateFrom === null ||
+        (updates.dateFrom instanceof Date && !isNaN(updates.dateFrom.getTime()))) {
       filterState.dateFrom = updates.dateFrom;
     } else {
-      console.warn('[Filter] Invalid dateFrom type:', typeof updates.dateFrom);
+      console.warn('[Filter] Invalid dateFrom:', updates.dateFrom);
     }
   }
   if (updates.hasOwnProperty('dateTo')) {
-    // Validate: must be Date object or null
-    if (updates.dateTo === null || updates.dateTo instanceof Date) {
+    // Validate: must be Date object or null, AND must be valid (not NaN)
+    if (updates.dateTo === null ||
+        (updates.dateTo instanceof Date && !isNaN(updates.dateTo.getTime()))) {
       filterState.dateTo = updates.dateTo;
     } else {
-      console.warn('[Filter] Invalid dateTo type:', typeof updates.dateTo);
+      console.warn('[Filter] Invalid dateTo:', updates.dateTo);
     }
   }
 }
