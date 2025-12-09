@@ -248,8 +248,8 @@ function searchSubject(subject) {
       const count = `<div class="search-results-count">Found ${hits.length} paper${hits.length > 1 ? 's' : ''}</div>`;
       results.innerHTML = count + hits.map(hit => `
         <div class="res">
-          <div class="res-title"><a href="/items/${hit.id}/">${highlightTerms(hit.title || '', currentQuery)}</a></div>
-          <div class="res-meta">${hit.date || ''} — ${escapeHtml(hit.authors || '')}</div>
+          <div class="res-title"><a href="/items/${escapeHtml(hit.id)}/">${highlightTerms(hit.title || '', currentQuery)}</a></div>
+          <div class="res-meta">${escapeHtml(hit.date || '')} — ${escapeHtml(hit.authors || '')}</div>
           <div class="res-abstract">${highlightTerms((hit.abstract || '').slice(0, 280), currentQuery)}…</div>
         </div>`).join('');
     }
@@ -351,6 +351,8 @@ function searchSubject(subject) {
         tab.setAttribute('aria-selected', 'false');
       }
     });
+    // Actually apply the filter to show filtered papers
+    applyFiltersAndRender();
   }
 
   // Handle browser back/forward buttons
