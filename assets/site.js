@@ -136,10 +136,6 @@ function resetFilterState() {
   // Date filter: days ago lookup (relative to today)
   const dateDays = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
 
-  // URL search parameter
-  const urlQuery = new URLSearchParams(window.location.search).get('q');
-  if (urlQuery) input.value = urlQuery;
-
   // Event delegation for subject tag clicks (prevents XSS from inline onclick)
   // Listen on both articleList (server-rendered) and results (search-rendered)
   [articleList, results].filter(Boolean).forEach(container => {
@@ -171,15 +167,9 @@ function resetFilterState() {
     indexLoadState = 'success';
     allDocs = data;
     initMiniSearch(data);
-    // Handle any pending query or filter state
-    if (currentQuery) {
-      performSearch(currentQuery);
-    } else if (urlQuery) {
-      performSearch(urlQuery);
-    } else {
-      // Always re-render to handle any filter/sort changes made while loading
-      applyFilters();
-    }
+
+    // PHASE 6: Initialize from URL (handles all filter params)
+    initFromURL();
   }
 
   // Handle index load failure
@@ -344,38 +334,81 @@ function resetFilterState() {
     }
   }
 
-  // PHASE 5: Centralized URL state management
+  // PHASE 6: Initialize filter state from URL parameters
+  // Parses URL and updates filterState, currentQuery, currentCategory, and UI
+  function initFromURL({ skipPushState = false } = {}) {
+    const params = new URLSearchParams(window.location.search);
+
+    // Parse query parameter
+    const query = params.get('q') || '';
+    if (query) {
+      if (input) input.value = query;
+      currentQuery = query;
+      setFilterState({ query });
+    }
+
+    // Parse category parameter
+    const category = params.get('category') || '';
+    setFilterState({ category });
+    currentCategory = category;
+
+    // Parse date range parameters
+    const dateFrom = normalizeDate(params.get('from'));
+    const dateTo = normalizeDate(params.get('to'));
+    setFilterState({ dateFrom, dateTo });
+
+    // Update category tab UI
+    const categoryTabs = document.querySelectorAll('.category-tab');
+    categoryTabs.forEach(tab => {
+      if (tab.dataset.category === category) {
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+      } else {
+        tab.classList.remove('active');
+        tab.setAttribute('aria-selected', 'false');
+      }
+    });
+
+    // Apply filters (with skipPushState to prevent loop in popstate)
+    if (query) {
+      performSearch(query);
+    } else {
+      applyFilters({ skipPushState });
+    }
+  }
+
+  // PHASE 5/6: Centralized URL state management
+  // PHASE 6 FIX: Gate pushState to prevent history spam (only push if state changed)
   function updateURL() {
     const url = new URL(window.location);
 
-    // Query parameter
+    // Build new URL params from filterState
+    const newParams = new URLSearchParams();
+
     if (filterState.query) {
-      url.searchParams.set('q', filterState.query);
-    } else {
-      url.searchParams.delete('q');
+      newParams.set('q', filterState.query);
     }
 
-    // Category parameter
     if (filterState.category) {
-      url.searchParams.set('category', filterState.category);
-    } else {
-      url.searchParams.delete('category');
+      newParams.set('category', filterState.category);
     }
 
-    // Date range parameters (ISO format for bookmarkability)
     if (filterState.dateFrom) {
-      url.searchParams.set('from', filterState.dateFrom.toISOString().split('T')[0]);
-    } else {
-      url.searchParams.delete('from');
+      newParams.set('from', filterState.dateFrom.toISOString().split('T')[0]);
     }
 
     if (filterState.dateTo) {
-      url.searchParams.set('to', filterState.dateTo.toISOString().split('T')[0]);
-    } else {
-      url.searchParams.delete('to');
+      newParams.set('to', filterState.dateTo.toISOString().split('T')[0]);
     }
 
-    window.history.pushState({}, '', url);
+    // PHASE 6 FIX: Only push if URL actually changed (prevents history spam)
+    const newSearch = newParams.toString();
+    const currentSearch = window.location.search.slice(1); // Remove leading '?'
+
+    if (newSearch !== currentSearch) {
+      url.search = newSearch;
+      window.history.pushState({}, '', url);
+    }
   }
 
   // Highlight search terms (using function replacement for safety)
@@ -424,7 +457,8 @@ function resetFilterState() {
       const titleDiv = document.createElement('div');
       titleDiv.className = 'res-title';
       const link = document.createElement('a');
-      link.href = `/items/${escapeHtml(hit.id)}/`;
+      // PHASE 6 FIX: Use encodeURIComponent for URL paths (not escapeHtml)
+      link.href = `/items/${encodeURIComponent(hit.id)}/`;
       // Use innerHTML only for highlighted terms (already escaped by highlightTerms)
       link.innerHTML = highlightTerms(hit.title || '', currentQuery);
       titleDiv.appendChild(link);
@@ -454,6 +488,10 @@ function resetFilterState() {
       return;
     }
     currentQuery = (query || '').trim();
+
+    // PHASE 6 FIX: Sync query to filterState so updateURL() preserves it
+    setFilterState({ query: currentQuery });
+
     if (!currentQuery) {
       lastSearchResults = [];
       applyFilters();
@@ -519,44 +557,9 @@ function resetFilterState() {
     });
   });
 
-  // Initialize category from URL on page load
-  const urlCategory = new URLSearchParams(window.location.search).get('category');
-  if (urlCategory) {
-    setFilterState({ category: urlCategory }); // PHASE 2: Use filter state
-    currentCategory = urlCategory; // Keep for backward compat
-    // Update tab UI to match URL
-    categoryTabs.forEach(tab => {
-      if (tab.dataset.category === urlCategory) {
-        tab.classList.add('active');
-        tab.setAttribute('aria-selected', 'true');
-      } else {
-        tab.classList.remove('active');
-        tab.setAttribute('aria-selected', 'false');
-      }
-    });
-    // Actually apply the filter to show filtered papers
-    applyFilters();
-  }
-
-  // PHASE 5: Handle browser back/forward buttons with skipPushState to prevent URL loop
+  // PHASE 6: Handle browser back/forward buttons (restore all filter state from URL)
   window.addEventListener('popstate', () => {
-    const urlCategory = new URLSearchParams(window.location.search).get('category') || '';
-    setFilterState({ category: urlCategory }); // PHASE 2: Use filter state
-    currentCategory = urlCategory; // Keep for backward compat
-
-    // Update tab UI
-    categoryTabs.forEach(tab => {
-      if (tab.dataset.category === urlCategory) {
-        tab.classList.add('active');
-        tab.setAttribute('aria-selected', 'true');
-      } else {
-        tab.classList.remove('active');
-        tab.setAttribute('aria-selected', 'false');
-      }
-    });
-
-    // PHASE 5: skipPushState prevents infinite loop (popstate → pushState → popstate)
-    applyFilters({ skipPushState: true });
+    initFromURL({ skipPushState: true }); // Restore all filters, prevent URL loop
   });
 
   // TODO: Advanced filters integration
