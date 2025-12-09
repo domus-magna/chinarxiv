@@ -58,19 +58,26 @@
   </script>
 
   {# ========================================================================
-     UNIFIED CONTAINER ARCHITECTURE
+     DUAL CONTAINER ARCHITECTURE (Restored)
      ======================================================================== #}
-  {# V1: Single container for all article display
-     - No more dual-container toggle between #articles and #search-results
-     - JavaScript will filter and re-render this same container
-     - Simpler, more maintainable architecture
+  {# Container responsibilities:
+     - #articles: Server-rendered default list (hidden during search/filter)
+     - #search-results: Client-rendered filtered results (populated by JS)
+     - toggleArticleList() hides/shows #articles based on filter state
+
+     Why dual containers?
+     - Separates concerns: static SSR content vs dynamic JS rendering
+     - Preserves existing show/hide contract in assets/site.js
+     - Prevents null reference crashes when JS writes to results container
 
      V2 TODO (when dataset > 5K papers):
      - Add "Load More" button after first 200 results
      - Or implement virtual scrolling for smooth infinite scroll
-     - See project docs and assets/site.js for detailed V2 implementation notes
      ======================================================================== #}
   <div id="articles" class="article-list">
+    {# Dedicated container for search/filter results (restored for JS compatibility) #}
+    <div id="search-results" class="article-list" aria-live="polite" role="region" aria-label="Search results"></div>
+
     {% for it in items %}
       <article class="paper-card">
         <h3 class="paper-title">

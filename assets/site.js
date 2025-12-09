@@ -27,14 +27,15 @@ function searchSubject(subject) {
 
 (() => {
   const input = document.getElementById('search-input');
-  const results = document.getElementById('search-results'); // Legacy - may not exist
+  const results = document.getElementById('search-results');
   const articleList = document.getElementById('articles');
-  const categoryFilter = document.getElementById('category-filter');
-  const dateFilter = document.getElementById('date-filter');
-  const sortOrder = document.getElementById('sort-order');
-  const figuresFilter = document.getElementById('figures-filter');
+  // Removed obsolete filter element lookups - these dropdowns don't exist in current HTML:
+  // - category-filter (use currentCategory from tabs instead)
+  // - date-filter (will be implemented via modal in future)
+  // - sort-order (will be implemented via modal in future)
+  // - figures-filter (will be implemented via modal in future)
   const searchBtn = document.querySelector('.search-btn');
-  if (!input || !articleList) return; // Use articleList instead of results
+  if (!input || !results) return; // Guard against missing search elements
 
   let miniSearch = null;
   let allDocs = [];
@@ -123,28 +124,17 @@ function searchSubject(subject) {
       return;
     }
 
-    // Category: prioritize tab selection over dropdown
-    const cat = currentCategory || categoryFilter?.value || '';
-    const dateRange = dateFilter?.value || '';
-    const figuresOnly = figuresFilter?.checked || false;
+    // Category filter: only use currentCategory from tab selection
+    const cat = currentCategory || '';
     const hasQuery = Boolean(currentQuery);
 
-    // Disable "Relevance" when no query (relevance requires search terms)
-    const relevanceOpt = sortOrder?.querySelector('option[value="relevance"]');
-    if (relevanceOpt) {
-      relevanceOpt.disabled = !hasQuery;
-      // If relevance was selected and query cleared, reset to newest
-      if (!hasQuery && sortOrder?.value === 'relevance') {
-        sortOrder.value = 'newest';
-        userChangedSort = false;  // Reset so next query uses relevance ranking
-      }
-    }
-
-    // Compute sortChanged AFTER any auto-reset (fixes stale state bug)
-    const sortChanged = sortOrder?.value && sortOrder.value !== 'newest';
+    // Removed dead code for non-existent dropdown elements:
+    // - dateRange from dateFilter (not implemented yet)
+    // - figuresOnly from figuresFilter (not implemented yet)
+    // - sortOrder dropdown logic (will be implemented via modal in Phase 3)
 
     // Any filter/sort change triggers browse mode (consistent behavior)
-    const hasActiveFilters = Boolean(cat || dateRange || figuresOnly || sortChanged);
+    const hasActiveFilters = Boolean(cat);  // Only category tabs implemented for now
     const isActive = hasQuery || hasActiveFilters;
 
     // No active search/filters → show the default list
