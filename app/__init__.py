@@ -14,6 +14,7 @@ import markdown as md
 from markupsafe import Markup
 import bleach
 import logging
+from app.db_adapter import init_adapter, get_adapter, IS_POSTGRES
 
 
 def create_app(config=None):
@@ -35,9 +36,17 @@ def create_app(config=None):
     app.config['DATABASE'] = str(app_root / 'data' / 'papers.db')
     app.config['PER_PAGE'] = 50  # Papers per page for pagination
 
+    # Database URL for PostgreSQL (production) - detected from environment
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
+        app.config['DATABASE_URL'] = database_url
+
     # Override with custom config if provided
     if config:
         app.config.update(config)
+
+    # Initialize database adapter (handles SQLite vs PostgreSQL)
+    init_adapter(app.config)
 
     # Configure logging
     logging.basicConfig(
@@ -75,14 +84,17 @@ def create_app(config=None):
     @app.teardown_appcontext
     def close_db(error):
         """
-        Close database connection at end of request.
+        Release database connection at end of request.
+
+        For PostgreSQL: Returns connection to pool
+        For SQLite: Closes connection
 
         This ensures connections are properly cleaned up after each request,
         preventing resource leaks in production.
         """
         db = g.pop('db', None)
         if db is not None:
-            db.close()
+            get_adapter().release_connection(db)
 
     # Register blueprints (routes will be added in Phase 2.4)
     from . import routes
