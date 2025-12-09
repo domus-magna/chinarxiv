@@ -656,7 +656,7 @@ def build_hierarchical_categories(items: List[Dict[str, Any]], min_count: int = 
 
     # Assign final order values
     order_index = 1
-    for cid, cat in pinned_cats + unpinned_cats:
+    for cid, _cat in pinned_cats + unpinned_cats:
         hierarchical[cid]['order'] = order_index
         order_index += 1
 
