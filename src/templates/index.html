@@ -46,7 +46,7 @@
     <!-- Tabs Row - Server-side navigation -->
     <div class="tabs-row">
       <nav class="subject-nav" role="tablist" aria-label="Category filters">
-        <a href="/"
+        <a href="/?{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}&{% endif %}{% if filters.has_figures %}figures=1{% endif %}"
            class="category-tab {% if not filters.category %}active{% endif %}"
            role="tab"
            aria-selected="{% if not filters.category %}true{% else %}false{% endif %}"
@@ -54,7 +54,7 @@
           All Recent
         </a>
         {% for category_id, category in categories.items()|sort(attribute='1.order') %}
-        <a href="/?category={{ category_id }}"
+        <a href="/?category={{ category_id }}{% if filters.search %}&q={{ filters.search }}{% endif %}{% if filters.date_from %}&from={{ filters.date_from }}{% endif %}{% if filters.date_to %}&to={{ filters.date_to }}{% endif %}{% if filters.has_figures %}&figures=1{% endif %}"
            class="category-tab {% if filters.category == category_id %}active{% endif %}"
            role="tab"
            aria-selected="{% if filters.category == category_id %}true{% else %}false{% endif %}"
