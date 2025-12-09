@@ -25,6 +25,70 @@ function searchSubject(subject) {
   }
 }
 
+// ============================================================================
+// PHASE 1: FOUNDATION - Filter State & Helper Functions
+// ============================================================================
+
+// Global filter state (single source of truth)
+const filterState = {
+  query: '',              // Search term
+  category: '',           // Category ID ("" = All, or "ai_computing", "physics", etc.)
+  dateFrom: null,         // Date object or null
+  dateTo: null,           // Date object or null
+  // Future: figuresOnly, searchField, etc.
+};
+
+// Helper: Date normalization with validation (Codex fix: prevent Invalid Date bugs)
+function normalizeDate(dateStr) {
+  if (!dateStr) return null;
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) {
+    console.warn('[Filter] Invalid date:', dateStr);
+    return null;
+  }
+  return date;
+}
+
+// Helper: Subject normalization (Codex fix: case/whitespace consistency)
+function normalizeSubject(subject) {
+  return subject?.toLowerCase().trim() || '';
+}
+
+// Helper: XSS prevention - escape HTML entities
+// Note: escapeHtml() already exists at line ~423, but adding here for consistency
+function escapeHTML(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>"']/g, c => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[c]));
+}
+
+// State getter
+function getFilterState() {
+  return { ...filterState };
+}
+
+// State setter (merge updates)
+function setFilterState(updates) {
+  Object.assign(filterState, updates);
+}
+
+// State reset
+function resetFilterState() {
+  filterState.query = '';
+  filterState.category = '';
+  filterState.dateFrom = null;
+  filterState.dateTo = null;
+}
+
+// ============================================================================
+// END PHASE 1
+// ============================================================================
+
 (() => {
   const input = document.getElementById('search-input');
   const results = document.getElementById('search-results'); // Legacy - may not exist
