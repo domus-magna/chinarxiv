@@ -4,10 +4,11 @@ Database query helpers for ChinaRxiv English web server.
 This module provides functions for querying the database with
 filtering, pagination, and full-text search capabilities.
 
-Supports both SQLite (development) and PostgreSQL (production) via database adapter.
+Uses PostgreSQL with connection pooling via database adapter.
 """
 
 import logging
+import psycopg2
 from flask import g, current_app
 from .filters import get_category_subjects
 from .db_adapter import get_adapter
@@ -86,16 +87,16 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
             return [], 0
 
         needs_join = True
-        placeholders = ','.join(['?'] * len(subjects))
+        placeholders = ','.join(['%s'] * len(subjects))
         where_clauses.append(f"ps.subject IN ({placeholders})")
         params.extend(subjects)
 
     if date_from:
-        where_clauses.append("p.date >= ?")
+        where_clauses.append("p.date >= %s")
         params.append(date_from)
 
     if date_to:
-        where_clauses.append("p.date <= ?")
+        where_clauses.append("p.date <= %s")
         params.append(date_to)
 
     if has_figures:
@@ -105,16 +106,9 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         # FIX: Validate search query (Codex P2 issue)
         search = search.strip()
         if search:  # Only add search if non-empty after strip
-            OperationalError = adapter.get_exception_class()
-            try:
-                # Use database-specific full-text search (FTS5 for SQLite, tsvector for PostgreSQL)
-                fts_clause, fts_params = adapter.adapt_fts_query(search)
-                where_clauses.append(fts_clause)
-                params.extend(fts_params)
-            except OperationalError:
-                # FTS syntax error - fallback to simple LIKE (Codex P2 issue)
-                where_clauses.append("(p.title_en LIKE ? OR p.abstract_en LIKE ?)")
-                params.extend([f'%{search}%', f'%{search}%'])
+            # PostgreSQL native full-text search using tsvector
+            where_clauses.append("p.search_vector @@ plainto_tsquery('english', %s)")
+            params.append(search)
 
     where_sql = " AND ".join(where_clauses)
 
@@ -129,16 +123,12 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         count_sql = f"SELECT COUNT(*) FROM {from_clause} WHERE {where_sql}"
         select_distinct = "p.*"
 
-    # Adapt placeholders for database type (? for SQLite, %s for PostgreSQL)
-    count_sql = adapter.adapt_placeholder(count_sql)
-
     # Count total (for pagination)
-    OperationalError = adapter.get_exception_class()
     try:
         cursor = adapter.get_cursor(db)
         cursor.execute(count_sql, params)
         total = cursor.fetchone()[0]
-    except OperationalError as e:
+    except psycopg2.OperationalError as e:
         # Query error - log and return empty results (Codex P0 fix: add logging)
         logger.error(f"Database count query failed: {e}", exc_info=True, extra={
             'query': count_sql,
@@ -161,18 +151,15 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         FROM {from_clause}
         WHERE {where_sql}
         ORDER BY p.date DESC
-        LIMIT ? OFFSET ?
+        LIMIT %s OFFSET %s
     """
-
-    # Adapt placeholders for database type
-    query_sql = adapter.adapt_placeholder(query_sql)
 
     try:
         cursor = adapter.get_cursor(db)
         cursor.execute(query_sql, params + [per_page, offset])
         papers = cursor.fetchall()
         return [dict(row) for row in papers], total
-    except OperationalError as e:
+    except psycopg2.OperationalError as e:
         # Query error - log and return empty results (Codex P0 fix: add logging)
         logger.error(f"Database result query failed: {e}", exc_info=True, extra={
             'query': query_sql,
