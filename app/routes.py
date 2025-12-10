@@ -53,6 +53,9 @@ def _prepare_paper_for_template(paper):
     paper['_has_english_pdf'] = bool(paper.get('english_pdf_url'))
     paper['_english_pdf_url'] = paper.get('english_pdf_url', '')
 
+    # Map body_md to formatted_body_md for template
+    paper['formatted_body_md'] = paper.get('body_md', '')
+
     # Ensure creators fields are lists (JSONB should already parse, but be safe)
     # This prevents join() from joining characters if field is a string
 
