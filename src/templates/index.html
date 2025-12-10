@@ -83,7 +83,7 @@
       {% if filters.date_from or filters.date_to %}
       <span class="filter-pill">
         Date: {% if filters.date_from %}{{ filters.date_from }}{% else %}*{% endif %} to {% if filters.date_to %}{{ filters.date_to }}{% else %}*{% endif %}
-        <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% for subject in filters.subjects %}subjects={{ subject }}&{% endfor %}{% if filters.has_figures %}figures=1{% endif %}"
+        <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% for subject in filters.subjects %}subjects={{ subject|urlencode }}&{% endfor %}{% if filters.has_figures %}figures=1{% endif %}"
            class="filter-pill-remove"
            aria-label="Remove date filter">×</a>
       </span>
@@ -91,7 +91,7 @@
       {% if filters.has_figures %}
       <span class="filter-pill">
         Papers with figures
-        <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}&{% endif %}{% for subject in filters.subjects %}subjects={{ subject }}&{% endfor %}"
+        <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}&{% endif %}{% for subject in filters.subjects %}subjects={{ subject|urlencode }}&{% endfor %}"
            class="filter-pill-remove"
            aria-label="Remove figures filter">×</a>
       </span>
@@ -100,7 +100,7 @@
         {% for subject in filters.subjects %}
         <span class="filter-pill">
           {{ subject }}
-          <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}&{% endif %}{% if filters.has_figures %}figures=1&{% endif %}{% for s in filters.subjects if s != subject %}subjects={{ s }}&{% endfor %}"
+          <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}&{% endif %}{% if filters.has_figures %}figures=1&{% endif %}{% for s in filters.subjects if s != subject %}subjects={{ s|urlencode }}&{% endfor %}"
              class="filter-pill-remove"
              aria-label="Remove {{ subject }} filter">×</a>
         </span>
@@ -177,10 +177,14 @@
   {# ========================================================================
      ADVANCED SEARCH MODAL - Server-side form submission
      ======================================================================== #}
-  <div class="modal-overlay" id="modalOverlay">
+  <div class="modal-overlay"
+       id="modalOverlay"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="modal-title">
     <div class="modal">
       <div class="modal-header">
-        <h2 class="modal-title">Advanced Search and Filter</h2>
+        <h2 class="modal-title" id="modal-title">Advanced Search and Filter</h2>
         <button class="modal-close" id="modalClose">×</button>
       </div>
 
@@ -255,14 +259,20 @@
 
               {% for category_id, category_data in all_categories %}
               <div class="category-section">
-                <button type="button" class="category-header" data-category="{{ category_id }}">
-                  <span class="caret">▼</span>
+                <button type="button"
+                        class="category-header"
+                        data-category="{{ category_id }}"
+                        aria-expanded="false"
+                        aria-controls="category-{{ category_id }}-subjects">
+                  <span class="caret" aria-hidden="true">▼</span>
                   <span class="category-label">
                     {{ category_data.label }}
                     ({{ category_data.subjects|map(attribute='count')|sum }})
                   </span>
                 </button>
-                <div class="category-subjects-grid" data-category="{{ category_id }}">
+                <div id="category-{{ category_id }}-subjects"
+                     class="category-subjects-grid"
+                     data-category="{{ category_id }}">
                   {% for subject in category_data.subjects %}
                   <label class="subject-checkbox">
                     <input type="checkbox"
@@ -342,8 +352,12 @@
         const subjects = document.querySelector(`.category-subjects-grid[data-category="${categoryId}"]`);
 
         // Toggle collapsed class on both header and subjects
+        const isExpanded = !header.classList.contains('collapsed');
         header.classList.toggle('collapsed');
         subjects.classList.toggle('collapsed');
+
+        // Update ARIA attribute for accessibility
+        header.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
 
         // Update Collapse All button text based on current state
         updateCollapseAllButton();
@@ -363,10 +377,12 @@
             // Expand all
             header.classList.remove('collapsed');
             subjects.classList.remove('collapsed');
+            header.setAttribute('aria-expanded', 'true');
           } else {
             // Collapse all
             header.classList.add('collapsed');
             subjects.classList.add('collapsed');
+            header.setAttribute('aria-expanded', 'false');
           }
         });
 
