@@ -308,11 +308,11 @@ def generate_pdf_for_paper(
                     "url": fig.get("translated_url"),
                 })
 
-    # Track figure count for metadata
-    figure_count = len(figures)
-
     # Inject figures into body (with cap for PDF), or replace markers with placeholders
     body_md = inject_figures_into_markdown(body_md, figures, max_figures=MAX_FIGURES_PER_PDF)
+
+    # Track figure count for metadata - use capped count that actually appears in PDF
+    figure_count = min(len(figures), MAX_FIGURES_PER_PDF) if figures else 0
 
     # Build PDF content
     pdf_parts = [
