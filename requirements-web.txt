@@ -1,0 +1,18 @@
+# Minimal requirements for Flask web server (Railway deployment)
+# This file excludes heavy pipeline dependencies that aren't needed for serving
+
+# Web framework
+flask==3.0.3
+gunicorn==21.2.0
+
+# Database
+psycopg2-binary==2.9.9
+
+# Template rendering
+Jinja2==3.1.4
+markdown==3.7
+markupsafe>=2.0
+bleach==6.3.0
+
+# Utilities
+python-dotenv==1.0.1

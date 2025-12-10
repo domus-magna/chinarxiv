@@ -23,6 +23,16 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('main', __name__)
 
 
+@bp.route('/health')
+def health():
+    """
+    Health check endpoint for Railway and load balancers.
+
+    Returns 200 OK without requiring database access.
+    """
+    return jsonify({'status': 'ok'})
+
+
 def _prepare_paper_for_template(paper):
     """
     Add underscore-prefixed fields expected by templates.

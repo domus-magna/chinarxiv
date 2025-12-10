@@ -43,7 +43,13 @@ def create_app(config=None):
 
     # Initialize PostgreSQL database adapter
     # Requires DATABASE_URL environment variable (raises ValueError if missing)
-    init_adapter()
+    try:
+        init_adapter()
+        app.logger.info("Database adapter initialized successfully")
+    except Exception as e:
+        app.logger.error(f"Failed to initialize database adapter: {e}")
+        # Re-raise so the app fails visibly rather than silently
+        raise
 
     # Configure logging
     logging.basicConfig(
