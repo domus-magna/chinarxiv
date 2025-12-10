@@ -484,7 +484,7 @@ def main():
         figure_papers = set(figure_manifest.get("papers", {}).keys())
         for paper_id, pdf_info in pdf_manifest.get("papers", {}).items():
             # Paper has PDF but no figures, and figures now available
-            if not pdf_info.get("has_figures", True) and paper_id in figure_papers:
+            if not pdf_info.get("has_figures", False) and paper_id in figure_papers:
                 papers_needing_figure_update.add(paper_id)
         log(f"Found {len(papers_needing_figure_update)} PDFs needing figure update")
 

@@ -222,7 +222,6 @@ def main():
                     has_figures = meta_data.get("has_figures", False)
                     figure_count = meta_data.get("figure_count", 0)
                     generated_at = meta_data.get("generated_at", generated_at)
-                meta_files_to_cleanup.append(meta_path)
             except Exception as e:
                 log(f"  Warning: Could not read metadata: {e}")
 
@@ -236,6 +235,9 @@ def main():
                 "figure_count": figure_count,
             }
             success_count += 1
+            # Only cleanup metadata after successful upload
+            if meta_path.exists():
+                meta_files_to_cleanup.append(meta_path)
         except Exception as e:
             log(f"  ✗ Failed: {e}")
             fail_count += 1
