@@ -13,7 +13,7 @@ from calendar import monthrange
 import logging
 from psycopg2.extras import RealDictCursor
 from .database import query_papers, get_db
-from .filters import build_categories
+from .filters import build_categories, get_available_filters
 
 logger = logging.getLogger(__name__)
 
@@ -104,14 +104,19 @@ def _get_paper_query_args():
 
     Returns:
         dict: Query arguments for query_papers() including:
-            - category, date_from, date_to, search, has_figures
+            - category, date_from, date_to, search, has_figures, subjects
             - page, per_page
     """
     category = request.args.get('category', '')
     date_from = parse_date(request.args.get('from', ''))
     date_to = parse_date_end(request.args.get('to', ''))
     search = request.args.get('q', '')
-    has_figures = request.args.get('figures') == '1'
+    # Only set has_figures if the parameter is explicitly provided
+    has_figures = request.args.get('figures') == '1' if request.args.get('figures') else None
+
+    # Parse subjects parameter (can have multiple values)
+    # request.args.getlist() returns a list of all values for a given key
+    subjects = request.args.getlist('subjects')
 
     try:
         page = int(request.args.get('page', 1))
@@ -124,6 +129,7 @@ def _get_paper_query_args():
         'date_to': date_to,
         'search': search,
         'has_figures': has_figures,
+        'subjects': subjects,  # Always a list (empty or populated)
         'page': page,
         'per_page': current_app.config['PER_PAGE']
     }
@@ -148,9 +154,17 @@ def index():
     query_args = _get_paper_query_args()
     papers, total = query_papers(**query_args)
 
+    # Convert datetime objects to ISO strings for template rendering
+    for paper in papers:
+        if paper.get('date') and hasattr(paper['date'], 'isoformat'):
+            paper['date'] = paper['date'].isoformat()
+
     # Build category data with counts for the filter sidebar
     db = get_db()
     categories = build_categories(db)
+
+    # Get available filters for the Advanced Search modal
+    available_filters = get_available_filters(db)
 
     # Calculate pagination details
     per_page = query_args['per_page']
@@ -162,7 +176,8 @@ def index():
         'date_from': request.args.get('from', ''),
         'date_to': request.args.get('to', ''),
         'search': query_args['search'],
-        'has_figures': query_args['has_figures']
+        'has_figures': query_args['has_figures'],
+        'subjects': query_args.get('subjects', [])
     }
 
     return render_template('index.html',
@@ -171,10 +186,11 @@ def index():
                           page=query_args['page'],
                           total_pages=total_pages,
                           categories=categories,
+                          available_filters=available_filters,
                           filters=form_filters)
 
 
-@bp.route('/items/<paper_id>')
+@bp.route('/items/<paper_id>', strict_slashes=False)
 def paper_detail(paper_id):
     """
     Paper detail page.
@@ -198,7 +214,52 @@ def paper_detail(paper_id):
     if not paper:
         abort(404)
 
-    return render_template('item.html', item=dict(paper))
+    # Convert datetime to ISO string for template rendering
+    paper = dict(paper)
+    if paper.get('date') and hasattr(paper['date'], 'isoformat'):
+        paper['date'] = paper['date'].isoformat()
+
+    return render_template('item.html', item=paper)
+
+
+@bp.route('/sponsors')
+@bp.route('/sponsors.html')
+def sponsors():
+    """
+    Support Us / Sponsors page.
+
+    Returns:
+        Rendered sponsors.html template with translation statistics
+    """
+    # Get translation statistics from database
+    db = get_db()
+    cursor = db.cursor()
+
+    # Count papers (total and validated)
+    cursor.execute("SELECT COUNT(*) FROM papers WHERE qa_status = 'pass'")
+    text_translated = cursor.fetchone()[0]
+
+    # For now, use placeholder values for figures and costs
+    # TODO: Calculate these from actual data when figure translation is implemented
+    figures_translated = 0
+    total_papers = 50000  # Approximate total papers in ChinaXiv
+    remaining = total_papers - text_translated
+
+    # Cost estimates (placeholder values)
+    cost_text = 250.00  # Example cost for text translation
+    cost_figures = 0.00  # No figures yet
+    cost_per_paper = 0.15 if text_translated > 0 else 0
+    total_cost = remaining * cost_per_paper if remaining > 0 else 0
+
+    return render_template('sponsors.html',
+                          text_translated=text_translated,
+                          figures_translated=figures_translated,
+                          remaining=remaining,
+                          total_papers=total_papers,
+                          cost_text=cost_text,
+                          cost_figures=cost_figures,
+                          cost_per_paper=cost_per_paper,
+                          total_cost=total_cost)
 
 
 @bp.route('/api/papers')
@@ -219,6 +280,11 @@ def api_papers():
     """
     query_args = _get_paper_query_args()
     papers, total = query_papers(**query_args)
+
+    # Convert datetime objects to ISO strings for JSON serialization
+    for paper in papers:
+        if paper.get('date') and hasattr(paper['date'], 'isoformat'):
+            paper['date'] = paper['date'].isoformat()
 
     return jsonify({
         'papers': papers,

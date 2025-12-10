@@ -39,6 +39,11 @@
         {% if filters.has_figures %}
           <input type="hidden" name="figures" value="1">
         {% endif %}
+        {% if filters.subjects %}
+          {% for subject in filters.subjects %}
+            <input type="hidden" name="subjects" value="{{ subject }}">
+          {% endfor %}
+        {% endif %}
         <button type="submit" class="search-btn">Search</button>
       </form>
     </div>
@@ -67,18 +72,18 @@
       <button class="advanced-search-btn" id="advancedSearchBtn">
         <span>⚙</span>
         <span>Advanced Search & Filter</span>
-        {% set active_filter_count = (1 if filters.date_from or filters.date_to else 0) + (1 if filters.has_figures else 0) %}
+        {% set active_filter_count = (1 if filters.date_from or filters.date_to else 0) + (1 if filters.has_figures else 0) + (filters.subjects|length if filters.subjects else 0) %}
         <span class="badge" id="filterBadge" {% if active_filter_count == 0 %}style="display: none;"{% endif %}>{{ active_filter_count }}</span>
       </button>
     </div>
 
     <!-- Active Filter Indicators -->
-    {% if filters.date_from or filters.date_to or filters.has_figures %}
+    {% if filters.date_from or filters.date_to or filters.has_figures or filters.subjects %}
     <div class="filter-indicators" id="filterIndicators">
       {% if filters.date_from or filters.date_to %}
       <span class="filter-pill">
         Date: {% if filters.date_from %}{{ filters.date_from }}{% else %}*{% endif %} to {% if filters.date_to %}{{ filters.date_to }}{% else %}*{% endif %}
-        <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}{% endif %}"
+        <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% for subject in filters.subjects %}subjects={{ subject }}&{% endfor %}{% if filters.has_figures %}figures=1{% endif %}"
            class="filter-pill-remove"
            aria-label="Remove date filter">×</a>
       </span>
@@ -86,10 +91,20 @@
       {% if filters.has_figures %}
       <span class="filter-pill">
         Papers with figures
-        <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}{% endif %}"
+        <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}&{% endif %}{% for subject in filters.subjects %}subjects={{ subject }}&{% endfor %}"
            class="filter-pill-remove"
            aria-label="Remove figures filter">×</a>
       </span>
+      {% endif %}
+      {% if filters.subjects %}
+        {% for subject in filters.subjects %}
+        <span class="filter-pill">
+          {{ subject }}
+          <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}&{% endif %}{% if filters.has_figures %}figures=1&{% endif %}{% for s in filters.subjects if s != subject %}subjects={{ s }}&{% endfor %}"
+             class="filter-pill-remove"
+             aria-label="Remove {{ subject }} filter">×</a>
+        </span>
+        {% endfor %}
       {% endif %}
     </div>
     {% endif %}
@@ -98,7 +113,7 @@
   <!-- Paper count -->
   <p class="paper-count" aria-live="polite" aria-atomic="true">
     Showing {{ items|length }} of {{ total }} paper{% if total != 1 %}s{% endif %}
-    {% if filters.category %}
+    {% if filters.category and filters.category in categories %}
       in {{ categories[filters.category].label }}
     {% endif %}
   </p>
@@ -110,7 +125,7 @@
     {% for it in items %}
       <article class="paper-card">
         <h3 class="paper-title">
-          <a href="{{ root }}/items/{{ it.id }}/" title="Abstract">{{ it.title_en or it.title }}</a>
+          <a href="{{ root }}/items/{{ it.id }}" title="Abstract">{{ it.title_en or it.title }}</a>
         </h3>
         <div class="paper-meta-row">
           <span class="paper-authors">{{ ', '.join(it.creators_en if it.creators_en else ['Unknown']) }}</span>
@@ -119,7 +134,7 @@
           <span class="paper-date">{{ it.date[:10] if it.date else 'Unknown date' }}</span>
           <span class="paper-id">ChinaXiv:{{ it.id }}</span>
           <div class="paper-links">
-            <a href="{{ root }}/items/{{ it.id }}/" class="btn-sm">Abstract</a>
+            <a href="{{ root }}/items/{{ it.id }}" class="btn-sm">Abstract</a>
             {% if it.pdf_url %}
               <a href="{{ it.pdf_url }}" class="btn-sm">PDF</a>
             {% endif %}
@@ -226,8 +241,43 @@
             </div>
           </div>
 
-          <!-- Note: Category selection modal will be re-implemented in future iteration -->
-          <!-- For now, use category tabs above -->
+          <div class="modal-divider"></div>
+
+          <!-- Subject Filters -->
+          <div class="modal-section full-width">
+            <div class="modal-section-header">
+              <div class="modal-section-title">Filter by Subject</div>
+              <button type="button" class="collapse-all-btn" id="collapseAllBtn">Collapse All</button>
+            </div>
+
+            <div class="filter-categories-list">
+              {% set all_categories = available_filters.items()|sort(attribute='1.order') %}
+
+              {% for category_id, category_data in all_categories %}
+              <div class="category-section">
+                <button type="button" class="category-header" data-category="{{ category_id }}">
+                  <span class="caret">▼</span>
+                  <span class="category-label">
+                    {{ category_data.label }}
+                    ({{ category_data.subjects|map(attribute='count')|sum }})
+                  </span>
+                </button>
+                <div class="category-subjects-grid" data-category="{{ category_id }}">
+                  {% for subject in category_data.subjects %}
+                  <label class="subject-checkbox">
+                    <input type="checkbox"
+                           name="subjects"
+                           value="{{ subject.name }}"
+                           id="subject-{{ subject.name|replace(' ', '_')|replace('&', 'and') }}"
+                           {% if subject.name in filters.subjects %}checked{% endif %}>
+                    <span>{{ subject.name }} ({{ subject.count }})</span>
+                  </label>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
         </div>
 
         <div class="modal-footer">
@@ -248,19 +298,98 @@
     if (advancedSearchBtn) {
       advancedSearchBtn.addEventListener('click', () => {
         modalOverlay.style.display = 'flex';
+        // Trigger reflow to enable animation
+        requestAnimationFrame(() => {
+          modalOverlay.classList.add('modal-open');
+        });
       });
     }
 
     if (modalClose) {
       modalClose.addEventListener('click', () => {
-        modalOverlay.style.display = 'none';
+        modalOverlay.classList.remove('modal-open');
+        // Wait for animation to complete before hiding
+        setTimeout(() => {
+          if (!modalOverlay.classList.contains('modal-open')) {
+            modalOverlay.style.display = 'none';
+          }
+        }, 200);  // Match CSS transition duration (0.2s)
       });
     }
 
     if (modalOverlay) {
       modalOverlay.addEventListener('click', (e) => {
         if (e.target === modalOverlay) {
-          modalOverlay.style.display = 'none';
+          modalOverlay.classList.remove('modal-open');
+          // Wait for animation to complete before hiding
+          setTimeout(() => {
+            if (!modalOverlay.classList.contains('modal-open')) {
+              modalOverlay.style.display = 'none';
+            }
+          }, 200);  // Match CSS transition duration (0.2s)
+        }
+      });
+    }
+
+    // Category collapse/expand functionality
+    const categoryHeaders = document.querySelectorAll('.category-header');
+    const collapseAllBtn = document.getElementById('collapseAllBtn');
+
+    // Toggle individual category section
+    categoryHeaders.forEach(header => {
+      header.addEventListener('click', () => {
+        const categoryId = header.getAttribute('data-category');
+        const subjects = document.querySelector(`.category-subjects-grid[data-category="${categoryId}"]`);
+
+        // Toggle collapsed class on both header and subjects
+        header.classList.toggle('collapsed');
+        subjects.classList.toggle('collapsed');
+
+        // Update Collapse All button text based on current state
+        updateCollapseAllButton();
+      });
+    });
+
+    // Collapse All / Expand All button
+    if (collapseAllBtn) {
+      collapseAllBtn.addEventListener('click', () => {
+        const allCollapsed = Array.from(categoryHeaders).every(h => h.classList.contains('collapsed'));
+
+        categoryHeaders.forEach(header => {
+          const categoryId = header.getAttribute('data-category');
+          const subjects = document.querySelector(`.category-subjects-grid[data-category="${categoryId}"]`);
+
+          if (allCollapsed) {
+            // Expand all
+            header.classList.remove('collapsed');
+            subjects.classList.remove('collapsed');
+          } else {
+            // Collapse all
+            header.classList.add('collapsed');
+            subjects.classList.add('collapsed');
+          }
+        });
+
+        updateCollapseAllButton();
+      });
+    }
+
+    // Update Collapse All button text
+    function updateCollapseAllButton() {
+      if (!collapseAllBtn) return;
+
+      const allCollapsed = Array.from(categoryHeaders).every(h => h.classList.contains('collapsed'));
+      collapseAllBtn.textContent = allCollapsed ? 'Expand All' : 'Collapse All';
+    }
+
+    // Form submission loading state
+    const advancedSearchForm = document.getElementById('advancedSearchForm');
+    if (advancedSearchForm) {
+      advancedSearchForm.addEventListener('submit', (e) => {
+        const submitBtn = advancedSearchForm.querySelector('.btn-primary');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<span class="loading-spinner">⟳</span> Applying...';
         }
       });
     }
