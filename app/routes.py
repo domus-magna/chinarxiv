@@ -10,9 +10,10 @@ This module contains all route handlers for the application:
 from flask import Blueprint, render_template, request, jsonify, abort, current_app
 from datetime import datetime
 import logging
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from .database import query_papers, get_db
 from .filters import build_categories
-from .db_adapter import get_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -223,12 +224,10 @@ def paper_detail(paper_id):
         404: If paper not found
     """
     db = get_db()
-    adapter = get_adapter()
 
-    # Use adapter for database-agnostic query
-    query = adapter.adapt_placeholder("SELECT * FROM papers WHERE id = ?")
-    cursor = adapter.get_cursor(db)
-    cursor.execute(query, (paper_id,))
+    # PostgreSQL query with RealDictCursor
+    cursor = db.cursor(cursor_factory=RealDictCursor)
+    cursor.execute("SELECT * FROM papers WHERE id = %s", (paper_id,))
     paper = cursor.fetchone()
 
     if not paper:
