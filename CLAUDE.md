@@ -1,77 +1,99 @@
 # ChinaRxiv Translation Pipeline
 
-## CRITICAL: Server-Side Filtering Migration (Dec 2025)
+## Architecture Decision-Making Principles
 
-```
-+==============================================================================+
-|  ARCHITECTURE DECISION: Migrating from Client-Side to Server-Side Filtering |
-|                                                                              |
-|  STATUS: Planning phase - DO NOT implement client-side filtering            |
-|                                                                              |
-|  REASON: Planning for 40,000 papers (near-term future)                       |
-|  - Client-side would require 25-35MB initial download                        |
-|  - 5-10 second load times, mobile devices would crash                        |
-|  - No pagination possible with client-side approach                          |
-|                                                                              |
-|  TARGET ARCHITECTURE:                                                        |
-|  - SQLite database with indexed columns (data/papers.db)                    |
-|  - Flask web server with server-side filtering/pagination                   |
-|  - Deploy to Railway/Fly.io (real web server, not static pages)             |
-|  - Keep Jinja2 templates, discard client-side JavaScript filtering          |
-|                                                                              |
-|  CURRENT BRANCH: feat/client-side-search-v2 → WILL BE DISCARDED             |
-|  - Completed 7-phase client-side implementation (commits 4bd64d2-062af74)   |
-|  - Keep UI/UX patterns only (category tabs, search box, filters)            |
-|  - Discard all JavaScript filtering logic (MiniSearch, search index, etc.)  |
-|                                                                              |
-|  PLAN: /Users/alexanderhuth/.claude/plans/cosmic-splashing-papert.md        |
-|  Estimated timeline: 8-12 hours for migration + testing                      |
-+==============================================================================+
-```
+**Lessons Learned: Always Ask About Scale First**
 
-## Database Architecture: Dual Database Support (Dec 2025)
+When proposing database architecture, **ALWAYS ask these critical questions BEFORE designing**:
 
-**STATUS**: ✅ Implemented - Flask app supports both SQLite and PostgreSQL
+1. **Current scale**: How many records exist today?
+2. **Growth projection**: What's the expected growth over 6-12 months?
+3. **Team expertise**: What databases does the team know? (Solo vs team? AI-assisted?)
+4. **Deployment model**: Single server vs distributed? Hosting platform capabilities?
 
-The application now uses a database adapter pattern for seamless operation across environments:
+### Why This Matters: The Dual Database Mistake
 
-### Environment Detection
-- **SQLite (Development/Tests)**: No environment variables needed
-  - Database: `data/papers.db`
-  - Full-text search: FTS5 virtual tables
-  - Connection: Per-request (simple)
+In December 2025, we initially implemented **dual database support** (SQLite + PostgreSQL) without asking about scale. This was a mistake because:
 
-- **PostgreSQL (Production)**: Auto-detected via `DATABASE_URL` environment variable
-  - Connection pooling: 1-20 connections via psycopg2
-  - Full-text search: tsvector with GIN indexes
-  - Materialized views: Pre-computed category counts (15-25x faster)
+- ❌ **Added unnecessary complexity** - 263 lines of adapter code, database-specific branches in 5 files
+- ❌ **PostgreSQL code was UNTESTED** - all 692 tests ran on SQLite only (production risk!)
+- ❌ **Hidden maintenance burden** - every feature needs testing on both databases
+- ❌ **Wrong default assumption** - assumed "dev uses SQLite, production might use PostgreSQL"
 
-### Migration to PostgreSQL
+### The Correct Approach
+
+After asking the user about scale, we learned:
+- **Current**: 700 papers
+- **6-month projection**: 40,000 papers (57x growth!)
+- **Team**: Solo developer with AI assistance
+- **Deployment**: Railway (managed PostgreSQL available)
+
+This revealed the correct architecture: **PostgreSQL-only** from the start.
+
+**Rule**: Don't implement "flexibility" without understanding requirements. Ask about scale, then design the simplest architecture that meets those requirements.
+
+---
+
+## Database Architecture: PostgreSQL Only (Dec 2025)
+
+**STATUS**: ✅ Production Architecture - Requires PostgreSQL
+
+The application uses **PostgreSQL exclusively** for both development and production. This decision was made based on:
+- Scale requirements: 700 → 40,000 papers in 6 months
+- Performance needs: Sub-20ms category queries via materialized views
+- Deployment: Railway managed PostgreSQL ($7-15/month)
+
+### Local Development Setup
+
+**Option 1: Docker Compose** (Recommended)
 ```bash
-# One-time migration (Railway/production)
-export DATABASE_URL="postgresql://user:pass@host:5432/db"
+docker-compose up -d  # Starts PostgreSQL
+export DATABASE_URL="postgresql://postgres:postgres@localhost/chinaxiv_dev"
 python scripts/migrate_to_postgres.py
+```
 
-# Refresh materialized views (daily or after data imports)
+**Option 2: Homebrew** (macOS)
+```bash
+brew install postgresql@15
+brew services start postgresql@15
+createdb chinaxiv_dev
+export DATABASE_URL="postgresql://localhost/chinaxiv_dev"
+python scripts/migrate_to_postgres.py
+```
+
+### Production Deployment (Railway)
+
+```bash
+railway add postgres  # Provision managed PostgreSQL
+railway up            # Deploy app (DATABASE_URL auto-set)
+railway run python scripts/migrate_to_postgres.py  # One-time migration
+```
+
+### Performance Optimizations
+
+| Operation | Performance | Technique |
+|-----------|-------------|-----------|
+| Category counts | 10-20ms | Materialized view `category_counts` |
+| Full-text search | 20-40ms | tsvector + GIN index |
+| Filtered queries | 20-30ms | Composite B-tree indexes |
+| Connection reuse | 1-20 pooled | psycopg2 connection pooling |
+
+### Materialized View Refresh
+
+```bash
+# Refresh category counts (run daily or after data imports)
 psql $DATABASE_URL -c "REFRESH MATERIALIZED VIEW category_counts;"
 ```
 
-### Performance Optimizations (PostgreSQL Only)
-| Operation | SQLite | PostgreSQL | Improvement |
-|-----------|--------|------------|-------------|
-| Category counts | 300-500ms (N+1 queries) | 10-20ms (materialized view) | 15-25x faster |
-| Full-text search | 50-100ms (FTS5) | 20-40ms (tsvector+GIN) | 2x faster |
-| Filtered queries | 30-50ms | 20-30ms | 1.5x faster |
-
 ### Implementation Files
-- `app/db_adapter.py` - Database abstraction layer (200 lines)
-- `app/__init__.py` - Adapter initialization
-- `app/database.py` - Query layer using adapter
+- `app/db_adapter.py` - PostgreSQL connection wrapper (simplified)
+- `app/__init__.py` - Connection pooling initialization
+- `app/database.py` - Query layer with tsvector search
 - `app/routes.py` - Paper detail queries
-- `app/filters.py` - Category counts optimization
-- `scripts/migrate_to_postgres.py` - Migration script with materialized views
+- `app/filters.py` - Category counts from materialized view
+- `scripts/migrate_to_postgres.py` - Schema + materialized views
 
-See plan: `/Users/alexanderhuth/.claude/plans/shiny-launching-puppy.md` for full implementation details.
+See plan: `/Users/alexanderhuth/.claude/plans/shiny-launching-puppy.md` for migration details.
 
 ---
 
