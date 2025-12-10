@@ -626,6 +626,50 @@ id = "88b32d74f91649bca3321de23732d3c3"
 - `dup:{ip_hash}:{paper_id}` → Duplicate detection (TTL: 60 seconds)
 - `requests:YYYY-MM-DD:uuid` → Per-request log (TTL: 90 days)
 
+## Text Translation Requests
+
+Users can request full text translation for papers that only have abstracts or partial translations via the "Request Full Text Translation" button on the paper detail page.
+
+### Button Priority Logic
+
+The sidebar shows translation request buttons with this priority:
+1. If paper lacks full text (`_has_full_text` = False) → Show "Request Full Text Translation"
+2. Else if paper lacks figures (`_has_translated_figures` = False) → Show "Request Figure Translation"
+3. Else → No request button (paper is fully translated)
+
+### Request Storage
+
+**Storage:** Same Cloudflare KV namespace as figure requests (`FIGURE_REQUESTS`), but with different key prefixes.
+
+**KV Key Patterns:**
+- `text_dup:{ip_hash}:{paper_id}` → Duplicate detection (TTL: 60 seconds)
+- `text_requests:YYYY-MM-DD:uuid` → Per-request log (TTL: 90 days)
+
+**Format:** Same JSON structure as figure requests:
+```json
+{"paper_id":"chinaxiv-202201.00007","timestamp":"2025-12-10T12:34:56.123Z","ip_hash":"abc123def456789"}
+```
+
+### Viewing Requests
+
+```bash
+# Aggregate text translation requests from KV (last 30 days)
+python scripts/aggregate_figure_requests.py --kv --type text --days 30
+
+# Get top 50 requested papers for text translation
+python scripts/aggregate_figure_requests.py --kv --type text --days 30 --top 50
+
+# Export text translation request paper IDs
+python scripts/aggregate_figure_requests.py --kv --type text --output data/text_priority_papers.txt
+```
+
+### Detection Logic (render.py)
+
+Papers are marked as having/not having full text via the `_has_full_text` flag:
+- Checks `body_md` for >100 chars non-heading content OR >200 chars total
+- Fallback: checks `body_en` array for substantial paragraphs (>100 chars or 2+ paragraphs)
+- Set during rendering at lines 982-1007
+
 ## Frontend Development
 
 When working on frontend design and UI/UX tasks:
