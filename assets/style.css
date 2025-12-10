@@ -176,20 +176,24 @@ a:hover {
 }
 
 .header-link {
-  color: rgba(255, 255, 255, 0.9);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
   text-decoration: none;
   font-size: 0.95rem;
-  padding: 0.4rem 0.8rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.2s ease;
+  font-family: var(--font-sans);
 }
 
 .header-link:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
   color: #fff;
   text-decoration: none;
+  transform: translateY(-1px);
 }
 
 /* Breadcrumbs */
@@ -565,6 +569,23 @@ main {
   background: var(--secondary-color);
 }
 
+/* Banner for info messages in sidebar (e.g., abstract-only notice) */
+.sidebar-section .banner {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.02) 0%,
+    rgba(0, 0, 0, 0.01) 100%
+  );
+  border-left: 3px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  padding: 0.875rem 1rem;
+  margin: 0 0 1.25rem 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #4b5563;
+  font-weight: 400;
+}
+
 #request-figures-btn {
   min-width: 200px; /* Prevent shrinking when text changes state */
 }
@@ -673,6 +694,7 @@ main {
   border: 1px solid var(--border-color);
   border-radius: 4px;
   font-size: 0.95rem;
+  color: #333;
   background: #fff;
   font-family: var(--font-sans);
 }
@@ -1299,12 +1321,20 @@ main {
 .search-row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
   padding: 1.5rem 1.5rem 0.5rem 1.5rem;
+}
+
+.search-form {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0; /* Allows flex children to shrink below content size */
 }
 
 .search-input {
   flex: 1;
+  min-width: 200px; /* Prevents excessive shrinking */
   padding: 0.75rem 1rem;
   font-size: 16px;
   border: 1px solid #ced4da;
@@ -1334,6 +1364,11 @@ main {
 
 .subject-nav {
   flex: 1;
+  min-width: 0; /* Prevents unbounded expansion */
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .category-tab {
@@ -1443,28 +1478,52 @@ main {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0.6) 100%
+  );
+  backdrop-filter: blur(2px);  /* Blur background slightly */
   z-index: 1000;
   overflow: auto;
   padding: 20px;
+  opacity: 0;  /* Start invisible */
+  transition: opacity 0.2s ease;  /* Snappier fade animation */
 }
 
 .modal-overlay.active {
   display: block;
 }
 
+.modal-overlay.modal-open {
+  opacity: 1;  /* Fade in when open */
+}
+
 /* MODAL FOR ADVANCED SEARCH (different from citation modal) */
 .modal-overlay .modal {
   background: white;
   color-scheme: light;  /* Force light mode for all form controls */
-  border-radius: 8px;
+  border-radius: 12px;  /* Slightly rounder corners */
   max-width: 900px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.08),
+    0 16px 48px rgba(0, 0, 0, 0.16),
+    0 0 0 1px rgba(0, 0, 0, 0.05);  /* Layered shadows for depth */
   display: block;  /* Override citation modal display: none */
   margin: 50px auto;  /* Center horizontally and add vertical spacing */
+  transform: scale(0.95) translateY(-20px);  /* Start scaled down and lifted */
+  opacity: 0;  /* Start invisible */
+  transition:
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease;  /* Snappier slide-in animation */
+}
+
+.modal-overlay.modal-open .modal {
+  transform: scale(1) translateY(0);  /* Scale up and slide down */
+  opacity: 1;  /* Fade in */
 }
 
 .modal-overlay .modal-header {
@@ -1484,10 +1543,10 @@ main {
 }
 
 .modal-overlay .modal-close {
-  background: none;
+  background: transparent;
   border: none;
   font-size: 24px;
-  color: #666;
+  color: #999;
   cursor: pointer;
   padding: 0;
   width: 32px;
@@ -1495,11 +1554,19 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: 50%;  /* Circular button */
+  transition: all 0.2s ease;  /* Smooth transitions */
 }
 
 .modal-overlay .modal-close:hover {
   background: #f8f9fa;
+  color: #333;
+  transform: scale(1.1);  /* Slight scale up */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.modal-overlay .modal-close:active {
+  transform: scale(0.95);  /* Press effect */
 }
 
 .modal-overlay .modal-body {
@@ -1545,6 +1612,201 @@ main {
   margin: 0.75rem 0;
 }
 
+/* SUBJECT FILTER STYLES */
+.modal-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.collapse-all-btn {
+  font-size: 14px;  /* Standardized to match other buttons */
+  font-weight: 500;  /* Explicitly set to match action buttons */
+  padding: 0.35rem 0.75rem;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #495057;
+  transition: all 0.2s ease;
+}
+
+.collapse-all-btn:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.filter-categories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.category-section {
+  margin-bottom: 0.1rem;  /* Even tighter spacing between categories */
+}
+
+.category-header {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0.65rem 0.75rem;  /* Better padding */
+  margin: 0 -0.75rem;  /* Negative margin for full-width hover */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  text-align: left;
+  color: #2c3e50;
+  font-size: 15px;  /* Slightly larger */
+  letter-spacing: 0.01em;  /* Better readability */
+  border-radius: 6px;
+  transition: all 0.2s ease;  /* Smooth transitions */
+}
+
+.category-header:hover {
+  background: rgba(52, 152, 219, 0.05);  /* Subtle blue background */
+}
+
+.category-header:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.category-header:not(.collapsed) {
+  background: rgba(52, 152, 219, 0.03);  /* Subtle background when expanded */
+}
+
+.category-header .caret {
+  transition: transform 0.2s ease;
+  color: #666;  /* Neutral gray for caret */
+  font-size: 12px;
+  min-width: 12px;
+  margin-left: 0.75rem;  /* Fine-tuned - halfway between edge and previous position */
+  margin-right: 0;
+}
+
+.category-header.collapsed .caret {
+  transform: rotate(-90deg);
+}
+
+.category-label {
+  flex: 1;
+}
+
+.category-subjects-grid {
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;  /* Two columns for subjects */
+  gap: 0.35rem 1rem;  /* Row gap 0.35rem, column gap 1rem */
+  max-height: 2000px;  /* Large enough for any category */
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s ease-out,
+    margin-top 0.2s ease;  /* Snappier accordion animation */
+}
+
+.category-subjects-grid.collapsed {
+  max-height: 0;  /* Collapse height */
+  opacity: 0;  /* Fade out */
+  margin-top: 0;  /* Remove top margin */
+}
+
+.subject-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;  /* Better padding */
+  margin: 0.15rem -0.65rem;  /* Negative margin for full-width hover */
+  cursor: pointer;
+  font-size: 13px;
+  color: #495057;
+  border-radius: 6px;
+  transition: all 0.12s ease;  /* Snappier transitions */
+}
+
+.subject-checkbox:hover {
+  background: linear-gradient(
+    90deg,
+    rgba(52, 152, 219, 0.06) 0%,
+    rgba(52, 152, 219, 0.02) 100%
+  );  /* Gradient background on hover */
+  transform: translateX(2px);  /* Subtle slide effect */
+  color: #212529;
+}
+
+.subject-checkbox input[type="checkbox"] {
+  cursor: pointer;
+  margin: 0;
+  min-width: 17px;
+  min-height: 17px;
+  accent-color: #3498db;  /* Blue accent for checkboxes */
+  transition: all 0.15s ease;
+}
+
+.subject-checkbox input[type="checkbox"]:checked {
+  accent-color: var(--primary-color);  /* ChinaXiv red when checked */
+}
+
+.subject-checkbox input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* Highlight row when checkbox is checked */
+.subject-checkbox:has(input:checked) {
+  background: rgba(179, 27, 27, 0.03);
+}
+
+.subject-checkbox span {
+  user-select: none;
+}
+
+/* Checkbox interaction animations */
+@keyframes checkboxPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+@keyframes pulseBackground {
+  0% { background: rgba(52, 152, 219, 0.15); }
+  100% { background: transparent; }
+}
+
+.subject-checkbox input[type="checkbox"]:checked {
+  animation: checkboxPop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.subject-checkbox:active {
+  animation: pulseBackground 0.4s ease-out;
+}
+
+/* Loading spinner animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+  margin-right: 0.5rem;
+}
+
+/* Mobile adjustments for subject filters */
+@media (max-width: 768px) {
+  .category-subjects-grid {
+    grid-template-columns: 1fr;  /* Single column on mobile */
+    padding-left: 1rem;
+  }
+}
+
 /* MODAL FORM CONTROLS */
 .form-group {
   margin-bottom: 1rem;
@@ -1553,7 +1815,7 @@ main {
 .form-label {
   display: block;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;  /* Standardized to match section titles */
   color: #222;
   margin-bottom: 0.5rem;
 }
@@ -1565,18 +1827,28 @@ main {
   border-radius: 6px;
   font-size: 14px;
   min-height: 44px;
-  background: white;
+  background: #ffffff;
   color: #222;
+  transition: all 0.15s ease;  /* Snappier transitions */
 }
 
 .form-input::placeholder {
-  color: #999;
+  color: #6c757d;  /* Better contrast for WCAG AA compliance */
 }
 
 .form-input:focus {
   outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 0.25rem rgba(179, 27, 27, 0.15);
+  border-color: #3498db;  /* Blue accent for focus */
+  border-left-width: 2px;  /* Accent stripe on left */
+  border-left-color: var(--primary-color);  /* ChinaXiv red accent */
+  box-shadow:
+    0 0 0 3px rgba(52, 152, 219, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.05);
+  background: linear-gradient(
+    90deg,
+    rgba(52, 152, 219, 0.02) 0%,
+    #ffffff 100%
+  );  /* Subtle gradient background */
 }
 
 .radio-group {
@@ -1878,10 +2150,19 @@ main {
   font-weight: 500;
   cursor: pointer;
   min-height: 44px;
+  transition: all 0.15s ease;  /* Snappier transitions */
 }
 
 .btn-secondary:hover {
   background: #f8f9fa;
+  border-color: #ced4da;
+  transform: translateY(-1px);  /* Lift effect */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.btn-secondary:active {
+  transform: translateY(0);  /* Press down */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .btn-primary {
@@ -1894,10 +2175,18 @@ main {
   font-weight: 500;
   cursor: pointer;
   min-height: 44px;
+  transition: all 0.15s ease;  /* Snappier transitions */
 }
 
-.btn-primary:hover {
-  background: #850000;
+.btn-primary:hover:not(:disabled) {
+  background: #9a1717;  /* Slightly lighter red */
+  transform: translateY(-1px);  /* Lift effect */
+  box-shadow: 0 4px 8px rgba(179, 27, 27, 0.2);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);  /* Press down */
+  box-shadow: 0 2px 4px rgba(179, 27, 27, 0.2);
 }
 
 /* RESPONSIVE STYLES FOR ADVANCED SEARCH */
