@@ -130,7 +130,9 @@
           <h3>Feedback</h3>
           <ul class="sidebar-actions">
             <li><a href="#" class="sidebar-btn" onclick="openReportModal(); return false;" aria-label="Report a problem with this paper">Report Problem</a></li>
-            {% if not item._has_translated_figures %}
+            {% if not item._has_full_text %}
+            <li><button id="request-text-btn" class="sidebar-btn" onclick="requestTextTranslation('{{ item.id }}')" aria-label="Request full text translation for this paper">Request Full Text Translation</button></li>
+            {% elif not item._has_translated_figures %}
             <li><button id="request-figures-btn" class="sidebar-btn" onclick="requestFigureTranslation('{{ item.id }}')" aria-label="Request figure translation for this paper">Request Figure Translation</button></li>
             {% endif %}
           </ul>
@@ -608,10 +610,101 @@
       }
     }
 
-    // Check figure request status on page load
+    // ========================================
+    // Request Full Text Translation
+    // ========================================
+    let textRequestInProgress = {};
+
+    function checkTextRequestStatus(paperId) {
+      const btn = document.getElementById('request-text-btn');
+      if (!btn) return;
+
+      const requested = safeLocalStorage('get', `text_requested_${paperId}`);
+      if (requested === 'true') {
+        btn.textContent = 'Request Submitted';
+        btn.disabled = true;
+        btn.classList.add('disabled');
+      }
+    }
+
+    async function requestTextTranslation(paperId) {
+      const btn = document.getElementById('request-text-btn');
+
+      // In-flight check (catches rapid clicks)
+      if (textRequestInProgress[paperId]) {
+        showToast('Request already in progress...');
+        return;
+      }
+
+      // Check if already requested
+      if (safeLocalStorage('get', `text_requested_${paperId}`) === 'true') {
+        showToast('Already requested!');
+        return;
+      }
+
+      // Mark as in-flight
+      textRequestInProgress[paperId] = true;
+
+      // Disable button immediately
+      btn.disabled = true;
+      btn.textContent = 'Submitting...';
+
+      try {
+        // Call API endpoint
+        const response = await fetch('/api/request-text-translation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paper_id: paperId })
+        });
+
+        if (response.ok) {
+          // Success - mark as submitted in localStorage
+          const stored = safeLocalStorage('set', `text_requested_${paperId}`, 'true');
+
+          // Update button permanently
+          btn.textContent = 'Request Submitted';
+          btn.classList.add('disabled');
+
+          if (stored === null) {
+            showToast('Request submitted (couldn\'t save locally - private mode?)');
+          } else {
+            showToast('Request submitted! We\'ll prioritize this paper for full text translation.');
+          }
+
+        } else if (response.status === 400) {
+          // Invalid paper_id format
+          showToast('Invalid paper ID. Please contact support.');
+          btn.disabled = false;
+          btn.textContent = 'Request Full Text Translation';
+        } else if (response.status === 409) {
+          // Server caught duplicate - still mark as submitted
+          safeLocalStorage('set', `text_requested_${paperId}`, 'true');
+          btn.textContent = 'Request Submitted';
+          btn.classList.add('disabled');
+          showToast('Request already submitted recently.');
+        } else {
+          // Error - re-enable button
+          showToast('Failed to submit request. Please try again.');
+          btn.disabled = false;
+          btn.textContent = 'Request Full Text Translation';
+        }
+
+      } catch (error) {
+        console.error('Error submitting text translation request:', error);
+        showToast('Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Request Full Text Translation';
+      } finally {
+        // Clear in-flight flag
+        delete textRequestInProgress[paperId];
+      }
+    }
+
+    // Check request status on page load
     document.addEventListener('DOMContentLoaded', function() {
       const paperId = {{ item.id|tojson }};
       checkFigureRequestStatus(paperId);
+      checkTextRequestStatus(paperId);
     });
   </script>
 {% endblock %}
