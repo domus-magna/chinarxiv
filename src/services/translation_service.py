@@ -26,7 +26,7 @@ from ..token_utils import estimate_tokens
 from ..cost_tracker import compute_cost, append_cost_log
 from ..logging_utils import log
 from ..models import Paper, Translation
-from ..alerts import alert_critical
+from ..alerts import api_error
 from ..body_extract import inject_markers_in_sections, inject_figure_markers
 import re
 
@@ -588,13 +588,12 @@ class TranslationService:
                 )
             # fatal or non-retryable – decide if fallback to alternate models makes sense
             if not info["fallback_ok"]:
-                # Alert immediately for fatal billing/auth errors - the circuit breaker
-                # resets per-paper so it won't trip on the first failure
-                alert_critical(
-                    "OpenRouter Fatal Error",
-                    message,
-                    source="translation_service",
+                # Use aggregated api_error() instead of alert_critical() to avoid spam.
+                # The circuit breaker will send a single critical alert when it trips.
+                api_error(
+                    api="OpenRouter",
                     error_code=code,
+                    message=message,
                     status_code=status,
                 )
                 self._record_failure(code)

@@ -10,9 +10,49 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import requests
+
 from .utils import log
-from .alerts import pipeline_complete as send_pipeline_alert, pipeline_started
+from .alerts import pipeline_complete as send_pipeline_alert, pipeline_started, alert_critical
 from .tools import b2_alerts as b2_alerts_tool
+
+
+def check_openrouter_balance(min_balance: float = 0.50) -> tuple[bool, float]:
+    """
+    Check if OpenRouter has sufficient balance before starting pipeline.
+
+    Args:
+        min_balance: Minimum required balance in dollars (default $0.50)
+
+    Returns:
+        Tuple of (has_sufficient_funds, balance_in_dollars)
+        If balance check fails, returns (False, -1.0)
+    """
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        log("WARNING: OPENROUTER_API_KEY not set, cannot check balance")
+        return False, 0.0
+
+    try:
+        response = requests.get(
+            "https://openrouter.ai/api/v1/credits",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=(5, 10),
+        )
+        if response.ok:
+            data = response.json().get("data", {})
+            # API returns total_credits (added) and total_usage (spent) in dollars
+            # Actual balance = total_credits - total_usage
+            total_credits = data.get("total_credits", 0)
+            total_usage = data.get("total_usage", 0)
+            balance = total_credits - total_usage
+            return balance >= min_balance, balance
+        else:
+            log(f"WARNING: Balance check failed with status {response.status_code}")
+            return False, -1.0
+    except Exception as e:
+        log(f"WARNING: Balance check error: {e}")
+        return False, -1.0
 
 
 def find_latest_records_json() -> Optional[str]:
@@ -96,6 +136,25 @@ def run_cli() -> None:
             log(f"ERROR: --with-figures requires these environment variables: {', '.join(missing_secrets)}")
             log("Set these secrets in GitHub Actions or your local environment.")
             raise SystemExit(f"Missing required secrets for figure translation: {', '.join(missing_secrets)}")
+
+    # Pre-flight: Check OpenRouter balance before starting (skip for dry-run)
+    if not args.dry_run:
+        has_funds, balance = check_openrouter_balance(min_balance=0.50)
+        if balance == -1.0:
+            # Balance check failed (API error) - continue but warn
+            log("WARNING: Could not verify OpenRouter balance, proceeding anyway")
+        elif not has_funds:
+            # Insufficient funds - abort immediately with single alert
+            alert_critical(
+                "Pipeline Aborted: Insufficient Funds",
+                f"OpenRouter balance: ${balance:.2f}. Minimum required: $0.50\n"
+                "Add credits at https://openrouter.ai/credits",
+                source="pipeline_preflight",
+            )
+            log(f"ERROR: OpenRouter balance ${balance:.2f} is below $0.50 minimum")
+            raise SystemExit("Insufficient OpenRouter balance")
+        else:
+            log(f"Pre-flight check passed: OpenRouter balance ${balance:.2f}")
 
     summary = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
