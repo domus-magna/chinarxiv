@@ -18,6 +18,7 @@ import pytest
 import psycopg2
 import json
 import os
+from unittest.mock import patch
 
 # Ensure project root is on sys.path to import src.* modules
 ROOT = Path(__file__).resolve().parents[1]
@@ -341,3 +342,17 @@ def sample_category_taxonomy():
             'subjects': ['Physics', 'Quantum Computing', 'Astrophysics']
         }
     }
+
+
+@pytest.fixture(autouse=True)
+def mock_openrouter_balance():
+    """
+    Mock OpenRouter balance check for all tests.
+
+    The balance check was added to prevent pipeline spam when out of funds.
+    Tests should not depend on real API calls, so we mock it to return
+    sufficient balance by default.
+    """
+    with patch('src.pipeline.check_openrouter_balance') as mock:
+        mock.return_value = (True, 10.0)  # Sufficient balance
+        yield mock
