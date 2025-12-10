@@ -1,0 +1,34 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'src/templates/**'
+      - 'requirements*.txt'
+      - 'nixpacks.toml'
+      - '.python-version'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway link d1fc933e-fd7b-4b3b-94b2-ea6888c02da4 --environment production
+          railway up --service chinaxiv-web --detach
+
+      - name: Verify deployment
+        run: |
+          echo "Waiting 60s for deployment to start..."
+          sleep 60
+          curl -sf https://chinaxiv-web-production.up.railway.app/health || echo "Health check pending..."
