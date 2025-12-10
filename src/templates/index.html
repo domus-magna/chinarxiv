@@ -135,8 +135,8 @@
           <span class="paper-id">ChinaXiv:{{ it.id }}</span>
           <div class="paper-links">
             <a href="{{ root }}/items/{{ it.id }}" class="btn-sm">Abstract</a>
-            {% if it.pdf_url %}
-              <a href="{{ it.pdf_url }}" class="btn-sm">PDF</a>
+            {% if it._has_english_pdf %}
+              <a href="{{ root }}/items/{{ it.id }}.pdf" class="btn-sm">PDF</a>
             {% endif %}
           </div>
         </div>
