@@ -1,293 +1,235 @@
 # Production Deployment Guide
 
-## Overview
-This guide covers deploying ChinaXiv Translations to production using Cloudflare Pages and GitHub Actions.
+## Architecture Overview
 
-## Prerequisites
-- Cloudflare account
-- GitHub repository
-- OpenRouter API key
-- Domain name (optional)
+ChinaXiv Translations runs on Railway with a Flask backend serving dynamic pages.
 
-## Cloudflare Pages Setup
+| Component | Service | Notes |
+|-----------|---------|-------|
+| Web App | Railway (Flask + Gunicorn) | `chinaxiv-web` service |
+| Database | Railway PostgreSQL | `Postgres-TS9y` service |
+| Storage | Backblaze B2 | PDFs, figures, translations |
+| CDN/DNS | Cloudflare | DNS proxy, caching |
 
-### 1. Create Cloudflare Account
-1. Go to [Cloudflare](https://cloudflare.com)
-2. Sign up for a free account
-3. Verify your email address
+## Production URLs
 
-### 2. Add GitHub Repository
-1. Go to Cloudflare Dashboard
-2. Navigate to Pages
-3. Click "Create a project"
-4. Select "Connect to Git"
-5. Choose your GitHub repository
-6. Authorize Cloudflare to access your repository
+| Endpoint | URL |
+|----------|-----|
+| Web App | `https://chinaxiv-web-production.up.railway.app` |
+| Health Check | `https://chinaxiv-web-production.up.railway.app/health` |
+| API | `https://chinaxiv-web-production.up.railway.app/api/papers` |
+| Domain (after DNS) | `https://chinarxiv.org` |
 
-### 3. Configure Build Settings
-- **Project Name**: `chinarxiv`
-- **Production Branch**: `main`
-- **Build Command**: (leave empty)
-- **Build Output Directory**: `site`
-- **Root Directory**: (leave empty)
+## Railway Project Structure
 
-### 4. Environment Variables
-Add the following environment variables in Cloudflare Pages:
-- `OPENROUTER_API_KEY`: Your OpenRouter API key
-- `DISCORD_WEBHOOK_URL`: Discord webhook URL (optional)
+The Railway project contains two services:
 
-## GitHub Actions Setup
+1. **chinaxiv-web** - Flask application
+   - Built from `nixpacks.toml`
+   - Uses `requirements-web.txt`
+   - Auto-deploys on push to `main`
 
-### 1. Repository Secrets
-Add the following secrets to your GitHub repository:
+2. **Postgres-TS9y** - PostgreSQL database
+   - Managed PostgreSQL 15
+   - Auto-linked via `DATABASE_URL`
+   - Internal: `postgres-ts9y.railway.internal:5432`
+   - Public: `metro.proxy.rlwy.net:52123`
 
-#### Required Secrets
-- `CF_API_TOKEN`: Cloudflare API token with Pages:Edit permission
-- `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare Account ID
-- `OPENROUTER_API_KEY`: OpenRouter API key for translations
-- `BRIGHTDATA_API_KEY`: BrightData API key (for harvesting)
-- `BRIGHTDATA_ZONE`: BrightData zone name (for harvesting)
-- `DISCORD_WEBHOOK_URL`: Discord webhook for notifications (optional)
+## Critical Configuration Files
 
-### 2. Create Cloudflare API Token
-1. Go to Cloudflare Dashboard
-2. Navigate to "My Profile" → "API Tokens"
-3. Click "Create Token"
-4. Use "Custom token" template
-5. Set permissions:
-   - `Account:Cloudflare Pages:Edit`
-   - `Zone:Zone:Read`
-6. Set account resources to your account
-7. Set zone resources to your domain (if applicable)
-8. Copy the token and add it to GitHub secrets
-
-### 3. Get Cloudflare Account ID
-1. Go to Cloudflare Dashboard
-2. Select your account
-3. Copy the Account ID from the right sidebar
-4. Add it to GitHub secrets
-
-## Deployment Process
-
-### Automated Deployment
-The system uses GitHub Actions for automated deployment:
-
-1. **Daily Build**: Runs at 3 AM UTC every day
-2. **Manual Build**: Can be triggered manually with custom parameters
-3. **Backfill**: Processes large batches of papers
-
-### Build Workflow
-```yaml
-# .github/workflows/build.yml
-name: build-and-deploy
-on:
-  schedule:
-    - cron: '0 3 * * *'
-  workflow_dispatch:
-    inputs:
-      limit:
-        description: 'Number of papers to process'
-        required: false
-        default: '5'
+### `.python-version`
+```
+3.11
+```
+**REQUIRED** - Python 3.11 must be pinned because `psycopg2-binary` has no wheel for Python 3.13. Without this file, Railway uses Python 3.13 and causes:
+```
+ImportError: undefined symbol: _PyInterpreterState_Get
 ```
 
-### Manual Deployment
-1. Go to GitHub Actions tab
-2. Select "build-and-deploy" workflow
-3. Click "Run workflow"
-4. Optionally set paper limit
-5. Click "Run workflow"
+### `nixpacks.toml`
+```toml
+[phases.setup]
+nixPkgs = ["python311", "postgresql"]
 
-## Custom Domain Setup
+[phases.install]
+cmds = ["pip install --upgrade pip", "pip install -r requirements-web.txt"]
 
-### 1. Purchase Domain
-- Choose a domain registrar (GoDaddy, Namecheap, etc.)
-- Purchase your desired domain
-- Note: Cloudflare also offers domain registration
+[start]
+cmd = "gunicorn -w 4 -b 0.0.0.0:$PORT 'app:create_app'"
+```
 
-### 2. Add Domain to Cloudflare
-1. Go to Cloudflare Dashboard
-2. Click "Add a Site"
-3. Enter your domain name
-4. Choose a plan (Free plan is sufficient)
-5. Update nameservers at your registrar
+**CRITICAL**: The gunicorn command must use `'app:create_app'` (no parentheses). Using `'app:create_app()'` causes a parse error and immediate crash.
 
-### 3. Configure DNS
-1. Go to DNS tab in Cloudflare
-2. Add CNAME record:
-   - **Name**: `@` (or `www`)
-   - **Target**: `chinarxiv.pages.dev`
-   - **Proxy**: Enabled (orange cloud)
+### `requirements-web.txt`
+Minimal dependencies for the web app:
+```
+flask==3.0.3
+gunicorn==21.2.0
+psycopg2-binary==2.9.9
+Jinja2==3.1.4
+markdown==3.7
+markupsafe>=2.0
+bleach==6.3.0
+python-dotenv==1.0.1
+```
 
-### 4. SSL Certificate
-- Cloudflare automatically issues SSL certificates
-- Enable "Always Use HTTPS" in SSL/TLS settings
-- Set SSL/TLS encryption mode to "Full (strict)"
+## Deployment Commands
 
-## Monitoring and Maintenance
-
-### Health Checks
+### Deploy to Railway
 ```bash
-# Check site health
-curl -I https://your-domain.com
+# Upload and build (interactive)
+railway up --service chinaxiv-web
 
-# Check monitoring dashboard
-curl -I https://your-domain.com/monitor
+# Or just push to main (auto-deploys)
+git push origin main
 ```
 
-### Performance Monitoring
-- Use Cloudflare Analytics for traffic insights
-- Monitor GitHub Actions for build success/failure
-- Set up Discord notifications for alerts
-- Use monitoring dashboard for system metrics
+### Monitor Deployment
+```bash
+# View logs
+railway logs --service chinaxiv-web
 
-### Backup Strategy
-- GitHub repository serves as code backup
-- Cloudflare Pages provides automatic backups
-- Regular database exports (if applicable)
-- Document configuration changes
+# Check health
+curl https://chinaxiv-web-production.up.railway.app/health
+# Expected: {"status":"ok"}
+```
+
+### Railway CLI Setup (One-time)
+```bash
+# Install Railway CLI
+brew install railway
+
+# Login
+railway login
+
+# Link to project
+railway link
+```
+
+## Database Operations
+
+### Schema Creation
+The schema is created via `scripts/create_schema.py` which creates:
+- `papers` table with tsvector search column
+- `paper_subjects` table (VARCHAR(500) for B-tree index compatibility)
+- `category_counts` materialized view
+- 7 indexes for optimized queries
+
+### Refresh Materialized View
+Run after data imports:
+```bash
+# Via psql
+psql $DATABASE_URL -c "REFRESH MATERIALIZED VIEW category_counts;"
+
+# Or via Railway
+railway run python -c "
+import psycopg2
+import os
+conn = psycopg2.connect(os.environ['DATABASE_URL'])
+conn.cursor().execute('REFRESH MATERIALIZED VIEW category_counts;')
+conn.commit()
+"
+```
+
+### Data Import
+To import papers from B2:
+1. Connect to PostgreSQL using public URL
+2. Run import script (see `scripts/import_to_postgres.py`)
+3. Refresh materialized view
+
+```bash
+# Example import (from local machine)
+DATABASE_URL="postgresql://postgres:PASSWORD@metro.proxy.rlwy.net:52123/railway" \
+  python scripts/import_to_postgres.py
+```
+
+## Environment Variables
+
+Railway auto-sets these variables:
+
+| Variable | Source | Notes |
+|----------|--------|-------|
+| `DATABASE_URL` | Auto-linked | `${{Postgres-TS9y.DATABASE_URL}}` |
+| `PORT` | Auto-set | Railway assigns port |
+
+## Lazy Database Initialization
+
+The app uses lazy DB initialization to prevent crash loops:
+
+```python
+# app/db_adapter.py
+def init_adapter():
+    """No-op at startup."""
+    pass
+
+def get_adapter():
+    """Creates connection on first database query."""
+    global _adapter
+    if _adapter is None:
+        _adapter = DatabaseAdapter()
+    return _adapter
+```
+
+This allows:
+- `/health` to always return 200 even if DB is down
+- App to start and serve error pages instead of crash-looping
+- Graceful degradation during DB maintenance
+
+## Cloudflare DNS Configuration
+
+After Railway is verified working:
+
+1. Go to Cloudflare DNS dashboard
+2. Update `chinarxiv.org` CNAME:
+   - Target: `chinaxiv-web-production.up.railway.app`
+   - Initially: DNS-only (gray cloud) for testing
+   - After verification: Proxy enabled (orange cloud)
+
+## GitHub Actions (Translation Pipeline)
+
+The translation pipeline still runs in GitHub Actions:
+- `daily-pipeline.yml` - Daily harvest and translation
+- `backfill.yml` - Batch translation
+- `figure-backfill.yml` - Figure translation
+
+These upload results to B2, which the Railway app imports.
 
 ## Troubleshooting
 
-### Common Issues
+### App Returns 502
+1. Check Railway logs: `railway logs --service chinaxiv-web`
+2. Common causes:
+   - Wrong Python version (check `.python-version` exists)
+   - Gunicorn syntax error (check for parentheses)
+   - Database connection failure (check DATABASE_URL)
 
-#### Build Failures
-1. Check GitHub Actions logs
-2. Verify all secrets are set correctly
-3. Test locally with same parameters
-4. Check OpenRouter API key validity
+### Database Connection Refused
+1. Check PostgreSQL service is running in Railway dashboard
+2. Verify DATABASE_URL is linked to web service
+3. Check service logs for PostgreSQL errors
 
-#### Deployment Issues
-1. Verify Cloudflare API token permissions
-2. Check Cloudflare Account ID
-3. Ensure domain DNS is configured correctly
-4. Check SSL certificate status
+### Empty Homepage (No Papers)
+1. Check paper count: `psql $DATABASE_URL -c "SELECT COUNT(*) FROM papers;"`
+2. Run data import if needed
+3. Refresh materialized view
 
-#### Performance Issues
-1. Monitor Cloudflare Analytics
-2. Check GitHub Actions build times
-3. Review translation costs
-4. Optimize batch sizes
+### Health Returns 200 but Pages Fail
+1. Database is probably down - health endpoint doesn't use DB
+2. Check PostgreSQL service status
+3. Check database logs
 
-### Debug Steps
-1. **Check Logs**: Review GitHub Actions workflow logs
-2. **Test Locally**: Run the same commands locally
-3. **Verify Secrets**: Ensure all secrets are set correctly
-4. **Check Status**: Verify service status (OpenRouter, Cloudflare)
+## Rollback Plan
 
-## Security Best Practices
+If Railway fails:
+1. Cloudflare Pages still exists at `chinarxiv.pages.dev`
+2. Update DNS to point back to Pages
+3. Re-run static site generation via `deploy.yml`
 
-### API Key Management
-- Never commit API keys to repository
-- Use GitHub Secrets for sensitive data
-- Rotate keys regularly
-- Monitor usage and costs
+## Cost Breakdown
 
-### Access Control
-- Use strong passwords for monitoring dashboard
-- Enable two-factor authentication where possible
-- Regular security audits
-- Monitor access logs
-
-### Data Protection
-- Use HTTPS for all communications
-- Encrypt sensitive data
-- Regular backups
-- Compliance with data protection regulations
-
-## Scaling and Optimization
-
-### Performance Optimization
-- Use Cloudflare CDN for global distribution
-- Optimize images and assets
-- Implement caching strategies
-- Monitor and optimize build times
-
-### Cost Optimization
-- Monitor OpenRouter API usage
-- Optimize translation batch sizes
-- Use free Cloudflare features
-- Regular cost reviews
-
-### Scaling Considerations
-- Monitor resource usage
-- Plan for increased traffic
-- Consider load balancing
-- Implement monitoring and alerting
-
-## Advanced Configuration
-
-### Custom Build Process
-```yaml
-# Custom build configuration
-build:
-  command: |
-    # Harvest removed (Internet Archive). Proceed with existing records.
-    python -m src.pipeline --limit 5
-    python -m src.render
-    python -m src.search_index
-  output_directory: site
-```
-
-### Environment-Specific Settings
-```bash
-# Production environment
-OPENROUTER_API_KEY=your_production_key
-DISCORD_WEBHOOK_URL=your_production_webhook
-MONITORING_USERNAME=admin
-MONITORING_PASSWORD=secure_password
-
-# Staging environment
-OPENROUTER_API_KEY=your_staging_key
-DISCORD_WEBHOOK_URL=your_staging_webhook
-MONITORING_USERNAME=staging_admin
-MONITORING_PASSWORD=staging_password
-```
-
-### Custom Domains and Subdomains
-```bash
-# Main domain
-chinaxiv-english.com
-
-# Subdomains
-api.chinaxiv-english.com
-monitor.chinaxiv-english.com
-docs.chinaxiv-english.com
-```
-
-## Maintenance Schedule
-
-### Daily Tasks
-- Monitor build status
-- Check for failed translations
-- Review error logs
-- Monitor costs
-
-### Weekly Tasks
-- Review performance metrics
-- Clean up old data
-- Update dependencies
-- Security audit
-
-### Monthly Tasks
-- Full system backup
-- Performance optimization
-- Cost analysis
-- Documentation updates
-
-## Support and Resources
-
-### Documentation
-- [Cloudflare Pages Documentation](https://developers.cloudflare.com/pages/)
-- [GitHub Actions Documentation](https://docs.github.com/en/actions)
-- [OpenRouter API Documentation](https://openrouter.ai/docs)
-
-### Community
-- GitHub Issues for bug reports
-- Discord for community support
-- Stack Overflow for technical questions
-
-### Professional Support
-- Cloudflare Support (paid plans)
-- GitHub Support (paid plans)
-- OpenRouter Support (paid plans)
+| Service | Monthly Cost |
+|---------|--------------|
+| Railway Web App | ~$5 |
+| Railway PostgreSQL | ~$7 |
+| Backblaze B2 | ~$0.50 |
+| **Total** | ~$12.50 |

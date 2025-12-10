@@ -148,22 +148,66 @@ psql $DATABASE_URL -c "REFRESH MATERIALIZED VIEW category_counts;"
 2. If figure pipeline fails, the whole job fails - do not continue text-only
 3. Never assume "text-only first, figures later" without EXPLICIT user approval
 
-## ANTI-PATTERN: Never Run Hydrate/Render/Deploy Locally
+## Railway Deployment (Dec 2025)
 
+**STATUS**: ✅ Railway is the primary backend serving all pages dynamically.
+
+The site is deployed on Railway with Flask + Gunicorn serving all pages. There is no static site generation anymore - the database is queried at runtime.
+
+### Production URLs
+| Service | URL |
+|---------|-----|
+| Web App | `https://chinaxiv-web-production.up.railway.app` |
+| Health | `https://chinaxiv-web-production.up.railway.app/health` |
+| API | `https://chinaxiv-web-production.up.railway.app/api/papers` |
+
+### Critical Configuration Files
+
+**`.python-version`** - REQUIRED
 ```
-+==============================================================================+
-|  NEVER run hydrate, render, or deploy commands locally!                      |
-|                                                                              |
-|  These operations MUST happen in CI (GitHub Actions):                        |
-|  - hydrate_from_b2.py → runs in deploy.yml                                   |
-|  - src.render → runs in deploy.yml                                           |
-|  - wrangler pages deploy → runs in deploy.yml                                |
-|                                                                              |
-|  If you find yourself downloading thousands of files or running render       |
-|  locally, STOP - you're doing something wrong. Trigger CI instead:           |
-|  gh workflow run deploy.yml                                                  |
-+==============================================================================+
+3.11
 ```
+Python 3.11 is required because `psycopg2-binary` has no stable wheel for Python 3.13. Without this file, Railway's Nixpacks will auto-detect Python 3.13 and cause:
+```
+ImportError: undefined symbol: _PyInterpreterState_Get
+```
+
+**`nixpacks.toml`** - Railway build config
+```toml
+[phases.setup]
+nixPkgs = ["python311", "postgresql"]
+
+[phases.install]
+cmds = ["pip install --upgrade pip", "pip install -r requirements-web.txt"]
+
+[start]
+cmd = "gunicorn -w 4 -b 0.0.0.0:$PORT 'app:create_app'"
+```
+
+**CRITICAL**: Gunicorn command syntax must be `'app:create_app'` NOT `'app:create_app()'`. Gunicorn calls the factory function itself - adding parentheses causes a parse error and immediate crash.
+
+### Lazy Database Initialization
+
+The app uses lazy DB initialization (`app/db_adapter.py`) to prevent crash loops if PostgreSQL is temporarily unavailable:
+- `init_adapter()` is a no-op at startup
+- `get_adapter()` creates the connection on first database query
+- This allows `/health` to always return 200 even if DB is down
+
+### Deployment Commands
+```bash
+# Deploy to Railway (uploads code, builds, starts)
+railway up --service chinaxiv-web
+
+# View logs
+railway logs --service chinaxiv-web
+
+# Check health
+curl https://chinaxiv-web-production.up.railway.app/health
+```
+
+### Database URLs
+- **Internal** (from Railway services): `postgres-ts9y.railway.internal:5432`
+- **Public** (external access): `metro.proxy.rlwy.net:52123`
 
 ## Quick Reference
 
@@ -282,22 +326,22 @@ python -m src.pipeline --workers 20 --with-qa --with-figures --start YYYYMM --en
 python -m src.tools.b2_publish  # Uploads validated translations to B2
 ```
 
-### Step 4: Deploy via CI (NEVER locally!)
+### Step 4: Deploy to Railway
 ```bash
-# Trigger the deploy workflow - this hydrates, renders, and deploys
-gh workflow run deploy.yml
+# Deploy directly (auto-deploys on push to main)
+railway up --service chinaxiv-web
 
-# Monitor progress:
-gh run list --workflow=deploy.yml --limit 5
-gh run watch  # Watch latest run
+# Or commit and push to main for auto-deploy
+git push origin main
+
+# Monitor deployment
+railway logs --service chinaxiv-web
+
+# Verify deployment
+curl https://chinaxiv-web-production.up.railway.app/health
 ```
 
-The `deploy.yml` workflow will:
-1. Hydrate translations from B2 → `data/translated/`
-2. Download figure manifest from B2
-3. Render site with translated figures embedded
-4. Deploy to Cloudflare Pages
-5. Purge cache
+Railway auto-deploys on push to main. The Flask app queries PostgreSQL directly - there is no static site generation step.
 
 ## Common Mistakes to Avoid
 
@@ -305,7 +349,8 @@ The `deploy.yml` workflow will:
 2. **Assuming figures can be added later** - While technically possible, it's extra work
 3. **Ignoring circuit breaker errors** - These indicate billing issues, stop and check
 4. **Not checking for GEMINI_API_KEY** - Figure translation requires Google API access
-5. **Running hydrate/render/deploy locally** - ALWAYS use `gh workflow run deploy.yml`
+5. **Using wrong Python version on Railway** - Must use 3.11 (`.python-version` file)
+6. **Gunicorn syntax with parentheses** - Use `'app:create_app'` NOT `'app:create_app()'`
 
 ## Monitoring
 
