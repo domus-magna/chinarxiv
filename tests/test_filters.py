@@ -12,10 +12,6 @@ These tests verify the filter helpers work correctly with the category taxonomy
 and database queries for building filter UI components.
 """
 
-import pytest
-import json
-import tempfile
-from pathlib import Path
 from app.filters import load_category_taxonomy, get_category_subjects, build_categories
 
 
@@ -162,7 +158,7 @@ class TestBuildCategoriesWithoutDatabase:
         """Test that each category has label, order, and subjects."""
         categories = build_categories()
 
-        for category_id, category_data in categories.items():
+        for _category_id, category_data in categories.items():
             assert 'label' in category_data
             assert 'order' in category_data
             assert 'subjects' in category_data
@@ -180,7 +176,7 @@ class TestBuildCategoriesWithoutDatabase:
         taxonomy = load_category_taxonomy()
         categories = build_categories()
 
-        for category_id in taxonomy.keys():
+        for category_id in taxonomy:
             assert category_id in categories
             assert categories[category_id]['label'] == taxonomy[category_id]['label']
             assert categories[category_id]['order'] == taxonomy[category_id]['order']
@@ -190,7 +186,7 @@ class TestBuildCategoriesWithoutDatabase:
         taxonomy = load_category_taxonomy()
         categories = build_categories()
 
-        for category_id in taxonomy.keys():
+        for category_id in taxonomy:
             expected_children = taxonomy[category_id].get('children', [])
             actual_subjects = categories[category_id]['subjects']
             assert actual_subjects == expected_children
@@ -254,7 +250,6 @@ class TestBuildCategoriesWithDatabase:
     def test_build_categories_with_db_query_error(self, app):
         """Test that build_categories handles database query errors gracefully."""
         from app.database import get_db
-        import sqlite3
 
         with app.app_context():
             db = get_db()
@@ -308,7 +303,7 @@ class TestCategoryCountAccuracy:
             db = get_db()
 
             # Count total papers in database (including flagged)
-            total_papers = db.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
+            db.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
 
             # Count QA-passed papers
             passed_papers = db.execute(
@@ -473,7 +468,7 @@ class TestHelperFunctionUsage:
             )
 
             # Step 3: Verify renderable data
-            for category_id, category_data in sorted_categories:
+            for _category_id, category_data in sorted_categories:
                 label = category_data['label']
                 count = category_data['count']
 

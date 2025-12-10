@@ -11,7 +11,6 @@ Tests for security vulnerabilities and attack vectors:
 - DoS protection (excessive input)
 """
 
-import pytest
 from urllib.parse import urlencode
 
 
@@ -315,7 +314,7 @@ class TestParameterTampering:
         assert response.status_code == 200
 
         # Should use one value or handle gracefully
-        html = response.data.decode('utf-8')
+        response.data.decode('utf-8')
         assert response.status_code == 200
 
     def test_empty_parameter_values_handled(self, client, sample_papers):
@@ -360,7 +359,7 @@ class TestSecureHeaders:
     def test_no_server_header_leakage(self, client, sample_papers):
         """Test that Server header doesn't reveal too much information."""
         response = client.get('/')
-        server_header = response.headers.get('Server', '')
+        response.headers.get('Server', '')
 
         # Should not reveal exact version numbers that could aid attackers
         # (This is implementation-specific, adjust as needed)
@@ -448,7 +447,6 @@ class TestEncodingAttacks:
         if 'alert(1)' in html:
             # It's okay if it appears in escaped form or as text
             # Just verify it's not in executable <script> context
-            import html as html_module
             dangerous = '<script>alert(1)</script>'
             assert dangerous not in html, "Double-encoded XSS executed"
 
@@ -493,7 +491,7 @@ class TestContentSecurityPolicy:
 
         # CSP is optional but highly recommended
         # If implemented, verify it's restrictive
-        csp = response.headers.get('Content-Security-Policy', '')
+        response.headers.get('Content-Security-Policy', '')
 
         # Placeholder test - implement if CSP is added
         assert response.status_code == 200
@@ -504,7 +502,7 @@ class TestContentSecurityPolicy:
         html = response.data.decode('utf-8')
 
         # Count inline scripts
-        inline_script_count = html.count('<script>') + html.count('<script ')
+        html.count('<script>') + html.count('<script ')
 
         # Ideally should be 0 for strict CSP, but depends on implementation
         # This is informational rather than strict requirement

@@ -17,7 +17,6 @@ import psycopg2
 from app.db_adapter import get_adapter
 from app.database import get_db, query_papers
 from app.filters import build_categories
-from app import create_app
 
 
 class TestPostgreSQLConnectionPool:
@@ -61,7 +60,7 @@ class TestPostgreSQLConnectionPool:
 
         # Get multiple connections
         connections = []
-        for i in range(5):
+        for _i in range(5):
             conn = adapter.get_connection()
             connections.append(conn)
 
@@ -138,7 +137,7 @@ class TestMaterializedViews:
             assert len(categories) > 0
 
             # Each category should have count
-            for category_id, category_data in categories.items():
+            for _category_id, category_data in categories.items():
                 assert 'count' in category_data
                 assert isinstance(category_data['count'], int)
                 assert category_data['count'] >= 0

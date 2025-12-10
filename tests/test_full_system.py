@@ -5,9 +5,7 @@ Tests complete end-to-end user workflows and scenarios that span multiple compon
 These tests verify that all pieces work together correctly in realistic usage patterns.
 """
 
-import pytest
-from datetime import datetime
-from urllib.parse import urlencode, parse_qs, urlparse
+from urllib.parse import urlencode
 
 
 class TestCompleteUserWorkflows:
@@ -99,7 +97,7 @@ class TestFilterCombinations:
         assert response.status_code == 200
 
         # Verify both filters are applied (implementation-specific checks)
-        html = response.data.decode('utf-8')
+        response.data.decode('utf-8')
         # Should have some indication both filters are active
         assert response.status_code == 200
 
@@ -108,7 +106,7 @@ class TestFilterCombinations:
         response = client.get('/?category=physics&subject=Quantum Computing')
         assert response.status_code == 200
 
-        html = response.data.decode('utf-8')
+        response.data.decode('utf-8')
         # Should show filtered results
         assert response.status_code == 200
 
@@ -118,7 +116,7 @@ class TestFilterCombinations:
         assert response.status_code == 200
 
         # All filters should be applied together
-        html = response.data.decode('utf-8')
+        response.data.decode('utf-8')
         assert response.status_code == 200
 
     def test_all_filters_combined(self, client, sample_papers):
@@ -166,7 +164,7 @@ class TestCategoryTabNavigation:
         assert response2.status_code == 200
 
         # Both should succeed and date filter should still be in URL
-        assert 'start_date=2024-11-01' in response2.request.url or True  # URL preservation
+        assert True  # URL preservation
 
 
 class TestErrorRecoveryScenarios:
@@ -194,7 +192,7 @@ class TestErrorRecoveryScenarios:
         assert response.status_code == 200  # Should not error
 
         # Should show no results or ignore invalid category
-        html = response.data.decode('utf-8')
+        response.data.decode('utf-8')
         assert response.status_code == 200
 
     def test_negative_page_number_handled_gracefully(self, client, sample_papers):
@@ -214,7 +212,6 @@ class TestDataConsistency:
     def test_paper_count_consistency_across_pages(self, client, sample_papers):
         """Test that paper counts are consistent between index and filtered views."""
         from app.database import get_db
-        from flask import current_app
 
         with client.application.app_context():
             db = get_db()
@@ -294,7 +291,7 @@ class TestRealWorldDataPatterns:
         assert response.status_code == 200
 
         # Should handle date range spanning months
-        html = response.data.decode('utf-8')
+        response.data.decode('utf-8')
         assert response.status_code == 200
 
     def test_empty_search_results(self, client, sample_papers):
@@ -303,7 +300,7 @@ class TestRealWorldDataPatterns:
         assert response.status_code == 200
 
         # Should show "no results" message, not error
-        html = response.data.decode('utf-8')
+        response.data.decode('utf-8')
         # Exact message depends on implementation
         assert response.status_code == 200
 
@@ -379,7 +376,7 @@ class TestURLStateManagement:
         assert response.status_code == 200
 
         # URL should preserve parameters (in links, etc.)
-        html = response.data.decode('utf-8')
+        response.data.decode('utf-8')
         # Implementation-specific: check if filters are maintained in navigation links
         assert response.status_code == 200
 
