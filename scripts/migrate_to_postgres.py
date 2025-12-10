@@ -65,6 +65,7 @@ def create_postgres_schema(pg_conn):
         qa_status TEXT DEFAULT 'pass' CHECK (qa_status IN ('pass', 'pending', 'fail')),
         source_url TEXT,
         pdf_url TEXT,
+        body_md TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
     """)

@@ -41,6 +41,7 @@ def create_schema(conn):
         source_url TEXT,
         pdf_url TEXT,
         english_pdf_url TEXT,
+        body_md TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
     """)
