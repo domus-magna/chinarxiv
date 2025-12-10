@@ -101,6 +101,36 @@ def create_postgres_schema(pg_conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_subjects_subject ON paper_subjects(subject);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_search ON papers USING GIN(search_vector);")
 
+    # Translation requests table (for figure and text translation requests from users)
+    logger.info("  Creating translation_requests table...")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS translation_requests (
+        id SERIAL PRIMARY KEY,
+        paper_id VARCHAR(30) NOT NULL,
+        request_type VARCHAR(10) NOT NULL CHECK (request_type IN ('figure', 'text')),
+        ip_hash VARCHAR(16) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # Indexes for translation_requests
+    logger.info("  Creating translation_requests indexes...")
+    # Index for duplicate detection (most common query pattern)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_translation_requests_dedup
+        ON translation_requests(paper_id, request_type, ip_hash, created_at DESC);
+    """)
+    # Index for aggregation queries (top requested papers)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_translation_requests_type_created
+        ON translation_requests(request_type, created_at DESC);
+    """)
+    # Index for per-paper lookups
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_translation_requests_paper
+        ON translation_requests(paper_id);
+    """)
+
     pg_conn.commit()
     logger.info("✅ PostgreSQL schema created")
 

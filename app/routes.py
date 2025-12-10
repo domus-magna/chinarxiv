@@ -8,10 +8,12 @@ This module contains all route handlers for the application:
 """
 
 from flask import Blueprint, render_template, request, jsonify, abort, current_app
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from calendar import monthrange
+import hashlib
 import json
 import logging
+import re
 from psycopg2.extras import RealDictCursor
 from .database import query_papers, get_db
 from .db_adapter import get_adapter
@@ -353,3 +355,161 @@ def api_papers():
         'page': query_args['page'],
         'per_page': query_args['per_page']
     })
+
+
+# Paper ID validation pattern: chinaxiv-YYYYMM.NNNNN
+PAPER_ID_PATTERN = re.compile(r'^chinaxiv-\d{6}\.\d{5}$')
+
+# Duplicate detection window (same IP + paper within this window = duplicate)
+DUPLICATE_WINDOW_SECONDS = 60
+
+
+def _get_client_ip():
+    """
+    Get client IP address from request headers.
+
+    Railway/proxies set X-Forwarded-For header with the real client IP.
+    Falls back to remote_addr if header not present.
+
+    Returns:
+        str: Client IP address or 'unknown'
+    """
+    # X-Forwarded-For may contain multiple IPs: "client, proxy1, proxy2"
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        # Take the first (client) IP
+        return forwarded.split(',')[0].strip()
+    return request.remote_addr or 'unknown'
+
+
+def _hash_ip(ip):
+    """
+    Hash IP address for privacy-preserving storage.
+
+    Args:
+        ip: IP address string
+
+    Returns:
+        str: First 16 characters of SHA-256 hash
+    """
+    full_hash = hashlib.sha256(ip.encode()).hexdigest()
+    return full_hash[:16]
+
+
+def _handle_translation_request(request_type):
+    """
+    Common handler for figure and text translation requests.
+
+    Args:
+        request_type: 'figure' or 'text'
+
+    Returns:
+        Flask JSON response with appropriate status code
+    """
+    # Parse JSON body
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid JSON in request body'
+            }), 400
+    except Exception:
+        return jsonify({
+            'success': False,
+            'message': 'Invalid JSON in request body'
+        }), 400
+
+    paper_id = data.get('paper_id')
+
+    # Validate paper_id exists
+    if not paper_id or not isinstance(paper_id, str):
+        return jsonify({
+            'success': False,
+            'message': 'Invalid paper_id'
+        }), 400
+
+    # Validate paper_id format
+    if not PAPER_ID_PATTERN.match(paper_id):
+        return jsonify({
+            'success': False,
+            'message': 'Invalid paper_id format'
+        }), 400
+
+    # Get and hash client IP
+    client_ip = _get_client_ip()
+    ip_hash = _hash_ip(client_ip)
+
+    # Check for duplicate request within window
+    db = get_db()
+    adapter = get_adapter()
+    cursor = adapter.get_cursor(db)
+
+    cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=DUPLICATE_WINDOW_SECONDS)
+
+    cursor.execute("""
+        SELECT 1 FROM translation_requests
+        WHERE paper_id = %s
+          AND request_type = %s
+          AND ip_hash = %s
+          AND created_at > %s
+        LIMIT 1
+    """, (paper_id, request_type, ip_hash, cutoff_time))
+
+    if cursor.fetchone():
+        return jsonify({
+            'success': False,
+            'message': 'Duplicate request detected. Please wait before requesting again.'
+        }), 409
+
+    # Insert the request
+    try:
+        cursor.execute("""
+            INSERT INTO translation_requests (paper_id, request_type, ip_hash)
+            VALUES (%s, %s, %s)
+        """, (paper_id, request_type, ip_hash))
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to insert translation request: {e}")
+        db.rollback()
+        return jsonify({
+            'success': False,
+            'message': 'Internal server error'
+        }), 500
+
+    return jsonify({
+        'success': True,
+        'message': 'Request logged successfully'
+    }), 200
+
+
+@bp.route('/api/request-figure-translation', methods=['POST'])
+def request_figure_translation():
+    """
+    API endpoint for figure translation requests.
+
+    Body: { "paper_id": "chinaxiv-202510.00001" }
+
+    Returns:
+        200: Request logged successfully
+        400: Invalid paper_id or JSON
+        409: Duplicate request within 60 seconds
+        500: Internal server error
+    """
+    return _handle_translation_request('figure')
+
+
+@bp.route('/api/request-text-translation', methods=['POST'])
+def request_text_translation():
+    """
+    API endpoint for text translation requests.
+
+    Body: { "paper_id": "chinaxiv-202510.00001" }
+
+    Returns:
+        200: Request logged successfully
+        400: Invalid paper_id or JSON
+        409: Duplicate request within 60 seconds
+        500: Internal server error
+    """
+    return _handle_translation_request('text')
