@@ -549,6 +549,7 @@ main {
   font-family: var(--font-sans);
   font-weight: 500;
   font-size: 0.9rem;
+  cursor: pointer;
   transition: all 0.2s;
 }
 
