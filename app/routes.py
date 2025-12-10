@@ -50,7 +50,8 @@ def _prepare_paper_for_template(paper):
     # Map DB fields to template fields
     paper['_has_full_text'] = bool(paper.get('has_full_text', False))
     paper['_has_translated_figures'] = bool(paper.get('has_figures', False))
-    paper['_has_english_pdf'] = False  # English PDFs not yet available in Flask app
+    paper['_has_english_pdf'] = bool(paper.get('english_pdf_url'))
+    paper['_english_pdf_url'] = paper.get('english_pdf_url', '')
 
     # Ensure creators fields are lists (JSONB should already parse, but be safe)
     # This prevents join() from joining characters if field is a string

@@ -40,6 +40,7 @@ def create_schema(conn):
         qa_status TEXT DEFAULT 'pass' CHECK (qa_status IN ('pass', 'pending', 'fail')),
         source_url TEXT,
         pdf_url TEXT,
+        english_pdf_url TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -70,6 +71,7 @@ def create_schema(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_date ON papers(date DESC NULLS LAST);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_qa_status ON papers(qa_status);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_has_figures ON papers(has_figures) WHERE has_figures = TRUE;")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_english_pdf ON papers(english_pdf_url) WHERE english_pdf_url IS NOT NULL;")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_composite ON papers(date DESC, qa_status, has_figures);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_subjects_paper_id ON paper_subjects(paper_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_subjects_subject ON paper_subjects(subject);")

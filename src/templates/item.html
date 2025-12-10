@@ -102,7 +102,7 @@
           {% endif %}
           <ul class="sidebar-actions">
             {% if item._has_english_pdf %}
-            <li><a href="{{ item.id ~ '.pdf' }}" class="sidebar-btn primary" aria-label="Download English translation as PDF">Download PDF (English)</a></li>
+            <li><a href="{{ item._english_pdf_url or (item.id ~ '.pdf') }}" class="sidebar-btn primary" target="_blank" rel="noopener" aria-label="Download English translation as PDF">Download PDF (English)</a></li>
             {% endif %}
             {% if item.pdf_url %}
             <li><a href="{{ item.pdf_url }}" class="sidebar-btn" target="_blank" rel="noopener" aria-label="View original PDF on ChinaXiv">Original PDF (Chinese)</a></li>
