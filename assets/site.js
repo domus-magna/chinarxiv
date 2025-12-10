@@ -1,3 +1,11 @@
+// Umami analytics event tracking helper
+// Safe to call even if Umami is not loaded (graceful degradation)
+function trackEvent(eventName, eventData) {
+  if (typeof umami !== 'undefined' && typeof umami.track === 'function') {
+    umami.track(eventName, eventData);
+  }
+}
+
 // Console log capture for report submissions
 // Captures console.error and console.warn for debugging
 const capturedLogs = [];
@@ -35,6 +43,9 @@ function searchSubject(subject) {
 
   function performSearch(query) {
     if (!query.trim()) return;
+
+    // Track search event
+    trackEvent('search', { query: query.trim() });
 
     // Redirect to homepage with search query
     const url = new URL(window.location.origin + '/');

@@ -734,3 +734,63 @@ This ensures you get expert-level design input and recommendations for user inte
 4. Move completed items to the "Completed Features" section
 
 The TODO file provides implementation notes, file locations, and integration points for future work.
+
+## Umami Analytics
+
+**STATUS**: Integrated (Dec 2025)
+
+Privacy-first, self-hosted analytics using Umami on Railway.
+
+### Quick Reference
+
+- **Skill**: Use the `umami` skill for detailed documentation on adding/modifying tracking
+- **Dashboard**: Access via Railway (umami service)
+- **Script**: Loaded conditionally in `src/templates/base.html` when `UMAMI_WEBSITE_ID` is set
+
+### Environment Variables (Railway chinaxiv-web)
+
+```
+UMAMI_WEBSITE_ID=<uuid-from-umami-dashboard>
+UMAMI_SCRIPT_URL=<your-umami-domain>/script.js
+```
+
+### Tracked Events
+
+| Event | Data | Location |
+|-------|------|----------|
+| `search` | `{ query }` | Header search |
+| `filter-category` | `{ category }` | Category tabs |
+| `filter-advanced` | `{ has_search, has_date, has_figures, subject_count }` | Advanced search modal |
+| `pdf-download-en` | `{ paper_id }` | Paper detail |
+| `pdf-download-cn` | `{ paper_id }` | Paper detail |
+| `view-chinaxiv` | `{ paper_id }` | Paper detail |
+| `copy-citation` | `{ paper_id, format }` | Paper detail |
+| `copy-link` | `{ paper_id }` | Paper detail |
+| `bookmark` | `{ paper_id, action }` | Paper detail |
+| `request-figures` | `{ paper_id }` | Paper detail |
+| `request-text` | `{ paper_id }` | Paper detail |
+| `report-submit` | `{ paper_id, issue_type }` | Paper detail |
+| `sponsor-cta` | `{ target, crypto? }` | Sponsors page |
+
+### Adding New Events
+
+Use `trackEvent()` helper in `assets/site.js` (graceful degradation if Umami not loaded):
+
+```javascript
+trackEvent('event-name', { key: 'value' });
+```
+
+Or use data attributes on HTML elements:
+
+```html
+<button data-umami-event="event-name" data-umami-event-key="value">Click</button>
+```
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `src/templates/base.html` | Script tag (conditional) |
+| `app/__init__.py` | Config vars |
+| `assets/site.js` | `trackEvent()` helper |
+| `~/.claude/skills/umami/SKILL.md` | Full documentation |

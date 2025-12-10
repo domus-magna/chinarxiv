@@ -102,12 +102,12 @@
           {% endif %}
           <ul class="sidebar-actions">
             {% if item._has_english_pdf %}
-            <li><a href="{{ item._english_pdf_url or (item.id ~ '.pdf') }}" class="sidebar-btn primary" target="_blank" rel="noopener" aria-label="Download English translation as PDF">Download PDF (English)</a></li>
+            <li><a href="{{ item._english_pdf_url or (item.id ~ '.pdf') }}" class="sidebar-btn primary" target="_blank" rel="noopener" aria-label="Download English translation as PDF" data-umami-event="pdf-download-en" data-umami-event-paper-id="{{ item.id }}">Download PDF (English)</a></li>
             {% endif %}
             {% if item.pdf_url %}
-            <li><a href="{{ item.pdf_url }}" class="sidebar-btn" target="_blank" rel="noopener" aria-label="View original PDF on ChinaXiv">Original PDF (Chinese)</a></li>
+            <li><a href="{{ item.pdf_url }}" class="sidebar-btn" target="_blank" rel="noopener" aria-label="View original PDF on ChinaXiv" data-umami-event="pdf-download-cn" data-umami-event-paper-id="{{ item.id }}">Original PDF (Chinese)</a></li>
             {% endif %}
-            <li><a href="{{ _source_url }}" class="sidebar-btn" target="_blank" rel="noopener" aria-label="View original record on ChinaXiv">View on ChinaXiv</a></li>
+            <li><a href="{{ _source_url }}" class="sidebar-btn" target="_blank" rel="noopener" aria-label="View original record on ChinaXiv" data-umami-event="view-chinaxiv" data-umami-event-paper-id="{{ item.id }}">View on ChinaXiv</a></li>
           </ul>
         </div>
 
@@ -300,6 +300,9 @@
         case 'bibtex': citation = getCitationBibTeX(); break;
       }
 
+      // Track citation copy event
+      trackEvent('copy-citation', { paper_id: paperData.id, format: format });
+
       copyToClipboard(citation, 'Citation copied!');
     }
 
@@ -450,6 +453,7 @@
         const data = await res.json();
 
         if (data.success) {
+          trackEvent('report-submit', { paper_id: paperData.id, issue_type: type });
           showToast('Report submitted. Thank you!');
           closeReportModal();
         } else {
@@ -468,6 +472,7 @@
     }
 
     function copyLink() {
+      trackEvent('copy-link', { paper_id: paperData.id });
       copyToClipboard(window.location.href, 'Link copied!');
     }
 
@@ -484,6 +489,7 @@
           bookmarks.push(bookmark);
           try {
             localStorage.setItem('chinarxiv_bookmarks', JSON.stringify(bookmarks));
+            trackEvent('bookmark', { paper_id: paperData.id, action: 'add' });
             showToast('Bookmarked!');
           } catch (storageError) {
             if (storageError.name === 'QuotaExceededError') {
@@ -574,6 +580,8 @@
           const stored = safeLocalStorage('set', storageKey, 'true');
           btn.textContent = 'Request Submitted';
           btn.classList.add('disabled');
+          // Track successful request
+          trackEvent(config.trackEventName || 'request-translation', { paper_id: paperId });
           showToast(stored === null
             ? 'Request submitted (couldn\'t save locally - private mode?)'
             : successMsg);
@@ -608,7 +616,8 @@
         storageKey: `fig_requested_${paperId}`,
         endpoint: '/api/request-figure-translation',
         buttonLabel: 'Request Figure Translation',
-        successMsg: 'Request submitted! We\'ll prioritize this paper for figure translation.'
+        successMsg: 'Request submitted! We\'ll prioritize this paper for figure translation.',
+        trackEventName: 'request-figures'
       });
     }
 
@@ -618,7 +627,8 @@
         storageKey: `text_requested_${paperId}`,
         endpoint: '/api/request-text-translation',
         buttonLabel: 'Request Full Text Translation',
-        successMsg: 'Request submitted! We\'ll prioritize this paper for full text translation.'
+        successMsg: 'Request submitted! We\'ll prioritize this paper for full text translation.',
+        trackEventName: 'request-text'
       });
     }
 

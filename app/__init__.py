@@ -37,6 +37,10 @@ def create_app(config=None):
     # Default configuration
     app.config['PER_PAGE'] = 50  # Papers per page for pagination
 
+    # Umami analytics configuration (optional, disabled if not set)
+    app.config['UMAMI_WEBSITE_ID'] = os.environ.get('UMAMI_WEBSITE_ID')
+    app.config['UMAMI_SCRIPT_URL'] = os.environ.get('UMAMI_SCRIPT_URL')
+
     # Override with custom config if provided
     if config:
         app.config.update(config)
