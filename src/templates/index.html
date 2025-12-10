@@ -128,7 +128,7 @@
           <a href="{{ root }}/items/{{ it.id }}" title="Abstract">{{ it.title_en or it.title }}</a>
         </h3>
         <div class="paper-meta-row">
-          <span class="paper-authors">{{ ', '.join(it.creators_en if it.creators_en else ['Unknown']) }}</span>
+          <span class="paper-authors">{{ ', '.join(it.creators_en or it.creators or ['Unknown']) }}</span>
         </div>
         <div class="paper-meta-row secondary">
           <span class="paper-date">{{ it.date[:10] if it.date else 'Unknown date' }}</span>

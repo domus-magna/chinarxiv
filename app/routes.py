@@ -10,6 +10,7 @@ This module contains all route handlers for the application:
 from flask import Blueprint, render_template, request, jsonify, abort, current_app
 from datetime import datetime
 from calendar import monthrange
+import json
 import logging
 from psycopg2.extras import RealDictCursor
 from .database import query_papers, get_db
@@ -40,6 +41,20 @@ def _prepare_paper_for_template(paper):
     paper['_has_full_text'] = bool(paper.get('has_full_text', False))
     paper['_has_translated_figures'] = False  # TODO: Check figure translations when available
     paper['_has_english_pdf'] = False  # English PDFs not yet available in Flask app
+
+    # Ensure creators fields are lists (JSONB should already parse, but be safe)
+    # This prevents join() from joining characters if field is a string
+
+    for field in ('creators_en', 'creators'):
+        val = paper.get(field)
+        if isinstance(val, str):
+            try:
+                paper[field] = json.loads(val)
+            except json.JSONDecodeError:
+                paper[field] = [val]  # Treat string as single author
+        elif val is None:
+            paper[field] = []
+
     return paper
 
 
