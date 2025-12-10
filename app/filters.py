@@ -6,15 +6,24 @@ and building filter-related data structures.
 
 Performance:
 - PostgreSQL: Uses materialized view for category counts (single query, 10-20ms)
+- Taxonomy loading is cached in memory after the first call
 """
 
 import json
+import logging
+from functools import lru_cache
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 
+
+@lru_cache(maxsize=None)
 def load_category_taxonomy():
     """
-    Load the category taxonomy from JSON file.
+    Load and cache the category taxonomy from JSON file.
+
+    The taxonomy is cached in memory after the first call, preventing
+    repeated file I/O operations.
 
     Returns:
         dict: Category taxonomy with structure:
@@ -61,7 +70,6 @@ def build_categories(db_connection=None):
 
     Performance optimization:
     - PostgreSQL: Queries materialized view (single query, 15-25x faster)
-    - SQLite: Uses N+1 query pattern (acceptable for development)
 
     Args:
         db_connection: Optional database connection for counting papers
@@ -79,14 +87,17 @@ def build_categories(db_connection=None):
             }
     """
     taxonomy = load_category_taxonomy()
-    categories = {}
 
-    for category_id, category_data in taxonomy.items():
-        categories[category_id] = {
-            'label': category_data['label'],
-            'order': category_data['order'],
-            'subjects': category_data.get('children', [])
+    # Use dictionary comprehension for cleaner code
+    categories = {
+        cat_id: {
+            'label': data['label'],
+            'order': data['order'],
+            'subjects': data.get('children', []),
+            'count': 0  # Default count, updated below if db_connection provided
         }
+        for cat_id, data in taxonomy.items()
+    }
 
     # Optionally add paper counts if database connection provided
     if db_connection:
@@ -114,6 +125,8 @@ def _build_category_counts(db_connection, adapter, categories, taxonomy):
         taxonomy: Category taxonomy data
     """
     try:
+        import psycopg2
+
         # Single query to get all subject counts from materialized view
         cursor = adapter.get_cursor(db_connection)
         cursor.execute("SELECT subject, paper_count FROM category_counts;")
@@ -125,7 +138,7 @@ def _build_category_counts(db_connection, adapter, categories, taxonomy):
             total_count = sum(subject_counts.get(subject, 0) for subject in subjects)
             categories[category_id]['count'] = total_count
 
-    except Exception:
-        # If materialized view query fails, fall back to zero counts
-        for category_id in taxonomy:
-            categories[category_id]['count'] = 0
+    except (psycopg2.Error, Exception) as e:
+        # If materialized view query fails, log error and fall back to zero counts
+        logger.error(f"Database error fetching category counts: {e}", exc_info=True)
+        # Counts remain at their initialized value of 0

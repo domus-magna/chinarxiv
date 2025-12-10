@@ -9,7 +9,7 @@ Uses PostgreSQL with connection pooling via database adapter.
 
 import logging
 import psycopg2
-from flask import g, current_app
+from flask import g
 from .filters import get_category_subjects
 from .db_adapter import get_adapter
 
@@ -18,18 +18,18 @@ logger = logging.getLogger(__name__)
 
 def get_db():
     """
-    Get database connection for current request.
+    Get a database connection from the pool for the current request.
 
-    Uses Flask's g object to store connection per-request.
-    Connection is automatically released by teardown handler in app/__init__.py.
+    Uses Flask's g object to store the connection, ensuring it's reused
+    within the same request. The connection is released automatically by a
+    teardown handler in app/__init__.py.
 
     Returns:
-        Database connection (sqlite3.Connection or psycopg2.connection)
-        with appropriate row factory (dict-like rows)
+        PostgreSQL database connection with RealDictCursor factory
+        (rows are accessed as dicts)
     """
     if 'db' not in g:
-        adapter = get_adapter()
-        g.db = adapter.get_connection()
+        g.db = get_adapter().get_connection()
     return g.db
 
 
@@ -99,8 +99,10 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         where_clauses.append("p.date <= %s")
         params.append(date_to)
 
-    if has_figures:
-        where_clauses.append("p.has_figures = 1")
+    if has_figures is not None:
+        # Use boolean for PostgreSQL (TRUE/FALSE not 1/0)
+        where_clauses.append("p.has_figures = %s")
+        params.append(bool(has_figures))
 
     if search:
         # FIX: Validate search query (Codex P2 issue)
@@ -123,55 +125,49 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         count_sql = f"SELECT COUNT(*) FROM {from_clause} WHERE {where_sql}"
         select_distinct = "p.*"
 
-    # Count total (for pagination)
+    # Execute queries with error handling
     try:
         cursor = adapter.get_cursor(db)
+
+        # Count total (for pagination)
         cursor.execute(count_sql, params)
         total = cursor.fetchone()[0]
-    except psycopg2.OperationalError as e:
-        # Query error - log and return empty results (Codex P0 fix: add logging)
-        logger.error(f"Database count query failed: {e}", exc_info=True, extra={
-            'query': count_sql,
-            'params': params,
-            'filters': {
-                'category': category,
-                'date_from': date_from,
-                'date_to': date_to,
-                'search': search,
-                'has_figures': has_figures,
-                'page': page
-            }
-        })
-        return [], 0
 
-    # Get page of results
-    offset = (page - 1) * per_page
-    query_sql = f"""
-        SELECT {select_distinct}
-        FROM {from_clause}
-        WHERE {where_sql}
-        ORDER BY p.date DESC
-        LIMIT %s OFFSET %s
-    """
+        if total == 0:
+            return [], 0
 
-    try:
-        cursor = adapter.get_cursor(db)
+        # Get page of results
+        offset = (page - 1) * per_page
+        query_sql = f"""
+            SELECT {select_distinct}
+            FROM {from_clause}
+            WHERE {where_sql}
+            ORDER BY p.date DESC
+            LIMIT %s OFFSET %s
+        """
         cursor.execute(query_sql, params + [per_page, offset])
         papers = cursor.fetchall()
-        return [dict(row) for row in papers], total
-    except psycopg2.OperationalError as e:
-        # Query error - log and return empty results (Codex P0 fix: add logging)
-        logger.error(f"Database result query failed: {e}", exc_info=True, extra={
-            'query': query_sql,
-            'params': params + [per_page, offset],
-            'filters': {
-                'category': category,
-                'date_from': date_from,
-                'date_to': date_to,
-                'search': search,
-                'has_figures': has_figures,
-                'page': page,
-                'per_page': per_page
+
+        # Adapter's cursor factory should already return dict-like rows
+        return papers, total
+
+    except psycopg2.Error as e:
+        # Query error - log and return empty results
+        logger.error(
+            f"Database query failed: {e}",
+            exc_info=True,
+            extra={
+                'filters': {
+                    'category': category,
+                    'date_from': date_from,
+                    'date_to': date_to,
+                    'search': search,
+                    'has_figures': has_figures,
+                    'page': page,
+                    'per_page': per_page
+                }
             }
-        })
+        )
         return [], 0
+    finally:
+        adapter.release_cursor(cursor)

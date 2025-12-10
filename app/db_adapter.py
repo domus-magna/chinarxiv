@@ -27,18 +27,17 @@ class DatabaseAdapter:
     with Railway managed PostgreSQL or local PostgreSQL instances.
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self):
         """
         Initialize PostgreSQL connection pool.
 
-        Args:
-            config: Flask app configuration dictionary
+        Reads DATABASE_URL from environment and creates a connection pool
+        for efficient database access.
 
         Raises:
             ValueError: If DATABASE_URL not provided
             Exception: If connection pool creation fails
         """
-        self.config = config
         self._pool = None
 
         # Get DATABASE_URL from environment
@@ -129,14 +128,12 @@ class DatabaseAdapter:
 _adapter: Optional[DatabaseAdapter] = None
 
 
-def init_adapter(config: Dict[str, Any]) -> None:
+def init_adapter() -> None:
     """
     Initialize global database adapter instance.
 
     This should be called once during application initialization (create_app).
-
-    Args:
-        config: Flask app configuration dictionary
+    Reads DATABASE_URL from environment variable.
 
     Raises:
         ValueError: If DATABASE_URL not set
@@ -145,7 +142,7 @@ def init_adapter(config: Dict[str, Any]) -> None:
     if _adapter is not None:
         logger.warning("Database adapter already initialized, reinitializing...")
 
-    _adapter = DatabaseAdapter(config)
+    _adapter = DatabaseAdapter()
     logger.info("PostgreSQL connection pool initialized")
 
 

@@ -42,7 +42,7 @@ def create_app(config=None):
 
     # Initialize PostgreSQL database adapter
     # Requires DATABASE_URL environment variable (raises ValueError if missing)
-    init_adapter(app.config)
+    init_adapter()
 
     # Configure logging
     logging.basicConfig(
