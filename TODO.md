@@ -81,6 +81,53 @@
 - [x] Dynamic paper count updates (Dec 2025)
 - [x] Browser back/forward support for category filters (Dec 2025)
 
+## Cloudflare Workers Migration to Railway
+
+**Status**: Planned (Phase 2)
+**Context**: Cloudflare Pages static site generation has been removed. Workers remain for backward compatibility.
+
+### Workers to Migrate
+
+| Worker | Current Location | Target | Notes |
+|--------|-----------------|--------|-------|
+| `backfill-api` | `workers/backfill-api/` | Flask route `/api/backfill` | Triggers backfill workflows |
+| `backfill-orchestrator` | `workers/backfill-orchestrator/` | Flask route or cron job | Coordinates backfill |
+| `report-api` | `workers/report-api/` | Flask route `/api/reports` | Pipeline reports |
+| `redirect` | `workers/redirect/` | Cloudflare redirect rules | Simple domain redirects |
+
+### Pages Functions to Migrate
+
+| Function | Current Location | Target | Notes |
+|----------|-----------------|--------|-------|
+| `request-figure-translation` | `functions/api/` | Flask route `/api/request-figure` | Uses KV for storage |
+| `request-text-translation` | `functions/api/` | Flask route `/api/request-text` | Uses KV for storage |
+
+### Storage Migration
+
+- [ ] Replace Cloudflare KV with PostgreSQL tables for figure/text requests
+- [ ] Create `translation_requests` table:
+  ```sql
+  CREATE TABLE translation_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    paper_id TEXT NOT NULL,
+    request_type TEXT CHECK (request_type IN ('figure', 'text')),
+    ip_hash TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+  CREATE INDEX idx_requests_paper_id ON translation_requests(paper_id);
+  CREATE INDEX idx_requests_created ON translation_requests(created_at);
+  ```
+- [ ] Update aggregate scripts to query PostgreSQL
+
+### Migration Steps
+
+1. [ ] Create Flask routes for each worker endpoint
+2. [ ] Add PostgreSQL table for translation requests
+3. [ ] Update frontend to use Railway API endpoints
+4. [ ] Test all endpoints on Railway staging
+5. [ ] Update DNS/routing to point to Railway
+6. [ ] Deprecate Cloudflare Workers (keep redirect rules)
+
 ## Technical Debt
 
 - [ ] Performance testing with 5K+ papers (current: ~500)

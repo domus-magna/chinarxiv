@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
-from src.discord_alerts import DiscordAlerts
+from src.alerts import AlertManager
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -100,28 +100,24 @@ def main() -> int:
 
     remote_key = _upload_to_b2(output_path)
 
-    alerts = DiscordAlerts()
+    alerts = AlertManager()
     if alerts.enabled:
         attempted = pipeline_summary.get("attempted", 0)
         successes = pipeline_summary.get("successes", 0)
         qa_passed = pipeline_summary.get("qa_passed", 0)
         validated = b2_summary.get("validated_uploaded", 0)
         hydrated = hydration_summary.get("hydrated_count")
-        alerts.send_alert(
-            alert_type="info",
+        hydrated_str = str(hydrated) if hydrated is not None else "n/a"
+
+        message = (
+            f"Attempted: {attempted} | Successes: {successes} | QA passed: {qa_passed}\n"
+            f"Validated uploads: {validated} | Hydrated count: {hydrated_str}"
+        )
+        alerts.alert(
+            level="info",
             title="Nightly run summary",
-            description="Automated translation pipeline summary",
-            fields=[
-                {"name": "Attempted", "value": str(attempted), "inline": True},
-                {"name": "Successes", "value": str(successes), "inline": True},
-                {"name": "QA passed", "value": str(qa_passed), "inline": True},
-                {"name": "Validated uploads", "value": str(validated), "inline": True},
-                {
-                    "name": "Hydrated count",
-                    "value": str(hydrated) if hydrated is not None else "n/a",
-                    "inline": True,
-                },
-            ],
+            message=message,
+            immediate=True,
         )
 
     if remote_key:

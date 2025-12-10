@@ -1,3 +1,7 @@
+# TODO: Migrate to Flask endpoint or cron job on Railway - see TODO.md
+# Current functionality: Coordinates backfill workflow orchestration
+# Uses Durable Objects with SQLite - will need PostgreSQL equivalent
+
 name = "chinarxiv-backfill-orchestrator"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"

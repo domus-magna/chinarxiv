@@ -162,9 +162,5 @@ jobs:
           echo "📋 Triggering QA report generation..."
           gh workflow run qa_report.yml || echo "Failed to trigger QA report"
 
-      - name: Trigger site rebuild
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo "🎨 Triggering site rebuild..."
-          gh workflow run build.yml || echo "Failed to trigger site rebuild"
+      - name: Queue complete
+        run: echo "✅ Batch queue processing complete"
