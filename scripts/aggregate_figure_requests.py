@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
-Aggregate figure translation requests by paper ID.
+Aggregate translation requests by paper ID.
 
-Reads figure translation requests from data/figure_requests.jsonl or Cloudflare KV
+Reads figure or text translation requests from data/figure_requests.jsonl or Cloudflare KV
 and provides statistics on the most requested papers.
 
 Usage:
-    # Read from local JSONL file
+    # Read from local JSONL file (figure requests, default)
     python scripts/aggregate_figure_requests.py
     python scripts/aggregate_figure_requests.py --days 30  # Last 30 days only
     python scripts/aggregate_figure_requests.py --top 50   # Top 50 papers
 
+    # Read text translation requests
+    python scripts/aggregate_figure_requests.py --type text --days 30
+
     # Read from Cloudflare KV (requires CF_ACCOUNT_ID, CF_API_TOKEN, CF_KV_NAMESPACE_ID env vars)
     python scripts/aggregate_figure_requests.py --kv --days 30
+    python scripts/aggregate_figure_requests.py --kv --type text --days 30
     python scripts/aggregate_figure_requests.py --kv --export-jsonl data/kv_cache.jsonl
 """
 # TODO(v2, after server-side logging moves to a Durable Object): add a KV/R2 fetch path that
@@ -100,7 +104,8 @@ def aggregate_from_kv(
     account_id: str,
     api_token: str,
     namespace_id: str,
-    days: int | None = None
+    days: int | None = None,
+    request_type: str = 'figures'
 ) -> tuple[Counter, list[dict]]:
     """
     Aggregate requests from Cloudflare KV.
@@ -110,6 +115,7 @@ def aggregate_from_kv(
         api_token: Cloudflare API token with KV read scope
         namespace_id: KV namespace ID (from wrangler.toml)
         days: If specified, only count requests from last N days
+        request_type: Type of requests to aggregate ('figures' or 'text')
 
     Returns:
         Tuple of (Counter of paper_id -> request count, list of all request records)
@@ -119,6 +125,9 @@ def aggregate_from_kv(
         "Authorization": f"Bearer {api_token}",
         "Content-Type": "application/json"
     }
+
+    # Determine key prefix based on request type
+    key_prefix_base = 'text_requests' if request_type == 'text' else 'requests'
 
     # Determine date range for prefix filtering
     if days is not None:
@@ -139,7 +148,7 @@ def aggregate_from_kv(
     for prefix in date_prefixes:
         # List keys with pagination
         cursor = None
-        key_pattern = f"requests:{prefix}:" if prefix else "requests:"
+        key_pattern = f"{key_prefix_base}:{prefix}:" if prefix else f"{key_prefix_base}:"
 
         while True:
             # List keys matching pattern
@@ -227,7 +236,7 @@ def aggregate_from_kv(
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Aggregate figure translation requests from JSONL file or Cloudflare KV'
+        description='Aggregate translation requests from JSONL file or Cloudflare KV'
     )
 
     # Source selection
@@ -241,6 +250,14 @@ def main():
         '--kv',
         action='store_true',
         help='Read from Cloudflare KV (requires CF_ACCOUNT_ID, CF_API_TOKEN, CF_KV_NAMESPACE_ID env vars)'
+    )
+
+    # Request type selection
+    parser.add_argument(
+        '--type',
+        choices=['figures', 'text'],
+        default='figures',
+        help='Type of requests to aggregate: figures (default) or text'
     )
 
     # Common parameters
@@ -284,8 +301,8 @@ def main():
             print("Error: --kv requires CF_ACCOUNT_ID, CF_API_TOKEN, and CF_KV_NAMESPACE_ID environment variables", file=sys.stderr)
             return 1
 
-        print("Reading from Cloudflare KV...")
-        paper_counts, all_requests = aggregate_from_kv(account_id, api_token, namespace_id, args.days)
+        print(f"Reading {args.type} translation requests from Cloudflare KV...")
+        paper_counts, all_requests = aggregate_from_kv(account_id, api_token, namespace_id, args.days, args.type)
 
         # Export to JSONL for caching if requested
         if args.export_jsonl:
@@ -306,8 +323,9 @@ def main():
 
     # Display statistics
     time_period = f"Last {args.days} Days" if args.days else "All Time"
+    request_type_label = "Full Text" if args.type == 'text' else "Figure"
     print(f"\n{'=' * 70}")
-    print(f"Figure Translation Requests - {time_period}")
+    print(f"{request_type_label} Translation Requests - {time_period}")
     print(f"{'=' * 70}")
     print(f"\nTotal unique papers requested: {len(paper_counts)}")
     print(f"Total requests: {sum(paper_counts.values())}")
