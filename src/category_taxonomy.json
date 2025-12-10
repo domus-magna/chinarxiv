@@ -1,6 +1,6 @@
 {
   "ai_computing": {
-    "label": "AI & Computer Science",
+    "label": "AI / CS",
     "order": 1,
     "pinned": true,
     "children": [
@@ -8,30 +8,75 @@
       "Computer Science & Technology",
       "Computer Software",
       "Computer Application Technology",
-      "Computer Applications"
+      "Computer Applications",
+      "Artificial Intelligence",
+      "Natural Language Processing",
+      "Natural Language Understanding and Machine Translation",
+      "Information Science and Systems Science",
+      "Graph Theory",
+      "Other Disciplines of Computer Science and Technology"
+    ]
+  },
+  "biology": {
+    "label": "Biology",
+    "order": 2,
+    "children": [
+      "Biology",
+      "Genetics",
+      "Biochemistry",
+      "Virology",
+      "Agriculture",
+      "Structural Biology"
     ]
   },
   "physics": {
-    "label": "Physics & Nuclear Science",
-    "order": 2,
-    "children": [
-      "Physics",
-      "Nuclear Science & Technology",
-      "Nuclear Physics",
-      "Fission Reactor Engineering",
-      "Fission Reactor Engineering Technology",
-      "Particle Accelerators"
-    ]
-  },
-  "psychology": {
-    "label": "Psychology & Behavioral Science",
+    "label": "Physics",
     "order": 3,
     "children": [
-      "Psychology",
-      "Applied Psychology",
-      "Management Psychology",
-      "Personality Psychology",
-      "Cognitive Psychology"
+      "Physics",
+      "Nuclear Physics",
+      "Quantum Computing",
+      "Astrophysics",
+      "Condensed Matter: Electronic Structure, Electrical, Magnetic, and Optical Properties",
+      "Science and Technology of Interdisciplinary Physics and Related Fields",
+      "Astronomical Instrumentation and Technology"
+    ]
+  },
+  "engineering": {
+    "label": "Engineering",
+    "order": 4,
+    "children": [
+      "Nuclear Science and Technology",
+      "Nuclear Science & Technology",
+      "Engineering and Technical Sciences",
+      "Instrumentation Technology",
+      "Radiation Physics and Technology",
+      "Power and Electrical Engineering",
+      "Mechanical Engineering",
+      "Electrical Engineering",
+      "Fission Reactor Engineering Technology",
+      "Fission Reactor Engineering",
+      "Nuclear Detection Technology and Nuclear Electronics",
+      "Electronics and Communication Technology",
+      "General Engineering Technology",
+      "Mechanical Manufacturing Automation",
+      "Materials Science (General)",
+      "Environmental Science and Technology",
+      "Basic Disciplines of Environmental Science and Technology",
+      "Engineering Thermophysics",
+      "Biomedical Engineering",
+      "Electronic, Optical, and Magnetic Materials",
+      "Surveying and Mapping Science and Technology",
+      "Mechanical Manufacturing Technology and Equipment",
+      "Spent Nuclear Fuel Reprocessing Technology",
+      "Nuclear Materials and Process Technology",
+      "Nuclear Fusion Engineering Technology",
+      "Particle Accelerators",
+      "Science of Science and Technology Management",
+      "Other Mechanical Engineering Disciplines",
+      "Information Processing Technology",
+      "Engineering and Technology Sciences",
+      "Engineering and Technological Sciences"
     ]
   }
 }

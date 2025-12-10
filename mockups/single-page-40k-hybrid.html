@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid 40K Architecture Demo - ChinaRxiv</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            background: #f5f5f5;
+            color: #212529;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #ffffff;
+        }
+
+        /* Header */
+        .site-header {
+            background: #ffffff;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 1rem 2rem;
+        }
+
+        .header-title {
+            color: #b31b1b;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        /* Filter Pills Container */
+        .subject-pills-container {
+            margin-bottom: 1rem;
+        }
+
+        .filter-label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.75rem;
+        }
+
+        .pills-wrapper {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .subject-pills-scroll {
+            display: flex;
+            gap: 0.75rem;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .pill-btn {
+            padding: 0.5rem 1rem;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #6c757d;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            font-family: inherit;
+            flex-shrink: 0;
+        }
+
+        .pill-btn:hover {
+            color: #495057;
+            border-bottom-color: #dee2e6;
+        }
+
+        .pill-btn.active {
+            color: #212529;
+            border-bottom-color: #b31b1b;
+            font-weight: 600;
+        }
+
+        .pill-btn.loading {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        .pill-dropdown {
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .dropdown-arrow {
+            font-size: 0.7rem;
+            transition: transform 0.2s ease;
+        }
+
+        .pill-dropdown.open .dropdown-arrow {
+            transform: rotate(180deg);
+        }
+
+        .dropdown-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            right: 0;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            min-width: 250px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 100;
+            padding: 0.5rem;
+        }
+
+        .pill-dropdown.open .dropdown-menu {
+            display: block;
+        }
+
+        .dropdown-item {
+            width: 100%;
+            text-align: left;
+            border-radius: 4px;
+            margin-bottom: 0.25rem;
+            padding: 0.5rem 1rem;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: #6c757d;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .dropdown-item:hover {
+            color: #495057;
+            border-bottom-color: #dee2e6;
+        }
+
+        .dropdown-item.active {
+            color: #212529;
+            border-bottom-color: #b31b1b;
+            font-weight: 600;
+        }
+
+        /* Filter State Indicator */
+        .filter-state {
+            background: #f8f9fa;
+            padding: 0.75rem 1rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            color: #495057;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            min-height: 3rem;
+        }
+
+        .filter-state strong {
+            color: #212529;
+        }
+
+        .clear-btn {
+            padding: 0.35rem 0.875rem;
+            background: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #495057;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .clear-btn:hover {
+            background: #f8f9fa;
+            border-color: #adb5bd;
+            color: #212529;
+        }
+
+        /* Timeline Container */
+        .timeline-container {
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        .paper-card {
+            padding: 1.5rem 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .paper-card:last-child {
+            border-bottom: none;
+        }
+
+        .paper-title {
+            color: #212529;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .paper-authors {
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .paper-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-bottom: 0.75rem;
+        }
+
+        .paper-preview {
+            color: #495057;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* Loading States */
+        .loading-indicator {
+            text-align: center;
+            padding: 2rem;
+            color: #6c757d;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #b31b1b;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+            background: transparent;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .infinite-scroll-sentinel {
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        /* Note Box */
+        .demo-note {
+            background: #d4edda;
+            border: 1px solid #28a745;
+            border-radius: 4px;
+            padding: 1rem;
+            margin: 1rem 2rem;
+            color: #155724;
+        }
+
+        .demo-note h3 {
+            margin-bottom: 0.5rem;
+            color: #155724;
+        }
+
+        .demo-note ul {
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sticky Header with Pills -->
+        <div class="site-header">
+            <h1 class="header-title">Hybrid 40K Architecture Demo</h1>
+
+            <!-- Subject Pills -->
+            <div class="subject-pills-container">
+                <label class="filter-label">Filter by Subject</label>
+
+                <div class="pills-wrapper">
+                    <div class="subject-pills-scroll" id="subject-pills">
+                        <button class="pill-btn active" data-subject="">All Recent</button>
+                        <button class="pill-btn" data-subject="physics">Physics</button>
+                        <button class="pill-btn" data-subject="cs">Computer Science</button>
+                        <button class="pill-btn" data-subject="biology">Biology</button>
+                        <button class="pill-btn" data-subject="chemistry">Chemistry</button>
+                        <button class="pill-btn" data-subject="math">Mathematics</button>
+                        <button class="pill-btn" data-subject="ai">Artificial Intelligence</button>
+                        <button class="pill-btn" data-subject="neuro">Neuroscience</button>
+                    </div>
+
+                    <div class="pill-dropdown">
+                        <button class="pill-btn" id="more-toggle">
+                            More <span class="dropdown-arrow">▼</span>
+                        </button>
+                        <div class="dropdown-menu" id="dropdown-menu">
+                            <button class="dropdown-item" data-subject="">All Recent</button>
+                            <button class="dropdown-item" data-subject="physics">Physics</button>
+                            <button class="dropdown-item" data-subject="cs">Computer Science</button>
+                            <button class="dropdown-item" data-subject="biology">Biology</button>
+                            <button class="dropdown-item" data-subject="chemistry">Chemistry</button>
+                            <button class="dropdown-item" data-subject="math">Mathematics</button>
+                            <button class="dropdown-item" data-subject="ai">Artificial Intelligence</button>
+                            <button class="dropdown-item" data-subject="neuro">Neuroscience</button>
+                            <button class="dropdown-item" data-subject="econ">Economics</button>
+                            <button class="dropdown-item" data-subject="psych">Psychology</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter State Indicator -->
+            <div class="filter-state" id="filter-state">
+                <span>Showing <strong id="result-count">200</strong> recent papers<span id="filter-description"></span></span>
+                <button class="clear-btn" id="clear-filters" style="visibility: hidden;">Clear filters</button>
+            </div>
+        </div>
+
+        <!-- Demo Note -->
+        <div class="demo-note">
+            <h3>✓ Hybrid Lazy-Loading Architecture (40K Scale)</h3>
+            <ul>
+                <li><strong>Initial load:</strong> Latest 200 papers (~50KB JSON)</li>
+                <li><strong>Subject click:</strong> Fetches subject-specific JSON (~300KB, simulated 800ms delay)</li>
+                <li><strong>Infinite scroll:</strong> Loads next 200 papers when reaching bottom</li>
+                <li><strong>Virtualization ready:</strong> Only visible rows would be rendered in production</li>
+                <li><strong>Try it:</strong> Click "Physics" pill to see loading state and data fetch simulation</li>
+            </ul>
+        </div>
+
+        <!-- Timeline Container -->
+        <div class="timeline-container" id="timeline-container">
+            <!-- Papers rendered here -->
+        </div>
+
+        <!-- Infinite Scroll Sentinel -->
+        <div class="infinite-scroll-sentinel" id="scroll-sentinel">
+            <span id="sentinel-text">Scroll to load more...</span>
+        </div>
+    </div>
+
+    <script>
+        // Simulated Data
+        const MOCK_DATA = {
+            'latest': {
+                total: 40000,
+                papers: Array.from({length: 200}, (_, i) => ({
+                    id: `chinaxiv-2024${String(i).padStart(5, '0')}`,
+                    title: `Recent Paper ${i + 1}: Advanced Research in Multiple Domains`,
+                    authors: ['Zhang Wei', 'Li Ming', 'Wang Fang'],
+                    date: '2024-12-06',
+                    subjects: ['Physics', 'Computer Science'],
+                    preview: 'We present a novel approach to solving complex problems using innovative methodologies and cutting-edge techniques...'
+                }))
+            },
+            'physics': {
+                total: 5243,
+                papers: Array.from({length: 200}, (_, i) => ({
+                    id: `phys-2024${String(i).padStart(5, '0')}`,
+                    title: `Physics Paper ${i + 1}: Quantum Dynamics and Field Theory Applications`,
+                    authors: ['Chen Xiaoming', 'Liu Hua', 'Zhou Jian'],
+                    date: '2024-12-05',
+                    subjects: ['Physics'],
+                    preview: 'This study investigates quantum mechanical phenomena in high-energy physics contexts...'
+                }))
+            },
+            'cs': {
+                total: 8234,
+                papers: Array.from({length: 200}, (_, i) => ({
+                    id: `cs-2024${String(i).padStart(5, '0')}`,
+                    title: `CS Paper ${i + 1}: Machine Learning Architectures for Large-Scale Systems`,
+                    authors: ['Yang Lin', 'Zhao Ming', 'Wu Jing'],
+                    date: '2024-12-04',
+                    subjects: ['Computer Science'],
+                    preview: 'We introduce a scalable architecture for distributed machine learning applications...'
+                }))
+            }
+        };
+
+        // App State
+        const AppState = {
+            currentSubject: '',
+            loadedPapers: [],
+            totalCount: 0,
+            currentPage: 1,
+            totalPages: 1,
+            isLoading: false
+        };
+
+        // Initialize
+        function init() {
+            loadData('');
+            setupPillHandlers();
+            setupInfiniteScroll();
+            updatePillVisibility();
+            window.addEventListener('resize', updatePillVisibility);
+        }
+
+        // Load Data (simulated fetch)
+        async function loadData(subject) {
+            if (AppState.isLoading) return;
+
+            AppState.isLoading = true;
+            AppState.currentSubject = subject;
+
+            // Show loading state
+            const container = document.getElementById('timeline-container');
+            container.innerHTML = `
+                <div class="loading-indicator">
+                    <div class="loading-spinner"></div>
+                    <div>Loading ${subject || 'recent'} papers...</div>
+                </div>
+            `;
+
+            // Update pills to show loading
+            document.querySelectorAll('.pill-btn').forEach(btn => {
+                if (btn.dataset.subject === subject) {
+                    btn.classList.add('loading');
+                }
+            });
+
+            // Simulate network delay (800ms)
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            // Load mock data
+            const dataKey = subject || 'latest';
+            const data = MOCK_DATA[dataKey] || MOCK_DATA['latest'];
+
+            AppState.loadedPapers = data.papers;
+            AppState.totalCount = data.total;
+            AppState.currentPage = 1;
+            AppState.totalPages = Math.ceil(data.total / 200);
+            AppState.isLoading = false;
+
+            // Remove loading state from pills
+            document.querySelectorAll('.pill-btn').forEach(btn => {
+                btn.classList.remove('loading');
+            });
+
+            renderPapers();
+            updateFilterState();
+        }
+
+        // Render Papers
+        function renderPapers() {
+            const container = document.getElementById('timeline-container');
+
+            container.innerHTML = AppState.loadedPapers.map(paper => `
+                <div class="paper-card">
+                    <div class="paper-title">${paper.title}</div>
+                    <div class="paper-authors">${paper.authors.join(', ')}</div>
+                    <div class="paper-meta">
+                        <span>${paper.date}</span>
+                        <span>•</span>
+                        <span>${paper.subjects.join(', ')}</span>
+                        <span>•</span>
+                        <span>${paper.id}</span>
+                    </div>
+                    <div class="paper-preview">${paper.preview}</div>
+                </div>
+            `).join('');
+        }
+
+        // Update Filter State
+        function updateFilterState() {
+            const countEl = document.getElementById('result-count');
+            const descEl = document.getElementById('filter-description');
+            const clearBtn = document.getElementById('clear-filters');
+
+            countEl.textContent = AppState.loadedPapers.length;
+
+            if (AppState.currentSubject) {
+                descEl.textContent = ` of ${AppState.totalCount.toLocaleString()} in ${getSubjectName(AppState.currentSubject)}`;
+                clearBtn.style.visibility = 'visible';
+            } else {
+                descEl.textContent = ' across all subjects';
+                clearBtn.style.visibility = 'hidden';
+            }
+        }
+
+        function getSubjectName(slug) {
+            const names = {
+                'physics': 'Physics',
+                'cs': 'Computer Science',
+                'biology': 'Biology',
+                'chemistry': 'Chemistry',
+                'math': 'Mathematics',
+                'ai': 'Artificial Intelligence',
+                'neuro': 'Neuroscience'
+            };
+            return names[slug] || slug;
+        }
+
+        // Pill Handlers
+        function setupPillHandlers() {
+            const pills = document.querySelectorAll('.pill-btn[data-subject]');
+            const dropdownItems = document.querySelectorAll('.dropdown-item[data-subject]');
+
+            pills.forEach(pill => {
+                pill.addEventListener('click', () => handlePillClick(pill.dataset.subject));
+            });
+
+            dropdownItems.forEach(item => {
+                item.addEventListener('click', () => handlePillClick(item.dataset.subject));
+            });
+
+            // More dropdown toggle
+            document.getElementById('more-toggle').addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.querySelector('.pill-dropdown').classList.toggle('open');
+            });
+
+            // Close dropdown on outside click
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.pill-dropdown')) {
+                    document.querySelector('.pill-dropdown').classList.remove('open');
+                }
+            });
+
+            // Clear filters
+            document.getElementById('clear-filters').addEventListener('click', () => {
+                handlePillClick('');
+            });
+        }
+
+        function handlePillClick(subject) {
+            // Update active state
+            document.querySelectorAll('.pill-btn[data-subject], .dropdown-item[data-subject]').forEach(el => {
+                el.classList.toggle('active', el.dataset.subject === subject);
+            });
+
+            // Close dropdown
+            document.querySelector('.pill-dropdown').classList.remove('open');
+
+            // Load data
+            loadData(subject);
+        }
+
+        // Pill Visibility Management
+        function updatePillVisibility() {
+            const pillsScroll = document.getElementById('subject-pills');
+            const pills = pillsScroll.querySelectorAll('.pill-btn');
+            const containerWidth = pillsScroll.clientWidth;
+            let accumulatedWidth = 0;
+            const gap = 12; // 0.75rem
+
+            Array.from(pills).forEach((pill, index) => {
+                const pillWidth = pill.offsetWidth;
+                accumulatedWidth += pillWidth;
+                if (index > 0) accumulatedWidth += gap;
+
+                pill.style.display = accumulatedWidth > containerWidth ? 'none' : '';
+            });
+        }
+
+        // Infinite Scroll
+        function setupInfiniteScroll() {
+            const sentinel = document.getElementById('scroll-sentinel');
+            const sentinelText = document.getElementById('sentinel-text');
+
+            const observer = new IntersectionObserver(async (entries) => {
+                if (entries[0].isIntersecting && !AppState.isLoading && AppState.currentPage < AppState.totalPages) {
+                    sentinelText.textContent = 'Loading more...';
+
+                    // Simulate loading next page
+                    await new Promise(resolve => setTimeout(resolve, 600));
+
+                    AppState.currentPage++;
+                    // In production, would fetch next page JSON here
+
+                    sentinelText.textContent = `Page ${AppState.currentPage} of ${AppState.totalPages}`;
+                }
+            });
+
+            observer.observe(sentinel);
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

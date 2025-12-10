@@ -12,7 +12,6 @@
   .support-lead {
     font-size: 1.15rem;
     color: var(--text-muted);
-    max-width: 680px;
   }
 
   .support-section {
@@ -176,8 +175,7 @@
 <div class="page-header">
   <h1>Support This Project</h1>
   <p class="support-lead">
-    ChinaRxiv is a volunteer project that machine-translates Chinese preprints.
-    Your support directly funds the API costs for translation.
+    Every dollar translates ~2 papers. Your contribution directly funds the AI costs that make Chinese research accessible worldwide.
   </p>
 </div>
 
@@ -222,7 +220,7 @@
       </table>
       <p style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted);">
         $100 funds <strong>{{ (100 / cost_per_paper)|int }} papers</strong>.
-        Remaining corpus: <strong>~${{ "{:,}".format(total_cost) }}</strong>.
+        Remaining corpus: <strong>~${{ "{:,.2f}".format(total_cost) }}</strong>.
       </p>
     </div>
   </div>
@@ -238,7 +236,7 @@
         <h3>Quick Donation</h3>
         <p>One-click, any amount. No account required.</p>
         <a href="https://ko-fi.com/seconds0" class="kofi-btn" target="_blank" rel="noopener">
-          Support on Ko-fi
+          Fund a Translation
         </a>
       </div>
 

@@ -13,222 +13,401 @@
   </div>
 
   {# ========================================================================
-     UNIFIED SEARCH CONTAINER - Recovered from mockup
-     Single cohesive container with search, tabs, and advanced filter button
+     UNIFIED SEARCH CONTAINER - Server-side filtering
      ======================================================================== #}
 
   <div class="unified-search-container">
-    <!-- Search Row -->
+    <!-- Search Row - Form submission to server -->
     <div class="search-row">
-      <input type="text" class="search-input" placeholder="Search by title, authors, or abstract…" id="search-input">
-      <button class="search-btn">Search</button>
+      <form method="GET" action="/" class="search-form">
+        <input type="text"
+               class="search-input"
+               name="q"
+               value="{{ filters.search }}"
+               placeholder="Search by title, authors, or abstract…"
+               id="search-input">
+        {# Preserve other filters #}
+        {% if filters.category %}
+          <input type="hidden" name="category" value="{{ filters.category }}">
+        {% endif %}
+        {% if filters.date_from %}
+          <input type="hidden" name="from" value="{{ filters.date_from }}">
+        {% endif %}
+        {% if filters.date_to %}
+          <input type="hidden" name="to" value="{{ filters.date_to }}">
+        {% endif %}
+        {% if filters.has_figures %}
+          <input type="hidden" name="figures" value="1">
+        {% endif %}
+        {% if filters.subjects %}
+          {% for subject in filters.subjects %}
+            <input type="hidden" name="subjects" value="{{ subject }}">
+          {% endfor %}
+        {% endif %}
+        <button type="submit" class="search-btn">Search</button>
+      </form>
     </div>
 
-    <!-- Tabs Row -->
+    <!-- Tabs Row - Server-side navigation -->
     <div class="tabs-row">
       <nav class="subject-nav" role="tablist" aria-label="Category filters">
-        <button class="category-tab active" role="tab" aria-selected="true" aria-controls="articles" data-category="">All Recent</button>
+        <a href="/?{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}&{% endif %}{% if filters.has_figures %}figures=1{% endif %}"
+           class="category-tab {% if not filters.category %}active{% endif %}"
+           role="tab"
+           aria-selected="{% if not filters.category %}true{% else %}false{% endif %}"
+           aria-controls="articles">
+          All Recent
+        </a>
         {% for category_id, category in categories.items()|sort(attribute='1.order') %}
-        <button class="category-tab" role="tab" aria-selected="false" aria-controls="articles" data-category="{{ category_id }}">
-          {{ category.label }}
-        </button>
+        <a href="/?category={{ category_id }}{% if filters.search %}&q={{ filters.search }}{% endif %}{% if filters.date_from %}&from={{ filters.date_from }}{% endif %}{% if filters.date_to %}&to={{ filters.date_to }}{% endif %}{% if filters.has_figures %}&figures=1{% endif %}"
+           class="category-tab {% if filters.category == category_id %}active{% endif %}"
+           role="tab"
+           aria-selected="{% if filters.category == category_id %}true{% else %}false{% endif %}"
+           aria-controls="articles">
+          {{ category.label }}{% if category.count is defined %} ({{ category.count }}){% endif %}
+        </a>
         {% endfor %}
       </nav>
 
       <button class="advanced-search-btn" id="advancedSearchBtn">
         <span>⚙</span>
         <span>Advanced Search & Filter</span>
-        <span class="badge" id="filterBadge" style="display: none;">0</span>
+        {% set active_filter_count = (1 if filters.date_from or filters.date_to else 0) + (1 if filters.has_figures else 0) + (filters.subjects|length if filters.subjects else 0) %}
+        <span class="badge" id="filterBadge" {% if active_filter_count == 0 %}style="display: none;"{% endif %}>{{ active_filter_count }}</span>
       </button>
     </div>
 
-    <!-- Active Filter Indicators (shown when filters applied) -->
-    <div class="filter-indicators" id="filterIndicators" style="display: none;">
-      <!-- Filter pills will be dynamically added by JavaScript -->
+    <!-- Active Filter Indicators -->
+    {% if filters.date_from or filters.date_to or filters.has_figures or filters.subjects %}
+    <div class="filter-indicators" id="filterIndicators">
+      {% if filters.date_from or filters.date_to %}
+      <span class="filter-pill">
+        Date: {% if filters.date_from %}{{ filters.date_from }}{% else %}*{% endif %} to {% if filters.date_to %}{{ filters.date_to }}{% else %}*{% endif %}
+        <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% for subject in filters.subjects %}subjects={{ subject|urlencode }}&{% endfor %}{% if filters.has_figures %}figures=1{% endif %}"
+           class="filter-pill-remove"
+           aria-label="Remove date filter">×</a>
+      </span>
+      {% endif %}
+      {% if filters.has_figures %}
+      <span class="filter-pill">
+        Papers with figures
+        <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}&{% endif %}{% for subject in filters.subjects %}subjects={{ subject|urlencode }}&{% endfor %}"
+           class="filter-pill-remove"
+           aria-label="Remove figures filter">×</a>
+      </span>
+      {% endif %}
+      {% if filters.subjects %}
+        {% for subject in filters.subjects %}
+        <span class="filter-pill">
+          {{ subject }}
+          <a href="/?{% if filters.category %}category={{ filters.category }}&{% endif %}{% if filters.search %}q={{ filters.search }}&{% endif %}{% if filters.date_from %}from={{ filters.date_from }}&{% endif %}{% if filters.date_to %}to={{ filters.date_to }}&{% endif %}{% if filters.has_figures %}figures=1&{% endif %}{% for s in filters.subjects if s != subject %}subjects={{ s|urlencode }}&{% endfor %}"
+             class="filter-pill-remove"
+             aria-label="Remove {{ subject }} filter">×</a>
+        </span>
+        {% endfor %}
+      {% endif %}
     </div>
+    {% endif %}
   </div>
 
-  <!-- Paper count below filter pills -->
-  <p class="paper-count" id="paperCount" aria-live="polite" aria-atomic="true">Showing {{ items|length }} paper{% if items|length != 1 %}s{% endif %}</p>
-
-  {# Expose category data to JavaScript for modal accordion #}
-  <script>
-    window.categoryData = {{ categories | tojson | safe }};
-    window.categoryTaxonomy = {{ categories | tojson | safe }};
-  </script>
+  <!-- Paper count -->
+  <p class="paper-count" aria-live="polite" aria-atomic="true">
+    Showing {{ items|length }} of {{ total }} paper{% if total != 1 %}s{% endif %}
+    {% if filters.category and filters.category in categories %}
+      in {{ categories[filters.category].label }}
+    {% endif %}
+  </p>
 
   {# ========================================================================
-     UNIFIED CONTAINER ARCHITECTURE
-     ======================================================================== #}
-  {# V1: Single container for all article display
-     - No more dual-container toggle between #articles and #search-results
-     - JavaScript will filter and re-render this same container
-     - Simpler, more maintainable architecture
-
-     V2 TODO (when dataset > 5K papers):
-     - Add "Load More" button after first 200 results
-     - Or implement virtual scrolling for smooth infinite scroll
-     - See project docs and assets/site.js for detailed V2 implementation notes
+     ARTICLE LIST - Server-rendered
      ======================================================================== #}
   <div id="articles" class="article-list">
     {% for it in items %}
       <article class="paper-card">
         <h3 class="paper-title">
-          <a href="{{ root }}/items/{{ it.id }}/" title="Abstract">{{ it.title_en or it.title }}</a>
+          <a href="{{ root }}/items/{{ it.id }}" title="Abstract">{{ it.title_en or it.title }}</a>
         </h3>
         <div class="paper-meta-row">
           <span class="paper-authors">{{ ', '.join(it.creators_en or it.creators or ['Unknown']) }}</span>
         </div>
         <div class="paper-meta-row secondary">
-          <span class="paper-date">{{ it.date|human_date }}</span>
+          <span class="paper-date">{{ it.date[:10] if it.date else 'Unknown date' }}</span>
           <span class="paper-id">ChinaXiv:{{ it.id }}</span>
-          {% if it.subjects or it.subjects_en %}
-            <span class="paper-subjects">
-              {% for s in (it.subjects_en or it.subjects)[:3] %}
-                <span class="subject-tag" data-subject="{{ s|e }}">{{ s }}</span>
-              {% endfor %}
-            </span>
-          {% endif %}
           <div class="paper-links">
-            <a href="{{ root }}/items/{{ it.id }}/" class="btn-sm">Abstract</a>
-            {% if it.pdf_url %}
-              <a href="{{ it.pdf_url }}" class="btn-sm">PDF</a>
+            <a href="{{ root }}/items/{{ it.id }}" class="btn-sm">Abstract</a>
+            {% if it._has_english_pdf %}
+              <a href="{{ root }}/items/{{ it.id }}.pdf" class="btn-sm">PDF</a>
             {% endif %}
           </div>
         </div>
         <p class="paper-abstract">
-          {{ it.abstract_en[:300] }}{% if it.abstract_en and it.abstract_en|length > 300 %}…{% endif %}
+          {{ it.abstract_en[:300] if it.abstract_en else '' }}{% if it.abstract_en and it.abstract_en|length > 300 %}…{% endif %}
         </p>
       </article>
     {% endfor %}
   </div>
 
   {% if not items %}
-    <p style="color: #777; font-style: italic; margin-top: 40px;">No translations available yet.</p>
+    <p style="color: #777; font-style: italic; margin-top: 40px;">No papers match your filters.</p>
   {% endif %}
 
   {# ========================================================================
-     ADVANCED SEARCH MODAL - Recovered from mockup
+     PAGINATION - Server-side
      ======================================================================== #}
-  <div class="modal-overlay" id="modalOverlay">
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+    <a href="/?page={{ page - 1 }}{% if filters.category %}&category={{ filters.category }}{% endif %}{% if filters.search %}&q={{ filters.search }}{% endif %}{% if filters.date_from %}&from={{ filters.date_from }}{% endif %}{% if filters.date_to %}&to={{ filters.date_to }}{% endif %}{% if filters.has_figures %}&figures=1{% endif %}"
+       class="pagination-btn">← Previous</a>
+    {% else %}
+    <span class="pagination-btn disabled">← Previous</span>
+    {% endif %}
+
+    <span class="pagination-info">Page {{ page }} of {{ total_pages }}</span>
+
+    {% if page < total_pages %}
+    <a href="/?page={{ page + 1 }}{% if filters.category %}&category={{ filters.category }}{% endif %}{% if filters.search %}&q={{ filters.search }}{% endif %}{% if filters.date_from %}&from={{ filters.date_from }}{% endif %}{% if filters.date_to %}&to={{ filters.date_to }}{% endif %}{% if filters.has_figures %}&figures=1{% endif %}"
+       class="pagination-btn">Next →</a>
+    {% else %}
+    <span class="pagination-btn disabled">Next →</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ========================================================================
+     ADVANCED SEARCH MODAL - Server-side form submission
+     ======================================================================== #}
+  <div class="modal-overlay"
+       id="modalOverlay"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="modal-title">
     <div class="modal">
       <div class="modal-header">
-        <h2 class="modal-title">Advanced Search and Filter</h2>
+        <h2 class="modal-title" id="modal-title">Advanced Search and Filter</h2>
         <button class="modal-close" id="modalClose">×</button>
       </div>
 
-      <div class="modal-body">
-        <!-- Search Term -->
-        <div class="modal-section full-width">
-          <div class="form-group">
-            <label class="form-label" for="modalSearchInput">Search term</label>
-            <input type="text" class="form-input" id="modalSearchInput" placeholder="Enter keywords...">
-          </div>
-        </div>
-
-        <!-- Field-Specific Search -->
-        <div class="modal-section">
-          <div class="modal-section-title">Search in</div>
-          <div class="radio-group">
-            <div class="radio-option">
-              <input type="radio" name="searchField" id="allFields" value="all" checked>
-              <label for="allFields">All fields (title, author, abstract)</label>
-            </div>
-            <div class="radio-option">
-              <input type="radio" name="searchField" id="titleOnly" value="title">
-              <label for="titleOnly">Title only</label>
-            </div>
-            <div class="radio-option">
-              <input type="radio" name="searchField" id="authorOnly" value="author">
-              <label for="authorOnly">Author only</label>
-            </div>
-            <div class="radio-option">
-              <input type="radio" name="searchField" id="abstractOnly" value="abstract">
-              <label for="abstractOnly">Abstract only</label>
+      <form method="GET" action="/" id="advancedSearchForm">
+        <div class="modal-body">
+          <!-- Search Term -->
+          <div class="modal-section full-width">
+            <div class="form-group">
+              <label class="form-label" for="modalSearchInput">Search term</label>
+              <input type="text"
+                     class="form-input"
+                     name="q"
+                     id="modalSearchInput"
+                     value="{{ filters.search }}"
+                     placeholder="Enter keywords...">
             </div>
           </div>
-        </div>
 
-        <div class="modal-divider"></div>
+          <!-- Note: Field-specific search and sort order not yet implemented in backend -->
+          <!-- These will be added in future iterations -->
 
-        <!-- Sort Order -->
-        <div class="modal-section">
-          <div class="modal-section-title">Sort by</div>
-          <div class="radio-group">
-            <div class="radio-option">
-              <input type="radio" name="sortOrder" id="sortRelevance" value="relevance" checked>
-              <label for="sortRelevance">Relevance (when searching)</label>
-            </div>
-            <div class="radio-option">
-              <input type="radio" name="sortOrder" id="sortNewest" value="newest">
-              <label for="sortNewest">Newest first</label>
-            </div>
-            <div class="radio-option">
-              <input type="radio" name="sortOrder" id="sortOldest" value="oldest">
-              <label for="sortOldest">Oldest first</label>
-            </div>
-          </div>
-        </div>
+          <div class="modal-divider"></div>
 
-        <div class="modal-divider"></div>
-
-        <!-- Date Range -->
-        <div class="modal-section">
-          <div class="modal-section-title">Date range</div>
-          <div class="date-range">
-            <input type="date" class="form-input" id="startDate" placeholder="Start date">
-            <span class="date-range-separator">to</span>
-            <input type="date" class="form-input" id="endDate" placeholder="End date">
-          </div>
-        </div>
-
-        <div class="modal-divider"></div>
-
-        <!-- Filters -->
-        <div class="modal-section">
-          <div class="modal-section-title">Filters</div>
-          <div class="checkbox-group">
-            <div class="checkbox-option">
-              <input type="checkbox" id="onlyFigures" value="figures">
-              <label for="onlyFigures">Only papers with figures</label>
+          <!-- Date Range -->
+          <div class="modal-section">
+            <div class="modal-section-title">Date range</div>
+            <div class="date-range">
+              <input type="date"
+                     class="form-input"
+                     name="from"
+                     id="startDate"
+                     value="{{ filters.date_from }}"
+                     placeholder="Start date">
+              <span class="date-range-separator">to</span>
+              <input type="date"
+                     class="form-input"
+                     name="to"
+                     id="endDate"
+                     value="{{ filters.date_to }}"
+                     placeholder="End date">
             </div>
           </div>
-        </div>
 
-        <div class="modal-divider"></div>
+          <div class="modal-divider"></div>
 
-        <!-- Detailed Categories -->
-        <div class="modal-section full-width">
-          <div class="modal-section-title">Detailed categories<span class="summary-count"></span></div>
-
-          <div class="category-section">
-            <!-- Sticky search filter with buttons -->
-            <div class="category-filter">
-              <div class="search-input-wrapper">
-                <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M7 12C9.76142 12 12 9.76142 12 7C12 4.23858 9.76142 2 7 2C4.23858 2 2 4.23858 2 7C2 9.76142 4.23858 12 7 12Z" stroke="#999" stroke-width="1.5"/>
-                  <path d="M10.5 10.5L14 14" stroke="#999" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-                <input type="text" id="categoryFilter" placeholder="Filter categories..." aria-label="Filter categories">
-              </div>
-              <div class="control-buttons">
-                <button class="collapse-all-categories" type="button">Collapse all</button>
-                <button class="clear-categories" type="button">Clear all</button>
+          <!-- Filters -->
+          <div class="modal-section">
+            <div class="modal-section-title">Filters</div>
+            <div class="checkbox-group">
+              <div class="checkbox-option">
+                <input type="checkbox"
+                       id="onlyFigures"
+                       name="figures"
+                       value="1"
+                       {% if filters.has_figures %}checked{% endif %}>
+                <label for="onlyFigures">Only papers with figures</label>
               </div>
             </div>
+          </div>
 
-            <!-- Category accordion groups will be populated by JavaScript -->
-            <div class="category-groups" id="categoryAccordion">
-              <!-- JavaScript will populate category groups based on actual data -->
+          <div class="modal-divider"></div>
+
+          <!-- Subject Filters -->
+          <div class="modal-section full-width">
+            <div class="modal-section-header">
+              <div class="modal-section-title">Filter by Subject</div>
+              <button type="button" class="collapse-all-btn" id="collapseAllBtn">Collapse All</button>
+            </div>
+
+            <div class="filter-categories-list">
+              {% set all_categories = available_filters.items()|sort(attribute='1.order') %}
+
+              {% for category_id, category_data in all_categories %}
+              <div class="category-section">
+                <button type="button"
+                        class="category-header"
+                        data-category="{{ category_id }}"
+                        aria-expanded="false"
+                        aria-controls="category-{{ category_id }}-subjects">
+                  <span class="caret" aria-hidden="true">▼</span>
+                  <span class="category-label">
+                    {{ category_data.label }}
+                    ({{ category_data.subjects|map(attribute='count')|sum }})
+                  </span>
+                </button>
+                <div id="category-{{ category_id }}-subjects"
+                     class="category-subjects-grid"
+                     data-category="{{ category_id }}">
+                  {% for subject in category_data.subjects %}
+                  <label class="subject-checkbox">
+                    <input type="checkbox"
+                           name="subjects"
+                           value="{{ subject.name }}"
+                           id="subject-{{ subject.name|replace(' ', '_')|replace('&', 'and') }}"
+                           {% if subject.name in filters.subjects %}checked{% endif %}>
+                    <span>{{ subject.name }} ({{ subject.count }})</span>
+                  </label>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="modal-footer">
-        <button class="btn-secondary" id="clearAllBtn">Clear All</button>
-        <button class="btn-primary" id="applyFiltersBtn">Apply</button>
-      </div>
+        <div class="modal-footer">
+          <a href="/" class="btn-secondary">Clear All</a>
+          <button type="submit" class="btn-primary">Apply</button>
+        </div>
+      </form>
     </div>
   </div>
+
+  {# Minimal JavaScript for modal open/close only #}
+  <script>
+    // Modal controls (no filtering logic - just UI)
+    const modalOverlay = document.getElementById('modalOverlay');
+    const advancedSearchBtn = document.getElementById('advancedSearchBtn');
+    const modalClose = document.getElementById('modalClose');
+
+    if (advancedSearchBtn) {
+      advancedSearchBtn.addEventListener('click', () => {
+        modalOverlay.style.display = 'flex';
+        // Trigger reflow to enable animation
+        requestAnimationFrame(() => {
+          modalOverlay.classList.add('modal-open');
+        });
+      });
+    }
+
+    if (modalClose) {
+      modalClose.addEventListener('click', () => {
+        modalOverlay.classList.remove('modal-open');
+        // Wait for animation to complete before hiding
+        setTimeout(() => {
+          if (!modalOverlay.classList.contains('modal-open')) {
+            modalOverlay.style.display = 'none';
+          }
+        }, 200);  // Match CSS transition duration (0.2s)
+      });
+    }
+
+    if (modalOverlay) {
+      modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) {
+          modalOverlay.classList.remove('modal-open');
+          // Wait for animation to complete before hiding
+          setTimeout(() => {
+            if (!modalOverlay.classList.contains('modal-open')) {
+              modalOverlay.style.display = 'none';
+            }
+          }, 200);  // Match CSS transition duration (0.2s)
+        }
+      });
+    }
+
+    // Category collapse/expand functionality
+    const categoryHeaders = document.querySelectorAll('.category-header');
+    const collapseAllBtn = document.getElementById('collapseAllBtn');
+
+    // Toggle individual category section
+    categoryHeaders.forEach(header => {
+      header.addEventListener('click', () => {
+        const categoryId = header.getAttribute('data-category');
+        const subjects = document.querySelector(`.category-subjects-grid[data-category="${categoryId}"]`);
+
+        // Toggle collapsed class on both header and subjects
+        const isExpanded = !header.classList.contains('collapsed');
+        header.classList.toggle('collapsed');
+        subjects.classList.toggle('collapsed');
+
+        // Update ARIA attribute for accessibility
+        header.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+
+        // Update Collapse All button text based on current state
+        updateCollapseAllButton();
+      });
+    });
+
+    // Collapse All / Expand All button
+    if (collapseAllBtn) {
+      collapseAllBtn.addEventListener('click', () => {
+        const allCollapsed = Array.from(categoryHeaders).every(h => h.classList.contains('collapsed'));
+
+        categoryHeaders.forEach(header => {
+          const categoryId = header.getAttribute('data-category');
+          const subjects = document.querySelector(`.category-subjects-grid[data-category="${categoryId}"]`);
+
+          if (allCollapsed) {
+            // Expand all
+            header.classList.remove('collapsed');
+            subjects.classList.remove('collapsed');
+            header.setAttribute('aria-expanded', 'true');
+          } else {
+            // Collapse all
+            header.classList.add('collapsed');
+            subjects.classList.add('collapsed');
+            header.setAttribute('aria-expanded', 'false');
+          }
+        });
+
+        updateCollapseAllButton();
+      });
+    }
+
+    // Update Collapse All button text
+    function updateCollapseAllButton() {
+      if (!collapseAllBtn) return;
+
+      const allCollapsed = Array.from(categoryHeaders).every(h => h.classList.contains('collapsed'));
+      collapseAllBtn.textContent = allCollapsed ? 'Expand All' : 'Collapse All';
+    }
+
+    // Form submission loading state
+    const advancedSearchForm = document.getElementById('advancedSearchForm');
+    if (advancedSearchForm) {
+      advancedSearchForm.addEventListener('submit', (e) => {
+        const submitBtn = advancedSearchForm.querySelector('.btn-primary');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<span class="loading-spinner">⟳</span> Applying...';
+        }
+      });
+    }
+  </script>
 {% endblock %}

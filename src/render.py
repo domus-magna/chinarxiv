@@ -900,9 +900,20 @@ def render_site(items: List[Dict[str, Any]], skip_pdf: bool = False) -> None:
     )
 
     # Index page
+    # Build empty filters dict for static site (no active filtering)
+    empty_filters = {
+        'search': '',
+        'category': None,
+        'date_from': None,
+        'date_to': None,
+        'has_figures': False,
+        'subjects': [],
+    }
     tmpl_index = env.get_template("index.html")
     html_index = tmpl_index.render(
-        items=items, root=".", build_version=build_version, categories=categories
+        items=items, root=".", build_version=build_version, categories=categories,
+        filters=empty_filters, available_filters=categories,
+        page=1, total_pages=1, total=len(items)  # Static site shows all items on one page
     )
     write_text(os.path.join(base_out, "index.html"), html_index)
 
