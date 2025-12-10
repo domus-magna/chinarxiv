@@ -43,7 +43,7 @@ function createHeaders(origin) {
   const allowedOrigins = [
     'https://chinarxiv.org',
     'https://www.chinarxiv.org',
-    'https://chinarxiv.com',
+    'https://chinarxiv.com',  // Keep .com for legacy support
     'https://www.chinarxiv.com'
   ];
 

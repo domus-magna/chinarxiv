@@ -525,186 +525,108 @@
       }
     }
 
-    function checkFigureRequestStatus(paperId) {
-      const btn = document.getElementById('request-figures-btn');
+    // ========================================
+    // Generic Translation Request Handler
+    // ========================================
+    const requestInProgress = {};
+
+    function checkRequestStatus(paperId, btnId, storageKey) {
+      const btn = document.getElementById(btnId);
       if (!btn) return;
 
-      const requested = safeLocalStorage('get', `fig_requested_${paperId}`);
-      if (requested === 'true') {
+      if (safeLocalStorage('get', storageKey) === 'true') {
         btn.textContent = 'Request Submitted';
         btn.disabled = true;
         btn.classList.add('disabled');
       }
     }
 
-    async function requestFigureTranslation(paperId) {
-      const btn = document.getElementById('request-figures-btn');
+    async function submitTranslationRequest(paperId, config) {
+      const { btnId, storageKey, endpoint, buttonLabel, successMsg } = config;
+      const btn = document.getElementById(btnId);
+      const requestKey = `${btnId}_${paperId}`;
 
       // In-flight check (catches rapid clicks)
-      if (figRequestInProgress[paperId]) {
+      if (requestInProgress[requestKey]) {
         showToast('Request already in progress...');
         return;
       }
 
       // Check if already requested
-      if (safeLocalStorage('get', `fig_requested_${paperId}`) === 'true') {
+      if (safeLocalStorage('get', storageKey) === 'true') {
         showToast('Already requested!');
         return;
       }
 
-      // Mark as in-flight
-      figRequestInProgress[paperId] = true;
-
-      // Disable button immediately
+      // Mark as in-flight and disable button
+      requestInProgress[requestKey] = true;
       btn.disabled = true;
       btn.textContent = 'Submitting...';
 
       try {
-        // Call API endpoint
-        const response = await fetch('/api/request-figure-translation', {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ paper_id: paperId })
         });
 
         if (response.ok) {
-          // Success - mark as submitted in localStorage
-          const stored = safeLocalStorage('set', `fig_requested_${paperId}`, 'true');
-
-          // Update button permanently
+          const stored = safeLocalStorage('set', storageKey, 'true');
           btn.textContent = 'Request Submitted';
           btn.classList.add('disabled');
-
-          if (stored === null) {
-            showToast('Request submitted (couldn\'t save locally - private mode?)');
-          } else {
-            showToast('Request submitted! We\'ll prioritize this paper for figure translation.');
-          }
-
+          showToast(stored === null
+            ? 'Request submitted (couldn\'t save locally - private mode?)'
+            : successMsg);
         } else if (response.status === 400) {
-          // Invalid paper_id format
           showToast('Invalid paper ID. Please contact support.');
           btn.disabled = false;
-          btn.textContent = 'Request Figure Translation';
+          btn.textContent = buttonLabel;
         } else if (response.status === 409) {
-          // Server caught duplicate - still mark as submitted
-          safeLocalStorage('set', `fig_requested_${paperId}`, 'true');
+          safeLocalStorage('set', storageKey, 'true');
           btn.textContent = 'Request Submitted';
           btn.classList.add('disabled');
           showToast('Request already submitted recently.');
         } else {
-          // Error - re-enable button
           showToast('Failed to submit request. Please try again.');
           btn.disabled = false;
-          btn.textContent = 'Request Figure Translation';
+          btn.textContent = buttonLabel;
         }
-
       } catch (error) {
         console.error('Error submitting request:', error);
         showToast('Network error. Please try again.');
         btn.disabled = false;
-        btn.textContent = 'Request Figure Translation';
+        btn.textContent = buttonLabel;
       } finally {
-        // Clear in-flight flag
-        delete figRequestInProgress[paperId];
+        delete requestInProgress[requestKey];
       }
     }
 
-    // ========================================
-    // Request Full Text Translation
-    // ========================================
-    let textRequestInProgress = {};
-
-    function checkTextRequestStatus(paperId) {
-      const btn = document.getElementById('request-text-btn');
-      if (!btn) return;
-
-      const requested = safeLocalStorage('get', `text_requested_${paperId}`);
-      if (requested === 'true') {
-        btn.textContent = 'Request Submitted';
-        btn.disabled = true;
-        btn.classList.add('disabled');
-      }
+    // Convenience wrappers for onclick handlers
+    function requestFigureTranslation(paperId) {
+      submitTranslationRequest(paperId, {
+        btnId: 'request-figures-btn',
+        storageKey: `fig_requested_${paperId}`,
+        endpoint: '/api/request-figure-translation',
+        buttonLabel: 'Request Figure Translation',
+        successMsg: 'Request submitted! We\'ll prioritize this paper for figure translation.'
+      });
     }
 
-    async function requestTextTranslation(paperId) {
-      const btn = document.getElementById('request-text-btn');
-
-      // In-flight check (catches rapid clicks)
-      if (textRequestInProgress[paperId]) {
-        showToast('Request already in progress...');
-        return;
-      }
-
-      // Check if already requested
-      if (safeLocalStorage('get', `text_requested_${paperId}`) === 'true') {
-        showToast('Already requested!');
-        return;
-      }
-
-      // Mark as in-flight
-      textRequestInProgress[paperId] = true;
-
-      // Disable button immediately
-      btn.disabled = true;
-      btn.textContent = 'Submitting...';
-
-      try {
-        // Call API endpoint
-        const response = await fetch('/api/request-text-translation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paper_id: paperId })
-        });
-
-        if (response.ok) {
-          // Success - mark as submitted in localStorage
-          const stored = safeLocalStorage('set', `text_requested_${paperId}`, 'true');
-
-          // Update button permanently
-          btn.textContent = 'Request Submitted';
-          btn.classList.add('disabled');
-
-          if (stored === null) {
-            showToast('Request submitted (couldn\'t save locally - private mode?)');
-          } else {
-            showToast('Request submitted! We\'ll prioritize this paper for full text translation.');
-          }
-
-        } else if (response.status === 400) {
-          // Invalid paper_id format
-          showToast('Invalid paper ID. Please contact support.');
-          btn.disabled = false;
-          btn.textContent = 'Request Full Text Translation';
-        } else if (response.status === 409) {
-          // Server caught duplicate - still mark as submitted
-          safeLocalStorage('set', `text_requested_${paperId}`, 'true');
-          btn.textContent = 'Request Submitted';
-          btn.classList.add('disabled');
-          showToast('Request already submitted recently.');
-        } else {
-          // Error - re-enable button
-          showToast('Failed to submit request. Please try again.');
-          btn.disabled = false;
-          btn.textContent = 'Request Full Text Translation';
-        }
-
-      } catch (error) {
-        console.error('Error submitting text translation request:', error);
-        showToast('Network error. Please try again.');
-        btn.disabled = false;
-        btn.textContent = 'Request Full Text Translation';
-      } finally {
-        // Clear in-flight flag
-        delete textRequestInProgress[paperId];
-      }
+    function requestTextTranslation(paperId) {
+      submitTranslationRequest(paperId, {
+        btnId: 'request-text-btn',
+        storageKey: `text_requested_${paperId}`,
+        endpoint: '/api/request-text-translation',
+        buttonLabel: 'Request Full Text Translation',
+        successMsg: 'Request submitted! We\'ll prioritize this paper for full text translation.'
+      });
     }
 
     // Check request status on page load
     document.addEventListener('DOMContentLoaded', function() {
       const paperId = {{ item.id|tojson }};
-      checkFigureRequestStatus(paperId);
-      checkTextRequestStatus(paperId);
+      checkRequestStatus(paperId, 'request-figures-btn', `fig_requested_${paperId}`);
+      checkRequestStatus(paperId, 'request-text-btn', `text_requested_${paperId}`);
     });
   </script>
 {% endblock %}

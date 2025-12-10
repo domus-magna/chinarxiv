@@ -133,7 +133,7 @@ psql $DATABASE_URL -c "REFRESH MATERIALIZED VIEW category_counts;"
 - `app/__init__.py` - Connection pooling initialization
 - `app/database.py` - Query layer with tsvector search (native %s placeholders)
 - `app/routes.py` - Paper detail queries
-- `app/filters.py` - Category counts from materialized view (120 lines, simplified from 169)
+- `app/filters.py` - Category counts from materialized view (210 lines)
 - `scripts/migrate_to_postgres.py` - Schema + materialized views
 - `tests/conftest.py` - PostgreSQL test fixtures (rewritten from SQLite)
 
