@@ -1,3 +1,7 @@
+# TODO: Migrate to Flask endpoint on Railway - see TODO.md
+# Target endpoint: /api/report
+# Current functionality: Creates GitHub issues from translation error reports
+
 name = "chinarxiv-report-api"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"

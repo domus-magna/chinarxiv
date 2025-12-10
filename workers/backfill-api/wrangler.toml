@@ -1,3 +1,7 @@
+# TODO: Migrate to Flask endpoint on Railway - see TODO.md
+# Target endpoint: /api/backfill
+# Current functionality: Triggers backfill workflows via GitHub Actions API
+
 name = "chinarxiv-backfill-api"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"

@@ -1,3 +1,7 @@
+# NOTE: Consider keeping this worker OR migrating to Cloudflare redirect rules
+# This handles: chinarxiv.com -> chinarxiv.org, www.* -> apex domain
+# Cloudflare redirect rules may be simpler and free
+
 name = "chinarxiv-redirect"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"

@@ -6,7 +6,7 @@ Usage (local):
   python scripts/smoke_translate.py --limit 20 --workers 20 --month 202509 --alert
 
 Usage (CI):
-  python scripts/smoke_translate.py --limit ${{ inputs.limit }} --workers ${{ inputs.workers }} --month ${{ inputs.month }} --alert --deploy ${{ inputs.deploy }}
+  python scripts/smoke_translate.py --limit ${{ inputs.limit }} --workers ${{ inputs.workers }} --month ${{ inputs.month }} --alert
 """
 
 from __future__ import annotations
@@ -77,7 +77,6 @@ def main() -> int:
         default=5.0,
         help="Max allowed QA failure rate in percent before failing (default: 5.0)",
     )
-    parser.add_argument("--deploy", action="store_true", help="Deploy site after success")
     args = parser.parse_args()
 
     # Alert flag controls whether we send Discord notifications
@@ -173,15 +172,6 @@ def main() -> int:
                 flagged=flagged_count,
             )
         return 2
-
-    # Optional deploy
-    if args.deploy:
-        print("Deploying site…")
-        deploy_rc = run(f"{PY} -m src.render && {PY} -m src.search_index && {PY} -m src.make_pdf")
-        if deploy_rc != 0:
-            print("Site build failed; skipping deploy")
-        else:
-            print("Site build complete")
 
     # Send completion alert using unified pipeline_complete
     if send_alerts:

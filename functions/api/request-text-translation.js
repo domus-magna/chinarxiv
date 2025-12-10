@@ -1,4 +1,8 @@
 /**
+ * TODO: Migrate to Flask endpoint on Railway - see TODO.md
+ * Target endpoint: POST /api/request-text
+ * Will replace Cloudflare KV with PostgreSQL translation_requests table
+ *
  * Cloudflare Pages Function: Text Translation Request Handler
  *
  * Endpoint: POST /api/request-text-translation

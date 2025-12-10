@@ -1,15 +1,15 @@
 """
 Tests for HTML sanitization in rendered content.
 
-These tests verify that the bleach-based sanitization in render.py
+These tests verify that the bleach-based sanitization used in Flask templates
 correctly prevents XSS attacks from LLM-generated or PDF-derived content.
 """
 
-# Import bleach and markdown with same config as render.py
+# Import bleach and markdown with same config as app/filters.py
 import bleach
 import markdown
 
-# Exact configuration from src/render.py
+# Sanitization configuration (matches app/filters.py)
 BLEACH_ALLOWED_TAGS = [
     "p", "h1", "h2", "h3", "h4", "h5", "h6",
     "ul", "ol", "li", "dl", "dt", "dd",
@@ -409,58 +409,14 @@ class TestCodeHighlightingClasses:
 
 
 class TestMarkdownFilterIntegration:
-    """Integration tests verifying the actual render.py filter matches test config."""
-
-    def test_config_matches_render_py(self):
-        """Verify test config matches src/render.py to prevent drift.
-
-        This test reads the actual render.py source and extracts the bleach
-        config to ensure our test fixture stays in sync.
-        """
-        import re
-        from pathlib import Path
-
-        # Get path relative to test file location
-        test_dir = Path(__file__).parent
-        project_root = test_dir.parent
-        render_py = (project_root / "src" / "render.py").read_text()
-
-        # Extract BLEACH_ALLOWED_TAGS from render.py
-        tags_match = re.search(
-            r'BLEACH_ALLOWED_TAGS\s*=\s*\[(.*?)\]',
-            render_py,
-            re.DOTALL
-        )
-        assert tags_match, "Could not find BLEACH_ALLOWED_TAGS in render.py"
-
-        # Extract BLEACH_ALLOWED_ATTRS from render.py
-        attrs_match = re.search(
-            r'BLEACH_ALLOWED_ATTRS\s*=\s*\{(.*?)\n\s*\}',
-            render_py,
-            re.DOTALL
-        )
-        assert attrs_match, "Could not find BLEACH_ALLOWED_ATTRS in render.py"
-
-        # Verify our test config has the same tags
-        for tag in BLEACH_ALLOWED_TAGS:
-            assert f'"{tag}"' in tags_match.group(1), \
-                f"Tag '{tag}' in test but not in render.py"
-
-        # Verify class is allowed on the right elements
-        attrs_text = attrs_match.group(1)
-        for element in ["div", "pre", "code", "span", "table"]:
-            assert f'"{element}": ["class"]' in attrs_text or \
-                   f'"{element}":["class"]' in attrs_text or \
-                   (f'"{element}"' in attrs_text and '"class"' in attrs_text), \
-                f"Element '{element}' should allow 'class' attribute in render.py"
+    """Integration tests for markdown filter behavior."""
 
     def test_markdown_filter_handles_none(self):
         """Verify markdown filter handles None input gracefully.
 
-        The render.py markdown_filter should return empty string for None,
-        not raise TypeError.
+        A markdown filter should return empty string for None, not raise TypeError.
         """
-        # Simulate what render.py's markdown_filter does
+        # Simulate a typical markdown filter
         def markdown_filter(text):
             if not text:
                 return ""

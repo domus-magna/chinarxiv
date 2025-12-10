@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       skip_harvest:
-        description: 'Skip harvest and translation (rebuild only)'
+        description: 'Skip harvest and translation (B2 publish only)'
         required: false
         default: false
         type: boolean
@@ -38,13 +38,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Install pandoc + XeLaTeX with CJK fonts for PDF generation
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended fonts-noto-cjk
-          which pandoc || { echo "❌ pandoc installation failed"; exit 1; }
-          which xelatex || { echo "❌ xelatex installation failed"; exit 1; }
-          pandoc --version | head -1
       - name: "Preflight: Validate OpenRouter API key"
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -253,10 +246,8 @@ jobs:
               fi
             fi
           else
-            echo "ℹ️ Skipping harvest and translation (rebuild only)"
+            echo "ℹ️ Skipping harvest and translation (B2 publish only)"
           fi
-          
-          echo "ℹ️ Deferring render/index/pdf to post-hydration steps"
 
       - name: Publish validated/flagged/PDFs to B2 and write manifests
         if: ${{ github.event_name != 'pull_request' }}
@@ -286,55 +277,6 @@ jobs:
             exit 1
           fi
 
-      - name: Hydrate validated translations from B2 (pre-render)
-        if: ${{ github.event_name != 'pull_request' }}
-        env:
-          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
-          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
-          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
-          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
-          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
-          HYDRATE_EXPECTED_COUNT_FILE: ${{ env.B2_PUBLISH_SUMMARY_PATH }}
-        run: |
-          set -e
-          if [ -z "${BACKBLAZE_KEY_ID}" ] || [ -z "${BACKBLAZE_APPLICATION_KEY}" ] || [ -z "${BACKBLAZE_S3_ENDPOINT}" ] || [ -z "${BACKBLAZE_BUCKET}" ]; then
-            echo "❌ Missing B2 credentials for hydration";
-            python -m src.tools.b2_alerts add "hydrate skipped: missing B2 credentials";
-            exit 1;
-          fi
-          python -m pip install --upgrade pip >/dev/null 2>&1 || true
-          pip install awscli >/dev/null 2>&1 || true
-          if ! python scripts/hydrate_from_b2.py --target data/translated; then
-            python -m src.tools.b2_alerts add "hydrate failed";
-            python -m src.tools.b2_alerts flush || true
-            exit 1;
-          fi
-
-          # Download figure manifest for translated figure display
-          export AWS_ACCESS_KEY_ID="${BACKBLAZE_KEY_ID}"
-          export AWS_SECRET_ACCESS_KEY="${BACKBLAZE_APPLICATION_KEY}"
-          export AWS_DEFAULT_REGION=us-west-004
-          DEST="s3://${BACKBLAZE_BUCKET}/${BACKBLAZE_PREFIX}"
-          echo "📥 Downloading figure manifest from B2..."
-          mkdir -p data
-          aws s3 cp "${DEST}figures/manifest.json" data/figure_manifest.json \
-            --endpoint-url "${BACKBLAZE_S3_ENDPOINT}" \
-            --only-show-errors || echo "ℹ️ No figure manifest found (figures not yet translated)"
-
-      - name: Render site (post-hydration)
-        run: |
-          set -e
-          echo "🎨 Rendering site from hydrated data..."
-          # PDF generation is now integrated into render.py
-          python -m src.render
-          echo "🔍 Building search index..."
-          python -m src.search_index
-          # Count generated PDFs
-          PDF_COUNT=$(find site/items -name "*.pdf" 2>/dev/null | wc -l | tr -d ' ')
-          echo "📄 Generated ${PDF_COUNT} English PDFs"
-          if [ "${PDF_COUNT}" = "0" ]; then
-            echo "⚠️ WARNING: Zero English PDFs generated - check pandoc/pdflatex availability"
-          fi
       - name: Publish run summary
         if: ${{ github.event_name != 'pull_request' }}
         env:
@@ -347,32 +289,6 @@ jobs:
         run: |
           set -e
           python scripts/publish_run_summary.py
-      - name: Set up Node.js
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Deploy to Cloudflare Pages
-        if: ${{ github.event_name != 'pull_request' }}
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-        run: |
-          set -e
-          echo "🚀 Deploying to Cloudflare Pages..."
-          
-          echo "📦 Installing Wrangler CLI..."
-          npm install -g wrangler || {
-            echo "❌ Failed to install Wrangler"
-            exit 1
-          }
-          
-          echo "🌐 Deploying site..."
-          wrangler pages deploy site --project-name chinarxiv || {
-            echo "❌ Deployment failed"
-            exit 1
-          }
-          
-          echo "✅ Deployment completed successfully!"
       - name: Persist pipeline outputs to Backblaze B2 (JSON only)
         if: ${{ github.event_name != 'pull_request' }}
         env:

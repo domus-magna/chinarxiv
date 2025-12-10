@@ -708,12 +708,12 @@ python scripts/aggregate_figure_requests.py --kv --type text --days 30 --top 50
 python scripts/aggregate_figure_requests.py --kv --type text --output data/text_priority_papers.txt
 ```
 
-### Detection Logic (render.py)
+### Detection Logic (database)
 
-Papers are marked as having/not having full text via the `_has_full_text` flag:
-- Checks `body_md` for >100 chars non-heading content OR >200 chars total
+Papers are marked as having/not having full text via the `has_full_text` column in the papers table:
+- Set to TRUE if `body_md` contains >100 chars non-heading content OR >200 chars total
 - Fallback: checks `body_en` array for substantial paragraphs (>100 chars or 2+ paragraphs)
-- Set during rendering at lines 982-1007
+- Set during import by `scripts/import_to_postgres.py`
 
 ## Frontend Development
 
