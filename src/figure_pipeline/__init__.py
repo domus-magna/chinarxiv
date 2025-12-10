@@ -232,6 +232,9 @@ class FigurePipeline:
                 log(f"Updating manifest with {len(translated_with_urls)} translated figures...")
                 self.storage.update_manifest(paper_id, translated_with_urls)
 
+                # Step 7: Update PostgreSQL has_figures column
+                self._update_db_has_figures(paper_id)
+
         result.figures = figures
         log(f"Processed {paper_id}: {result.translated}/{result.total_figures} figures translated")
 
@@ -429,6 +432,49 @@ class FigurePipeline:
             if os.path.exists(abs_path):
                 return abs_path
         return None
+
+    def _update_db_has_figures(self, paper_id: str) -> bool:
+        """
+        Update PostgreSQL has_figures column after successful figure translation.
+
+        This is called after figures are uploaded to B2 and manifest is updated.
+        It's a best-effort operation - failure doesn't affect the pipeline result.
+
+        Args:
+            paper_id: Paper ID to update
+
+        Returns:
+            True if updated, False if skipped/failed
+        """
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            log(f"DATABASE_URL not set, skipping has_figures update for {paper_id}")
+            return False
+
+        try:
+            import psycopg2
+        except ImportError:
+            log("psycopg2 not installed, skipping has_figures update")
+            return False
+
+        try:
+            conn = psycopg2.connect(database_url)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE papers SET has_figures = TRUE WHERE id = %s AND has_figures = FALSE",
+                        (paper_id,),
+                    )
+                    updated = cur.rowcount > 0
+                    conn.commit()
+                    if updated:
+                        log(f"Updated has_figures=TRUE for {paper_id}")
+                    return updated
+            finally:
+                conn.close()
+        except Exception as e:
+            log(f"Failed to update has_figures for {paper_id}: {e}")
+            return False
 
 
 __all__ = [
