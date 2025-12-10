@@ -249,10 +249,15 @@ def sponsors():
     total_papers = 50000  # Approximate total papers in ChinaXiv
     remaining = total_papers - text_translated
 
-    # Cost estimates (placeholder values)
-    cost_text = 250.00  # Example cost for text translation
-    cost_figures = 0.00  # No figures yet
-    cost_per_paper = 0.15 if text_translated > 0 else 0
+    # Per-paper costs (based on historical data)
+    COST_TEXT_PER_PAPER = 0.08  # Kimi K2
+    COST_FIGURES_PER_PAPER = 0.43  # Nano Banana Pro
+    COST_PER_PAPER = COST_TEXT_PER_PAPER + COST_FIGURES_PER_PAPER  # ~$0.51
+
+    # Calculate totals spent so far
+    cost_text = text_translated * COST_TEXT_PER_PAPER
+    cost_figures = figures_translated * COST_FIGURES_PER_PAPER
+    cost_per_paper = COST_PER_PAPER
     total_cost = remaining * cost_per_paper if remaining > 0 else 0
 
     return render_template('sponsors.html',
