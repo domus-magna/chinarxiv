@@ -20,6 +20,7 @@ Environment variables:
     BACKBLAZE_KEY_ID - B2 access key
     BACKBLAZE_APPLICATION_KEY - B2 secret key
     BACKBLAZE_S3_ENDPOINT - B2 S3 endpoint
+    BACKBLAZE_BUCKET - B2 bucket name (default: chinaxiv)
 """
 
 import argparse
@@ -75,12 +76,18 @@ def ensure_body_md_column(conn):
         logger.info("body_md column already exists")
 
 
+def get_bucket():
+    """Get B2 bucket name from environment."""
+    return os.environ.get('BACKBLAZE_BUCKET', 'chinaxiv')
+
+
 def list_translations(s3):
     """List all translation files in B2."""
     paginator = s3.get_paginator('list_objects_v2')
     translations = []
+    bucket = get_bucket()
 
-    for page in paginator.paginate(Bucket='chinaxiv', Prefix='validated/translations/'):
+    for page in paginator.paginate(Bucket=bucket, Prefix='validated/translations/'):
         for obj in page.get('Contents', []):
             key = obj['Key']
             if key.endswith('.json'):
@@ -92,18 +99,18 @@ def list_translations(s3):
 
 def get_translation(s3, key):
     """Download and parse a translation JSON from B2."""
-    obj = s3.get_object(Bucket='chinaxiv', Key=key)
+    bucket = get_bucket()
+    obj = s3.get_object(Bucket=bucket, Key=key)
     return json.loads(obj['Body'].read().decode('utf-8'))
 
 
 def sync_paper(conn, paper_id, has_full_text, body_md, dry_run=False):
     """Update a paper's full text fields in the database."""
-    cursor = conn.cursor()
-
     if dry_run:
         logger.info(f"  Would update {paper_id}: has_full_text={has_full_text}, body_md={len(body_md) if body_md else 0} chars")
         return True
 
+    cursor = conn.cursor()
     cursor.execute("""
         UPDATE papers
         SET has_full_text = %s, body_md = %s
