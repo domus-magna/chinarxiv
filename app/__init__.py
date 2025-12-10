@@ -41,15 +41,11 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
-    # Initialize PostgreSQL database adapter
-    # Requires DATABASE_URL environment variable (raises ValueError if missing)
-    try:
-        init_adapter()
-        app.logger.info("Database adapter initialized successfully")
-    except Exception as e:
-        app.logger.error(f"Failed to initialize database adapter: {e}")
-        # Re-raise so the app fails visibly rather than silently
-        raise
+    # Configure lazy database initialization
+    # Connection pool is created on first database query, not at startup
+    # This allows the app to start even if the database is temporarily unavailable
+    init_adapter()
+    app.logger.info("Database configured for lazy initialization")
 
     # Configure logging
     logging.basicConfig(
