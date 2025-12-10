@@ -200,10 +200,10 @@ class TestOpenRouterRequest:
     @patch("src.services.translation_service.get_proxies")
     @patch("src.services.translation_service.parse_openrouter_error")
     @patch("src.services.translation_service.monitoring_service")
-    @patch("src.services.translation_service.alert_critical")
+    @patch("src.services.translation_service.api_error")
     def test_fatal_api_error_raises_fatal(
         self,
-        mock_alert,
+        mock_api_error,
         mock_monitoring,
         mock_parse,
         mock_proxies,
