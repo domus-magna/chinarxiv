@@ -169,5 +169,3 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
             }
         )
         return [], 0
-    finally:
-        adapter.release_cursor(cursor)

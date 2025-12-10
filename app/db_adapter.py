@@ -140,7 +140,8 @@ def init_adapter() -> None:
     """
     global _adapter
     if _adapter is not None:
-        logger.warning("Database adapter already initialized, reinitializing...")
+        logger.warning("Database adapter already initialized, closing existing pool...")
+        _adapter.close()
 
     _adapter = DatabaseAdapter()
     logger.info("PostgreSQL connection pool initialized")
