@@ -13,6 +13,7 @@ from calendar import monthrange
 import logging
 from psycopg2.extras import RealDictCursor
 from .database import query_papers, get_db
+from .db_adapter import get_adapter
 from .filters import build_categories, get_available_filters
 
 logger = logging.getLogger(__name__)
@@ -205,9 +206,10 @@ def paper_detail(paper_id):
         404: If paper not found
     """
     db = get_db()
+    adapter = get_adapter()
 
-    # PostgreSQL query with RealDictCursor
-    cursor = db.cursor(cursor_factory=RealDictCursor)
+    # PostgreSQL query with RealDictCursor (via adapter pattern)
+    cursor = adapter.get_cursor(db)
     cursor.execute("SELECT * FROM papers WHERE id = %s", (paper_id,))
     paper = cursor.fetchone()
 

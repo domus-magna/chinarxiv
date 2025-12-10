@@ -79,7 +79,17 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
     params = []
     needs_join = False
 
-    if category:
+    # Subject filtering: explicit subjects override category
+    # (prevents impossible AND condition when both are provided)
+    if subjects:
+        # Explicit subjects take precedence - ignore category
+        # Papers must have at least one of the selected subjects
+        needs_join = True
+        placeholders = ','.join(['%s'] * len(subjects))
+        where_clauses.append(f"ps.subject IN ({placeholders})")
+        params.extend(subjects)
+    elif category:
+        # Only apply category filter if no explicit subjects provided
         # FIX: Use JOIN on normalized table instead of LIKE (Codex P1 issue)
         category_subjects = get_category_subjects(category)
 
@@ -91,14 +101,6 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         placeholders = ','.join(['%s'] * len(category_subjects))
         where_clauses.append(f"ps.subject IN ({placeholders})")
         params.extend(category_subjects)
-
-    if subjects:
-        # Filter by specific subjects (multi-select from Advanced Search)
-        # Papers must have at least one of the selected subjects
-        needs_join = True
-        placeholders = ','.join(['%s'] * len(subjects))
-        where_clauses.append(f"ps.subject IN ({placeholders})")
-        params.extend(subjects)
 
     if date_from:
         where_clauses.append("p.date >= %s")
