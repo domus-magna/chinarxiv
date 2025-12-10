@@ -1,10 +1,12 @@
 # Railway/Nixpacks build configuration
+# IMPORTANT: Python version pinned to 3.11 via .python-version file
+# This is required because psycopg2-binary has no stable wheel for Python 3.13
 
 [phases.setup]
-nixPkgs = ["python311"]
+nixPkgs = ["python311", "postgresql"]
 
 [phases.install]
-cmds = ["pip install -r requirements-web.txt"]
+cmds = ["pip install --upgrade pip", "pip install -r requirements-web.txt"]
 
 [start]
 cmd = "gunicorn -w 4 -b 0.0.0.0:$PORT 'app:create_app'"
