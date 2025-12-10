@@ -2,8 +2,6 @@
 Tests for bugs discovered during manual testing.
 """
 
-import pytest
-import json
 import os
 import tempfile
 from unittest.mock import patch

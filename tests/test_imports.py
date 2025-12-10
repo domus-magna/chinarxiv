@@ -155,7 +155,7 @@ def test_deleted_modules_not_imported():
         )
 
         # Filter out false positives (e.g., "import render" could match other things)
-        lines = [l for l in result.stdout.strip().split("\n") if l and module in l]
+        lines = [line for line in result.stdout.strip().split("\n") if line and module in line]
         if lines:
             pytest.fail(
                 f"Deleted module '{module}' might still be imported:\n" + "\n".join(lines)
