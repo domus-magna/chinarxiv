@@ -6,7 +6,6 @@ and building filter-related data structures.
 
 Performance:
 - PostgreSQL: Uses materialized view for category counts (single query, 10-20ms)
-- SQLite: Uses N+1 query pattern (acceptable for development, 50-100ms)
 """
 
 import json
@@ -95,18 +94,13 @@ def build_categories(db_connection=None):
         from .db_adapter import get_adapter
 
         adapter = get_adapter()
-
-        if adapter.is_postgres:
-            # PostgreSQL: Use materialized view (single query, very fast)
-            _build_categories_postgres(db_connection, adapter, categories, taxonomy)
-        else:
-            # SQLite: Use N+1 query pattern (acceptable for development)
-            _build_categories_sqlite(db_connection, categories, taxonomy)
+        # PostgreSQL: Use materialized view (single query, very fast)
+        _build_category_counts(db_connection, adapter, categories, taxonomy)
 
     return categories
 
 
-def _build_categories_postgres(db_connection, adapter, categories, taxonomy):
+def _build_category_counts(db_connection, adapter, categories, taxonomy):
     """
     Build category counts using PostgreSQL materialized view (optimized).
 
@@ -134,35 +128,4 @@ def _build_categories_postgres(db_connection, adapter, categories, taxonomy):
     except Exception:
         # If materialized view query fails, fall back to zero counts
         for category_id in taxonomy:
-            categories[category_id]['count'] = 0
-
-
-def _build_categories_sqlite(db_connection, categories, taxonomy):
-    """
-    Build category counts using SQLite N+1 query pattern.
-
-    This is acceptable for development but would be slow in production
-    with many categories. Uses parameterized queries for each category.
-
-    Args:
-        db_connection: SQLite database connection
-        categories: Category dict to populate with counts
-        taxonomy: Category taxonomy data
-    """
-    for category_id, category_data in taxonomy.items():
-        subjects = category_data.get('children', [])
-        if subjects:
-            placeholders = ','.join(['?'] * len(subjects))
-            count_query = f"""
-                SELECT COUNT(DISTINCT paper_id)
-                FROM paper_subjects
-                WHERE subject IN ({placeholders})
-            """
-            try:
-                count = db_connection.execute(count_query, subjects).fetchone()[0]
-                categories[category_id]['count'] = count
-            except Exception:
-                # If query fails, skip count
-                categories[category_id]['count'] = 0
-        else:
             categories[category_id]['count'] = 0
