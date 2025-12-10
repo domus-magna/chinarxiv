@@ -235,11 +235,13 @@ def sponsors():
     """
     # Get translation statistics from database
     db = get_db()
-    cursor = db.cursor()
+    adapter = get_adapter()
+    cursor = adapter.get_cursor(db)
 
     # Count papers (total and validated)
     cursor.execute("SELECT COUNT(*) FROM papers WHERE qa_status = 'pass'")
-    text_translated = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    text_translated = result['count'] if 'count' in result else result[list(result.keys())[0]]
 
     # For now, use placeholder values for figures and costs
     # TODO: Calculate these from actual data when figure translation is implemented
