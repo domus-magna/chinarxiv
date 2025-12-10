@@ -2,9 +2,11 @@
 Flask application factory for ChinaRxiv English web server.
 
 This module creates and configures the Flask application with:
-- Database connection management (with automatic cleanup)
+- PostgreSQL database connection management (with automatic cleanup)
 - Template and static file paths
 - Blueprint registration for routes
+
+Requires: DATABASE_URL environment variable for PostgreSQL connection
 """
 
 from flask import Flask, g
@@ -14,7 +16,7 @@ import markdown as md
 from markupsafe import Markup
 import bleach
 import logging
-from app.db_adapter import init_adapter, get_adapter, IS_POSTGRES
+from app.db_adapter import init_adapter, get_adapter
 
 
 def create_app(config=None):
@@ -31,21 +33,15 @@ def create_app(config=None):
                 template_folder='../src/templates',
                 static_folder='../static')
 
-    # Default configuration (use absolute path for database)
-    app_root = Path(__file__).parent.parent
-    app.config['DATABASE'] = str(app_root / 'data' / 'papers.db')
+    # Default configuration
     app.config['PER_PAGE'] = 50  # Papers per page for pagination
-
-    # Database URL for PostgreSQL (production) - detected from environment
-    database_url = os.environ.get('DATABASE_URL')
-    if database_url:
-        app.config['DATABASE_URL'] = database_url
 
     # Override with custom config if provided
     if config:
         app.config.update(config)
 
-    # Initialize database adapter (handles SQLite vs PostgreSQL)
+    # Initialize PostgreSQL database adapter
+    # Requires DATABASE_URL environment variable (raises ValueError if missing)
     init_adapter(app.config)
 
     # Configure logging
@@ -86,11 +82,8 @@ def create_app(config=None):
         """
         Release database connection at end of request.
 
-        For PostgreSQL: Returns connection to pool
-        For SQLite: Closes connection
-
-        This ensures connections are properly cleaned up after each request,
-        preventing resource leaks in production.
+        Returns connection to PostgreSQL connection pool, ensuring proper
+        cleanup after each request and preventing resource leaks.
         """
         db = g.pop('db', None)
         if db is not None:
