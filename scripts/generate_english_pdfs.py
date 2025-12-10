@@ -23,6 +23,7 @@ Usage:
     python scripts/generate_english_pdfs.py --paper-ids chinaxiv-202201.00001 chinaxiv-202201.00002
 """
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -159,11 +160,18 @@ def inject_figures_into_markdown(
     1. Optionally cap figures (for PDF builds)
     2. Replace [FIGURE:N] markers with ![Figure N](url)
     3. Append unplaced figures at the end
+    4. If no figures available, replace markers with placeholder text
     """
     # Strip table markers (we don't translate tables)
     body_md = re.sub(r"\[TABLE:\d+[A-Za-z]?\]", "", body_md)
 
     if not figures:
+        # Replace figure markers with placeholder (not strip) - so user knows figure was there
+        body_md = re.sub(
+            r"\[FIGURE:(\d+[A-Za-z]?)\]",
+            r"[Figure \1: see original paper]",
+            body_md
+        )
         return body_md
 
     # Optionally cap figures
@@ -265,15 +273,16 @@ def generate_pdf_for_paper(
     figure_manifest: Dict[str, Any],
     output_dir: Path,
     pdf_engine: str,
-) -> bool:
+) -> tuple[bool, int]:
     """
     Generate PDF for a single paper.
 
-    Returns True on success, False on failure.
+    Returns (success, figure_count) tuple.
+    figure_count = number of figures embedded in the PDF (0 if none available).
     """
     paper_id = paper.get("id", "")
     if not paper_id:
-        return False
+        return False, 0
 
     # Get body markdown
     body_md = paper.get("body_md", "")
@@ -299,9 +308,11 @@ def generate_pdf_for_paper(
                     "url": fig.get("translated_url"),
                 })
 
-    # Inject figures into body (with cap for PDF)
-    if figures:
-        body_md = inject_figures_into_markdown(body_md, figures, max_figures=MAX_FIGURES_PER_PDF)
+    # Track figure count for metadata
+    figure_count = len(figures)
+
+    # Inject figures into body (with cap for PDF), or replace markers with placeholders
+    body_md = inject_figures_into_markdown(body_md, figures, max_figures=MAX_FIGURES_PER_PDF)
 
     # Build PDF content
     pdf_parts = [
@@ -313,6 +324,11 @@ def generate_pdf_for_paper(
     if body_md:
         pdf_parts.append("## Full Text\n")
         pdf_parts.append(body_md)
+
+    # Add disclaimer for papers without translated figures
+    if not figures:
+        pdf_parts.append("\n_Note: Figure translations are in progress. See original paper for figures._")
+
     pdf_parts.append("\n_Source: ChinaXiv — Machine translation. Verify with original._")
 
     pdf_content = "\n\n".join(pdf_parts) + "\n"
@@ -328,6 +344,7 @@ def generate_pdf_for_paper(
 
     try:
         success = md_to_pdf(md_path, str(pdf_path), pdf_engine)
+        final_figure_count = figure_count
 
         # Fallback: retry without figures if failed and had figures
         if not success and figures:
@@ -338,6 +355,9 @@ def generate_pdf_for_paper(
                 if isinstance(body_en, list):
                     body_md_plain = "\n\n".join(body_en)
 
+            # Apply placeholder text for figures in fallback too
+            body_md_plain = inject_figures_into_markdown(body_md_plain, [], max_figures=None)
+
             pdf_parts_fallback = [
                 f"# {title}",
                 f"**Authors:** {', '.join(creators) if isinstance(creators, list) else str(creators)}",
@@ -347,6 +367,7 @@ def generate_pdf_for_paper(
             if body_md_plain:
                 pdf_parts_fallback.append("## Full Text\n")
                 pdf_parts_fallback.append(body_md_plain)
+            pdf_parts_fallback.append("\n_Note: Figure translations are in progress. See original paper for figures._")
             pdf_parts_fallback.append("\n_Source: ChinaXiv — Machine translation. Verify with original._")
 
             pdf_content_fallback = "\n\n".join(pdf_parts_fallback) + "\n"
@@ -356,23 +377,36 @@ def generate_pdf_for_paper(
                 f.write(pdf_md_fallback)
 
             success = md_to_pdf(md_path, str(pdf_path), pdf_engine)
+            # If fallback succeeded, PDF has no figures
+            if success:
+                final_figure_count = 0
 
-        return success
+        # Write metadata file alongside PDF for upload script
+        if success:
+            meta_path = output_dir / f"{paper_id}.meta.json"
+            meta_data = {
+                "paper_id": paper_id,
+                "figure_count": final_figure_count,
+                "has_figures": final_figure_count > 0,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            with open(meta_path, "w") as f:
+                json.dump(meta_data, f)
+
+        return success, final_figure_count
     finally:
         # Clean up temp file
-        try:
+        with contextlib.suppress(OSError):
             os.remove(md_path)
-        except OSError:
-            pass
 
 
 def main():
     parser = argparse.ArgumentParser(description="Generate English PDFs from translations")
     parser.add_argument(
         "--mode",
-        choices=["backfill", "incremental"],
+        choices=["backfill", "incremental", "figures-update"],
         default="incremental",
-        help="backfill=all missing PDFs, incremental=recent papers only"
+        help="backfill=all missing, incremental=recent only, figures-update=regenerate PDFs that now have figures"
     )
     parser.add_argument(
         "--days",
@@ -442,6 +476,18 @@ def main():
     translation_files = list(args.input_dir.glob("*.json"))
     log(f"Found {len(translation_files)} translation files")
 
+    # For figures-update mode, identify papers that:
+    # 1. Have existing PDF WITHOUT figures (has_figures=false in manifest)
+    # 2. Now have translated figures available
+    papers_needing_figure_update = set()
+    if args.mode == "figures-update":
+        figure_papers = set(figure_manifest.get("papers", {}).keys())
+        for paper_id, pdf_info in pdf_manifest.get("papers", {}).items():
+            # Paper has PDF but no figures, and figures now available
+            if not pdf_info.get("has_figures", True) and paper_id in figure_papers:
+                papers_needing_figure_update.add(paper_id)
+        log(f"Found {len(papers_needing_figure_update)} PDFs needing figure update")
+
     # Filter papers based on mode and arguments
     papers_to_process = []
 
@@ -452,9 +498,15 @@ def main():
         if args.paper_ids and paper_id not in args.paper_ids:
             continue
 
-        # Skip if PDF already exists in B2 (unless specific IDs requested)
-        if not args.paper_ids and paper_id in existing_pdfs:
-            continue
+        # Mode-specific filtering
+        if args.mode == "figures-update":
+            # Only process papers that need figure update
+            if paper_id not in papers_needing_figure_update:
+                continue
+        elif not args.paper_ids:
+            # Skip if PDF already exists in B2 (for backfill/incremental)
+            if paper_id in existing_pdfs:
+                continue
 
         # For incremental mode, filter by file modification time
         if args.mode == "incremental" and not args.paper_ids:
@@ -496,8 +548,10 @@ def main():
             fail_count += 1
             continue
 
-        if generate_pdf_for_paper(paper, figure_manifest, args.output_dir, pdf_engine):
-            log(f"  ✓ Generated {paper_id}.pdf")
+        success, fig_count = generate_pdf_for_paper(paper, figure_manifest, args.output_dir, pdf_engine)
+        if success:
+            fig_info = f"with {fig_count} figures" if fig_count > 0 else "without figures"
+            log(f"  ✓ Generated {paper_id}.pdf ({fig_info})")
             success_count += 1
         else:
             log(f"  ✗ Failed {paper_id}")

@@ -10,6 +10,7 @@ on:
         options:
           - backfill
           - incremental
+          - figures-update
         default: 'incremental'
       days:
         description: 'For incremental: days to look back'
