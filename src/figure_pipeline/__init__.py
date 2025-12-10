@@ -446,6 +446,13 @@ class FigurePipeline:
         Returns:
             True if updated, False if skipped/failed
         """
+        import re
+
+        # Validate paper_id format (same validation as _find_pdf)
+        if not re.match(r'^[\w\-\.]+$', paper_id) or '..' in paper_id:
+            log(f"Invalid paper_id format for DB update: {paper_id}")
+            return False
+
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
             log(f"DATABASE_URL not set, skipping has_figures update for {paper_id}")
