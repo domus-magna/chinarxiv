@@ -422,14 +422,8 @@ def run_cli() -> None:
             _write_summary(summary)
             raise SystemExit(f"Figure translation failed: {e}")
 
-    # Render + index + pdf (skip if cloud mode - will be done after all batches)
+    # Send completion notification to Discord (shows accurate success/failure/flagged)
     if not args.cloud_mode:
-        log("Render step…")
-        subprocess.run([sys.executable, "-m", "src.render"], check=False)
-        subprocess.run([sys.executable, "-m", "src.search_index"], check=False)
-        subprocess.run([sys.executable, "-m", "src.make_pdf"], check=False)
-
-        # Send completion notification to Discord (shows accurate success/failure/flagged)
         send_pipeline_alert(
             successes=successes,
             failures=failures,

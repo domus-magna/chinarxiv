@@ -8,7 +8,6 @@ import pytest
 from src import pdf_pipeline
 from src.validators.harvest_gate import run_harvest_gate
 from src.validators.ocr_gate import run_ocr_gate
-from src.validators.render_gate import run_render_gate
 from src.validators.translation_gate import run_translation_gate
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -38,7 +37,7 @@ def test_pipeline_smoke_passes_all_gates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fixture_pdf: Path
 ) -> None:
     """
-    Run a single-record end-to-end smoke test covering harvest, OCR, translation, and render gates.
+    Run a single-record end-to-end smoke test covering harvest, OCR, and translation gates.
     """
     workspace = tmp_path
     monkeypatch.chdir(workspace)
@@ -125,27 +124,9 @@ The experimental results demonstrate successful validation. All quality metrics 
     assert translation_summary.flagged == 0
     assert translation_summary.passed == 1
 
-    site_dir = workspace / "site"
-    items_dir = site_dir / "items" / record_id
-    items_dir.mkdir(parents=True)
-    (items_dir / "index.html").write_text(
-        "<html><body>Rendered article</body></html>", encoding="utf-8"
-    )
-    (site_dir / "search-index.json").write_text(
-        json.dumps([{"id": record_id}]), encoding="utf-8"
-    )
-
     ocr_summary = run_ocr_gate(report_dir=str(reports_dir))
     assert ocr_summary.pass_threshold_met
     assert ocr_summary.flagged == 0
-
-    render_summary = run_render_gate(
-        site_dir=str(site_dir), data_dir=str(data_dir), out_dir=str(reports_dir)
-    )
-    assert render_summary.pass_threshold_met
-    assert render_summary.translated_docs == 1
-    assert render_summary.indexed_docs == 1
-    assert render_summary.html_items >= 1
 
 
 def test_process_paper_records_ocr_improvement(
