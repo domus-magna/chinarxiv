@@ -540,12 +540,14 @@ main {
 
 .sidebar-btn {
   display: block;
+  width: 100%;
   padding: 0.6rem 1rem;
   background: #fff;
   border: 1px solid #ccc;
   border-radius: 4px;
   color: var(--secondary-color);
   text-align: center;
+  text-decoration: none;
   font-family: var(--font-sans);
   font-weight: 500;
   font-size: 0.9rem;
