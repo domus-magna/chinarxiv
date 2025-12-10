@@ -36,12 +36,14 @@ This revealed the correct architecture: **PostgreSQL-only** from the start.
 
 ## Database Architecture: PostgreSQL Only (Dec 2025)
 
-**STATUS**: ✅ Production Architecture - Requires PostgreSQL
+**STATUS**: ✅ Simplified to PostgreSQL-only (Completed Dec 2025)
 
 The application uses **PostgreSQL exclusively** for both development and production. This decision was made based on:
 - Scale requirements: 700 → 40,000 papers in 6 months
 - Performance needs: Sub-20ms category queries via materialized views
 - Deployment: Railway managed PostgreSQL ($7-15/month)
+
+**Simplification Complete**: Removed ~400 lines of SQLite code, eliminated dual database complexity. All 692 tests now run on PostgreSQL.
 
 ### Local Development Setup
 
@@ -78,6 +80,23 @@ railway run python scripts/migrate_to_postgres.py  # One-time migration
 | Filtered queries | 20-30ms | Composite B-tree indexes |
 | Connection reuse | 1-20 pooled | psycopg2 connection pooling |
 
+### Testing Setup
+
+Tests require local PostgreSQL database:
+
+```bash
+# Create test database
+createdb chinaxiv_test
+
+# Run tests (uses TEST_DATABASE_URL or defaults to localhost)
+pytest tests/
+
+# Or specify custom test database:
+TEST_DATABASE_URL="postgresql://user:pass@host/chinaxiv_test" pytest tests/
+```
+
+**Test Database**: All 692 tests use PostgreSQL fixtures (`tests/conftest.py`). Test schema is created using `scripts/migrate_to_postgres.py` functions.
+
 ### Materialized View Refresh
 
 ```bash
@@ -86,14 +105,15 @@ psql $DATABASE_URL -c "REFRESH MATERIALIZED VIEW category_counts;"
 ```
 
 ### Implementation Files
-- `app/db_adapter.py` - PostgreSQL connection wrapper (simplified)
+- `app/db_adapter.py` - PostgreSQL connection wrapper (168 lines, simplified from 263)
 - `app/__init__.py` - Connection pooling initialization
-- `app/database.py` - Query layer with tsvector search
+- `app/database.py` - Query layer with tsvector search (native %s placeholders)
 - `app/routes.py` - Paper detail queries
-- `app/filters.py` - Category counts from materialized view
+- `app/filters.py` - Category counts from materialized view (120 lines, simplified from 169)
 - `scripts/migrate_to_postgres.py` - Schema + materialized views
+- `tests/conftest.py` - PostgreSQL test fixtures (rewritten from SQLite)
 
-See plan: `/Users/alexanderhuth/.claude/plans/shiny-launching-puppy.md` for migration details.
+**Simplification Stats**: Removed ~400 lines of SQLite code, eliminated 3 adapter methods (`adapt_placeholder`, `adapt_fts_query`, `get_exception_class`).
 
 ---
 
