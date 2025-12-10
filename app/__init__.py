@@ -31,7 +31,8 @@ def create_app(config=None):
     """
     app = Flask(__name__,
                 template_folder='../src/templates',
-                static_folder='../static')
+                static_folder='../assets',
+                static_url_path='/assets')
 
     # Default configuration
     app.config['PER_PAGE'] = 50  # Papers per page for pagination

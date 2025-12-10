@@ -34,7 +34,7 @@ def get_db():
 
 
 def query_papers(category=None, date_from=None, date_to=None, search=None,
-                 has_figures=None, page=1, per_page=50):
+                 has_figures=None, subjects=None, page=1, per_page=50):
     """
     Query papers with filters and pagination.
 
@@ -48,6 +48,7 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
         date_to: ISO date string (e.g., '2022-12-31') or None
         search: Search query string or None
         has_figures: Boolean filter for papers with figures or None
+        subjects: List of subject names (e.g., ['Computer Science', 'Physics']) or None
         page: Page number (1-indexed), max 1000
         per_page: Papers per page, max 100
 
@@ -80,12 +81,20 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
 
     if category:
         # FIX: Use JOIN on normalized table instead of LIKE (Codex P1 issue)
-        subjects = get_category_subjects(category)
+        category_subjects = get_category_subjects(category)
 
         # FIX: Guard against empty category list (Codex P2 issue)
-        if not subjects:
+        if not category_subjects:
             return [], 0
 
+        needs_join = True
+        placeholders = ','.join(['%s'] * len(category_subjects))
+        where_clauses.append(f"ps.subject IN ({placeholders})")
+        params.extend(category_subjects)
+
+    if subjects:
+        # Filter by specific subjects (multi-select from Advanced Search)
+        # Papers must have at least one of the selected subjects
         needs_join = True
         placeholders = ','.join(['%s'] * len(subjects))
         where_clauses.append(f"ps.subject IN ({placeholders})")
@@ -131,7 +140,8 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
 
         # Count total (for pagination)
         cursor.execute(count_sql, params)
-        total = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        total = result['count'] if 'count' in result else result[list(result.keys())[0]]
 
         if total == 0:
             return [], 0

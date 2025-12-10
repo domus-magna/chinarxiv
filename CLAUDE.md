@@ -63,6 +63,30 @@ export DATABASE_URL="postgresql://localhost/chinaxiv_dev"
 python scripts/migrate_to_postgres.py
 ```
 
+**Option 3: Existing PostgreSQL 17** (macOS, if already installed)
+```bash
+# Add to .env
+echo "DATABASE_URL=postgresql://postgres:password@localhost:5432/chinaxiv_dev" >> .env
+
+# Create databases
+PGPASSWORD="password" psql -h localhost -U postgres -c "CREATE DATABASE chinaxiv_dev;"
+PGPASSWORD="password" psql -h localhost -U postgres -c "CREATE DATABASE chinaxiv_test;"
+
+# Create schema directly (no data migration)
+source .venv/bin/activate
+pip install psycopg2-binary
+PGPASSWORD="password" psql -h localhost -U postgres -d chinaxiv_dev -f <(cat << 'EOF'
+CREATE TABLE papers (...); -- See scripts/migrate_to_postgres.py for full SQL
+-- Creates papers, paper_subjects tables, indexes, and category_counts materialized view
+EOF)
+
+# Start Flask (note: port 5000 is used by macOS AirPlay, use 5001)
+export DATABASE_URL="postgresql://postgres:password@localhost:5432/chinaxiv_dev"
+python -m flask --app app run --debug --port 5001
+```
+
+Access at: http://localhost:5001
+
 ### Production Deployment (Railway)
 
 ```bash
