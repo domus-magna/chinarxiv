@@ -136,7 +136,7 @@
           <div class="paper-links">
             <a href="{{ root }}/items/{{ it.id }}" class="btn-sm">Abstract</a>
             {% if it._has_english_pdf %}
-              <a href="{{ root }}/items/{{ it.id }}.pdf" class="btn-sm">PDF</a>
+              <a href="{{ it._english_pdf_url or (root ~ '/items/' ~ it.id ~ '.pdf') }}" class="btn-sm" target="_blank" rel="noopener">PDF</a>
             {% endif %}
           </div>
         </div>
