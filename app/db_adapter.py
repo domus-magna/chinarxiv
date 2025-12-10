@@ -132,34 +132,37 @@ def init_adapter() -> None:
     """
     Initialize global database adapter instance.
 
-    This should be called once during application initialization (create_app).
-    Reads DATABASE_URL from environment variable.
+    This is now a no-op for lazy initialization. The actual database connection
+    is created on first get_adapter() call. This allows the app to start even
+    if the database is temporarily unavailable, enabling health checks and
+    graceful degradation.
 
-    Raises:
-        ValueError: If DATABASE_URL not set
+    Called by create_app() for backwards compatibility.
     """
-    global _adapter
-    if _adapter is not None:
-        logger.warning("Database adapter already initialized, closing existing pool...")
-        _adapter.close()
-
-    _adapter = DatabaseAdapter()
-    logger.info("PostgreSQL connection pool initialized")
+    # No-op: Connection pool is created lazily on first get_adapter() call
+    logger.info("Database adapter configured for lazy initialization")
 
 
 def get_adapter() -> DatabaseAdapter:
     """
-    Get global database adapter instance.
+    Get global database adapter instance, creating it on first use.
+
+    Uses lazy initialization - the connection pool is created when first needed,
+    not at app startup. This allows the app to start even if the database is
+    temporarily unavailable.
 
     Returns:
         DatabaseAdapter instance
 
     Raises:
-        RuntimeError: If adapter not initialized (call init_adapter first)
+        RuntimeError: If database connection cannot be established
     """
+    global _adapter
     if _adapter is None:
-        raise RuntimeError(
-            "Database adapter not initialized. "
-            "Call init_adapter() in create_app() before using database."
-        )
+        try:
+            _adapter = DatabaseAdapter()
+            logger.info("PostgreSQL connection pool created (lazy init)")
+        except Exception as e:
+            logger.error(f"Failed to create database adapter: {e}")
+            raise RuntimeError(f"Database unavailable: {e}") from e
     return _adapter
