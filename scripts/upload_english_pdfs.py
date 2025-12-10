@@ -16,6 +16,7 @@ Usage:
     python scripts/upload_english_pdfs.py --paper-ids chinaxiv-202201.00001 chinaxiv-202201.00002
 """
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -202,19 +203,41 @@ def main():
     # Upload PDFs
     success_count = 0
     fail_count = 0
+    meta_files_to_cleanup = []
 
     for i, (pdf_path, paper_id) in enumerate(to_upload, 1):
         size_kb = pdf_path.stat().st_size / 1024
         log(f"[{i}/{len(to_upload)}] Uploading {paper_id}.pdf ({size_kb:.1f} KB)...")
 
+        # Read metadata file if it exists (generated alongside PDF)
+        meta_path = pdf_path.with_suffix(".meta.json")
+        has_figures = False
+        figure_count = 0
+        generated_at = datetime.now(timezone.utc).isoformat()
+
+        if meta_path.exists():
+            try:
+                with open(meta_path) as f:
+                    meta_data = json.load(f)
+                    has_figures = meta_data.get("has_figures", False)
+                    figure_count = meta_data.get("figure_count", 0)
+                    generated_at = meta_data.get("generated_at", generated_at)
+            except Exception as e:
+                log(f"  Warning: Could not read metadata: {e}")
+
         try:
             url = upload_pdf(s3, pdf_path, paper_id)
             manifest["papers"][paper_id] = {
                 "url": url,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": generated_at,
                 "size_bytes": pdf_path.stat().st_size,
+                "has_figures": has_figures,
+                "figure_count": figure_count,
             }
             success_count += 1
+            # Only cleanup metadata after successful upload
+            if meta_path.exists():
+                meta_files_to_cleanup.append(meta_path)
         except Exception as e:
             log(f"  ✗ Failed: {e}")
             fail_count += 1
@@ -224,6 +247,13 @@ def main():
         log("Uploading updated manifest...")
         upload_manifest(s3, manifest)
         log(f"✓ Manifest updated ({len(manifest['papers'])} papers total)")
+
+    # Clean up metadata files after successful upload
+    if meta_files_to_cleanup:
+        for meta_path in meta_files_to_cleanup:
+            with contextlib.suppress(OSError):
+                meta_path.unlink()
+        log(f"Cleaned up {len(meta_files_to_cleanup)} metadata files")
 
     print()
     print("=" * 60)
