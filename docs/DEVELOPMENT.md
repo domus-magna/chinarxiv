@@ -4,307 +4,223 @@
 
 ### Prerequisites
 - Python 3.11+
-- Node.js 18+
+- PostgreSQL 15+ (local or Docker)
 - Git
 
 ### Setup
 ```bash
 # Clone repository
-git clone https://github.com/your-username/chinarxiv.git
-cd chinarxiv
+git clone https://github.com/domus-magna/chinaxiv-english.git
+cd chinaxiv-english
 
-# Install Python dependencies
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 
-# Install Wrangler CLI
-npm install -g wrangler
+# Set up local PostgreSQL (see Database Setup below)
+```
 
-# Login to Cloudflare
-wrangler login
+## Database Setup
+
+### Option 1: Docker (Recommended)
+```bash
+docker-compose up -d
+export DATABASE_URL="postgresql://postgres:postgres@localhost/chinaxiv_dev"
+```
+
+### Option 2: Homebrew (macOS)
+```bash
+brew install postgresql@15
+brew services start postgresql@15
+createdb chinaxiv_dev
+createdb chinaxiv_test
+export DATABASE_URL="postgresql://localhost/chinaxiv_dev"
+```
+
+### Option 3: Existing PostgreSQL
+```bash
+# Add to .env
+echo "DATABASE_URL=postgresql://postgres:password@localhost:5432/chinaxiv_dev" >> .env
+
+# Create databases
+PGPASSWORD="password" psql -h localhost -U postgres -c "CREATE DATABASE chinaxiv_dev;"
+PGPASSWORD="password" psql -h localhost -U postgres -c "CREATE DATABASE chinaxiv_test;"
+```
+
+### Schema Setup
+```bash
+# Run migration script
+python scripts/migrate_to_postgres.py
+
+# Or create schema directly
+python scripts/create_schema.py
+```
+
+## Development Server
+
+### Run Flask Development Server
+```bash
+# Port 5001 (port 5000 is used by macOS AirPlay)
+export DATABASE_URL="postgresql://postgres:password@localhost:5432/chinaxiv_dev"
+python -m flask --app app run --debug --port 5001
+```
+Access at: http://localhost:5001
+
+### Environment Variables
+Create `.env` file:
+```bash
+DATABASE_URL=postgresql://postgres:password@localhost:5432/chinaxiv_dev
+OPENROUTER_API_KEY=your_key_here
+```
+
+## Running Tests
+
+### All Tests
+```bash
+# Run all tests
+python -m pytest tests/ -v --tb=short
+
+# Run with coverage
+python -m pytest tests/ --cov=src --cov-report=term-missing
+```
+
+### Specific Tests
+```bash
+# Run specific test file
+python -m pytest tests/test_translate.py -v
+
+# Run specific test
+python -m pytest tests/test_translate.py::TestTranslation::test_translate_field_success -v
+
+# Stop on first failure
+python -m pytest tests/ -x
+```
+
+### Test Database
+Tests use a separate database:
+```bash
+# Create test database
+createdb chinaxiv_test
+
+# Run tests (auto-uses TEST_DATABASE_URL or default)
+pytest tests/
+
+# Or specify custom test database
+TEST_DATABASE_URL="postgresql://localhost/chinaxiv_test" pytest tests/
 ```
 
 ## Development Commands
 
-### Using the Development Script
+### Translation Pipeline
 ```bash
-# Build the site
-./scripts/dev.sh build
+# Harvest papers (current month)
+python -m src.harvest_chinaxiv_optimized --month $(date -u +"%Y%m")
 
-# Deploy to Cloudflare Pages
-./scripts/dev.sh deploy
+# Translate papers
+python -m src.translate
 
-# Run tests
-./scripts/dev.sh test
-
-# Run translation pipeline (5 papers)
-./scripts/dev.sh pipeline
-
-# Run translation pipeline (10 papers)
-./scripts/dev.sh pipeline 10
-
-# Start local server (port 8001)
-./scripts/dev.sh serve
-
-# Start local server (port 3000)
-./scripts/dev.sh serve 3000
-
-# Build and start local server
-./scripts/dev.sh dev
-
-# Full workflow: test, build, pipeline, deploy
-./scripts/dev.sh full
+# Translate with options
+python -m src.pipeline --workers 20 --with-qa --with-figures
 ```
 
-### Manual Commands
+### Database Operations
 ```bash
-# Build site
-python -m src.render
-python -m src.search_index
+# Refresh materialized view
+psql $DATABASE_URL -c "REFRESH MATERIALIZED VIEW category_counts;"
 
-# Deploy to Cloudflare Pages
-wrangler pages deploy site --project-name chinarxiv
+# Check paper count
+psql $DATABASE_URL -c "SELECT COUNT(*) FROM papers;"
 
-# Start local server
-python -m http.server -d site 8001
-
-# Run tests
-python -m pytest tests/ -v
-
-# Run translation pipeline
-python -m src.pipeline --limit 5
+# View recent papers
+psql $DATABASE_URL -c "SELECT id, title_en FROM papers ORDER BY date DESC LIMIT 5;"
 ```
 
-## Wrangler CLI Commands
+## Deployment
 
-### Authentication
+### Deploy to Railway
 ```bash
-# Login to Cloudflare
-wrangler login
+# Install Railway CLI (one-time)
+brew install railway
+railway login
+railway link
 
-# Check authentication status
-wrangler whoami
+# Deploy
+railway up --service chinaxiv-web
 
-# Logout
-wrangler logout
+# View logs
+railway logs --service chinaxiv-web
+
+# Check health
+curl https://chinaxiv-web-production.up.railway.app/health
 ```
 
-### Pages Management
+### Auto-Deploy
+Push to `main` triggers auto-deploy:
 ```bash
-# List Pages projects
-wrangler pages project list
-
-# Create new project
-wrangler pages project create project-name --production-branch main
-
-# Deploy directory to Pages
-wrangler pages deploy site --project-name chinarxiv
-
-# List deployments
-wrangler pages deployment list --project-name chinarxiv
-
-# View deployment details
-wrangler pages deployment tail --project-name chinarxiv
+git push origin main
 ```
 
-### Custom Domains
-```bash
-# Add custom domain
-wrangler pages domain add chinarxiv yourdomain.com
+## Project Structure
 
-# List domains
-wrangler pages domain list chinarxiv
-
-# Remove domain
-wrangler pages domain remove chinarxiv yourdomain.com
 ```
-
-## GitHub Actions
-
-### Workflows
-- **Daily Build** (`.github/workflows/build.yml`): Automated daily deployment
-- **Configurable Backfill** (`.github/workflows/backfill.yml`): Configurable parallel processing via inputs (1-10 jobs, 1-100 workers per job)
-
-### Required Secrets
-- `CF_API_TOKEN`: Cloudflare API token
-- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare Account ID
-- `OPENROUTER_API_KEY`: OpenRouter API key
-- `DISCORD_WEBHOOK_URL`: Discord webhook (optional)
-
-## Local Development Workflow
-
-### 1. Daily Development
-```bash
-# Start development server
-./scripts/dev.sh dev
-
-# Make changes to code
-# Test locally at http://localhost:8001
-
-# Deploy changes
-./scripts/dev.sh deploy
-```
-
-### 2. Translation Pipeline Testing
-```bash
-# Test with small batch
-./scripts/dev.sh pipeline 5
-
-# Check results
-./scripts/dev.sh serve
-
-# Deploy to production
-./scripts/dev.sh deploy
-```
-
-### 3. Full Testing
-```bash
-# Run complete test suite
-./scripts/dev.sh full
-```
-
-## Configuration Files
-
-### wrangler.toml
-```toml
-name = "chinarxiv"
-compatibility_date = "2024-01-01"
-
-# Pages configuration
-pages_build_output_dir = "site"
-
-# Environment variables
-[vars]
-OPENROUTER_API_KEY = ""
-DISCORD_WEBHOOK_URL = ""
-```
-
-### .env
-```bash
-# OpenRouter API key for translations
-OPENROUTER_API_KEY=your-api-key-here
-
-# Discord webhook for notifications (optional)
-DISCORD_WEBHOOK_URL=your-webhook-url-here
+chinaxiv-english/
+├── app/                    # Flask application
+│   ├── __init__.py         # App factory (create_app)
+│   ├── routes.py           # Route handlers
+│   ├── database.py         # Query layer
+│   ├── db_adapter.py       # PostgreSQL connection
+│   └── filters.py          # Category/subject filters
+├── src/                    # Translation pipeline
+│   ├── translate.py        # Text translation
+│   ├── pipeline.py         # Main pipeline
+│   └── figure_pipeline/    # Figure translation
+├── scripts/                # Utility scripts
+│   ├── create_schema.py    # Database schema
+│   └── migrate_to_postgres.py
+├── tests/                  # Test suite
+├── .python-version         # Python version (3.11)
+├── nixpacks.toml           # Railway build config
+└── requirements-web.txt    # Web dependencies
 ```
 
 ## Troubleshooting
 
-### Common Issues
-
-#### 1. Wrangler Authentication
+### Port 5000 in Use
+macOS uses port 5000 for AirPlay. Use port 5001:
 ```bash
-# Re-authenticate
-wrangler logout
-wrangler login
+python -m flask --app app run --debug --port 5001
 ```
 
-#### 2. Build Failures
-```bash
-# Check Python dependencies
-pip install -r requirements.txt
+### Database Connection Errors
+1. Check PostgreSQL is running: `pg_isready`
+2. Check DATABASE_URL is set: `echo $DATABASE_URL`
+3. Check database exists: `psql $DATABASE_URL -c "SELECT 1;"`
 
-# Check Node.js version
-node --version
+### Import Errors
+1. Activate virtual environment: `source .venv/bin/activate`
+2. Install dependencies: `pip install -r requirements.txt`
 
-# Reinstall Wrangler
-npm install -g wrangler
-```
-
-#### 3. Deployment Issues
-```bash
-# Check project exists
-wrangler pages project list
-
-# Check deployment status
-wrangler pages deployment list --project-name chinarxiv
-
-# View deployment logs
-wrangler pages deployment tail --project-name chinarxiv
-```
-
-#### 4. Translation Failures
-```bash
-# Check API key
-echo $OPENROUTER_API_KEY
-
-# Test API connection
-curl -X POST "https://openrouter.ai/api/v1/chat/completions" \
-  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "deepseek/deepseek-v3.2-exp", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 10}'
-```
-
-### Debug Commands
-```bash
-# Check Wrangler version
-wrangler --version
-
-# Check Node.js version
-node --version
-
-# Check Python version
-python --version
-
-# Check site directory
-ls -la site/
-
-# Check deployment status
-wrangler pages deployment list --project-name chinarxiv
-```
-
-## Performance Optimization
-
-### Local Development
-- Use `./scripts/dev.sh serve` for fast local testing
-- Use `./scripts/dev.sh dev` for build + serve workflow
-- Use `./scripts/dev.sh pipeline N` for translation testing
-
-### Production Deployment
-- Use GitHub Actions for automated deployment
-- Use Wrangler CLI for manual deployment
-- Monitor deployment status and logs
-
-### Translation Pipeline
-- Start with small batches (5-10 papers)
-- Scale up gradually (50-100 papers)
-- Use parallel processing for large batches
+### Test Failures
+1. Create test database: `createdb chinaxiv_test`
+2. Check test output: `pytest -v -s`
+3. Run single test: `pytest tests/test_file.py -x`
 
 ## Best Practices
 
 ### Code Quality
-- Run tests before deployment: `./scripts/dev.sh test`
-- Use type hints and docstrings
-- Follow PEP 8 style guidelines
-- Use conventional commit messages
+- Run tests before committing
+- Use `ruff` for linting
+- Follow existing code patterns
 
-### Deployment
-- Test locally before deploying
-- Use descriptive commit messages
-- Monitor deployment status
-- Check site functionality after deployment
+### Git Workflow
+- Work on feature branches
+- Use atomic commits
+- Open PRs for review
 
-### Translation Pipeline
-- Test with small batches first
-- Monitor API costs and usage
-- Check translation quality
-- Use appropriate batch sizes
-
-## Support and Resources
-
-### Documentation
-- **Wrangler CLI**: https://developers.cloudflare.com/workers/wrangler/
-- **Cloudflare Pages**: https://developers.cloudflare.com/pages/
-- **OpenRouter API**: https://openrouter.ai/docs
-
-### Community
-- **Cloudflare Discord**: https://discord.gg/cloudflaredevs
-- **GitHub Issues**: https://github.com/your-username/chinarxiv/issues
-
-### Tools
-- **Development Script**: `./scripts/dev.sh`
-- **Test Script**: `python3 scripts/test_wrangler.py`
-- **Wrangler CLI**: `wrangler`
-
----
-
-**Happy coding!** 🚀
+### Database Changes
+- Add migrations to `scripts/`
+- Update schema in both dev and prod
+- Refresh materialized views after data changes
