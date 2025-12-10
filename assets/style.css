@@ -1074,6 +1074,7 @@ main {
   font-family: var(--font-sans);
   font-size: 0.95rem;
   background: #fff;
+  color: #333;
   cursor: pointer;
 }
 
@@ -1089,6 +1090,8 @@ main {
   border-radius: 4px;
   font-family: var(--font-serif);
   font-size: 0.95rem;
+  background: #fff;
+  color: #333;
   resize: vertical;
   min-height: 120px;
 }
