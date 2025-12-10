@@ -22,6 +22,27 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('main', __name__)
 
 
+def _prepare_paper_for_template(paper):
+    """
+    Add underscore-prefixed fields expected by templates.
+
+    The templates (index.html, item.html) use underscore-prefixed field names
+    that were originally computed during static site generation. This function
+    maps the DB fields to the expected template field names.
+
+    Args:
+        paper: Dict of paper data from database
+
+    Returns:
+        paper: Same dict with additional _has_* fields added
+    """
+    # Map DB fields to template fields
+    paper['_has_full_text'] = bool(paper.get('has_full_text', False))
+    paper['_has_translated_figures'] = False  # TODO: Check figure translations when available
+    paper['_has_english_pdf'] = False  # English PDFs not yet available in Flask app
+    return paper
+
+
 def parse_date(date_str, default=None):
     """
     Parse date string to ISO format with validation (start of period).
@@ -155,10 +176,11 @@ def index():
     query_args = _get_paper_query_args()
     papers, total = query_papers(**query_args)
 
-    # Convert datetime objects to ISO strings for template rendering
+    # Convert datetime objects to ISO strings and add template fields
     for paper in papers:
         if paper.get('date') and hasattr(paper['date'], 'isoformat'):
             paper['date'] = paper['date'].isoformat()
+        _prepare_paper_for_template(paper)
 
     # Build category data with counts for the filter sidebar
     db = get_db()
@@ -216,10 +238,11 @@ def paper_detail(paper_id):
     if not paper:
         abort(404)
 
-    # Convert datetime to ISO string for template rendering
+    # Convert datetime to ISO string and add template fields
     paper = dict(paper)
     if paper.get('date') and hasattr(paper['date'], 'isoformat'):
         paper['date'] = paper['date'].isoformat()
+    _prepare_paper_for_template(paper)
 
     return render_template('item.html', item=paper)
 
