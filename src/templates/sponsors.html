@@ -235,7 +235,8 @@
       <div class="donation-method">
         <h3>Quick Donation</h3>
         <p>One-click, any amount. No account required.</p>
-        <a href="https://ko-fi.com/seconds0" class="kofi-btn" target="_blank" rel="noopener">
+        <a href="https://ko-fi.com/seconds0" class="kofi-btn" target="_blank" rel="noopener"
+           data-umami-event="sponsor-cta" data-umami-event-target="kofi">
           Fund a Translation
         </a>
       </div>
@@ -286,7 +287,10 @@
 <script>
 function copyAddr(id, btn) {
   const text = document.getElementById(id).textContent;
+  const cryptoType = id.replace('-addr', '').toUpperCase();
   navigator.clipboard.writeText(text).then(() => {
+    // Track crypto address copy
+    trackEvent('sponsor-cta', { target: 'crypto-copy', crypto: cryptoType });
     btn.textContent = 'Copied!';
     setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
   });

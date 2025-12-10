@@ -55,7 +55,9 @@
            class="category-tab {% if not filters.category %}active{% endif %}"
            role="tab"
            aria-selected="{% if not filters.category %}true{% else %}false{% endif %}"
-           aria-controls="articles">
+           aria-controls="articles"
+           data-umami-event="filter-category"
+           data-umami-event-category="All Recent">
           All Recent
         </a>
         {% for category_id, category in categories.items()|sort(attribute='1.order') %}
@@ -63,7 +65,9 @@
            class="category-tab {% if filters.category == category_id %}active{% endif %}"
            role="tab"
            aria-selected="{% if filters.category == category_id %}true{% else %}false{% endif %}"
-           aria-controls="articles">
+           aria-controls="articles"
+           data-umami-event="filter-category"
+           data-umami-event-category="{{ category.label }}">
           {{ category.label }}{% if category.count is defined %} ({{ category.count }}){% endif %}
         </a>
         {% endfor %}
@@ -398,7 +402,7 @@
       collapseAllBtn.textContent = allCollapsed ? 'Expand All' : 'Collapse All';
     }
 
-    // Form submission loading state
+    // Form submission loading state and tracking
     const advancedSearchForm = document.getElementById('advancedSearchForm');
     if (advancedSearchForm) {
       advancedSearchForm.addEventListener('submit', (e) => {
@@ -407,6 +411,16 @@
           submitBtn.disabled = true;
           submitBtn.innerHTML = '<span class="loading-spinner">⟳</span> Applying...';
         }
+
+        // Track advanced search usage
+        const formData = new FormData(advancedSearchForm);
+        const subjects = formData.getAll('subjects');
+        trackEvent('filter-advanced', {
+          has_search: !!formData.get('q'),
+          has_date: !!(formData.get('from') || formData.get('to')),
+          has_figures: formData.get('figures') === '1',
+          subject_count: subjects.length
+        });
       });
     }
   </script>
