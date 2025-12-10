@@ -293,6 +293,9 @@ function copyAddr(id, btn) {
     trackEvent('sponsor-cta', { target: 'crypto-copy', crypto: cryptoType });
     btn.textContent = 'Copied!';
     setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+  }).catch(() => {
+    btn.textContent = 'Failed';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
   });
 }
 </script>

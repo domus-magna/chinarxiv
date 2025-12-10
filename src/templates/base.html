@@ -26,8 +26,8 @@
       window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js" integrity="sha384-Wuix6BuhrWbjDBs24bXrjf4ZQ5aFeFWBuKkFekO2t8xFU0iNaLQfp2K6/1Nxveei" crossorigin="anonymous" defer></script>
-    {% if config.UMAMI_WEBSITE_ID %}
-    <script defer src="{{ config.UMAMI_SCRIPT_URL or 'https://cloud.umami.is/script.js' }}"
+    {% if config.UMAMI_WEBSITE_ID and config.UMAMI_SCRIPT_URL %}
+    <script defer src="{{ config.UMAMI_SCRIPT_URL }}"
             data-website-id="{{ config.UMAMI_WEBSITE_ID }}"
             data-domains="chinarxiv.org,www.chinarxiv.org"></script>
     {% endif %}
