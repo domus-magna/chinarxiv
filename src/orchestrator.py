@@ -512,7 +512,7 @@ def run_figure_translation(paper_id: str, dry_run: bool = False) -> bool:
     Run figure translation for a paper.
 
     Returns:
-        True if figure translation succeeded (or paper has no figures), False otherwise
+        True if figure translation succeeded (ALL figures translated or no figures), False otherwise
     """
     from .figure_pipeline import FigurePipeline, PipelineConfig
 
@@ -532,15 +532,20 @@ def run_figure_translation(paper_id: str, dry_run: bool = False) -> bool:
             log(f"    No figures found in {paper_id}")
             return True  # Success - no figures to translate
 
-        if result.translated > 0:
-            log(f"    Translated {result.translated}/{result.total_figures} figures")
-            return True
-
+        # Require ALL figures to be translated for success
+        # Partial translations should be treated as failures
         if result.failed > 0:
-            log(f"    Figure translation failed: {result.failed} failures")
+            log(f"    Figure translation FAILED: {result.failed}/{result.total_figures} figures failed")
             return False
 
-        return True
+        if result.translated == result.total_figures:
+            log(f"    All {result.translated} figures translated successfully")
+            return True
+
+        # Some figures weren't translated and didn't fail - unexpected state
+        log(f"    Unexpected: {result.translated}/{result.total_figures} translated, {result.failed} failed")
+        return False
+
     except Exception as e:
         log(f"    Figure translation failed: {e}")
         raise
