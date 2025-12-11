@@ -43,6 +43,8 @@ def orchestrator_test_database(test_database_schema):
 
     This extends the base test_database_schema fixture to add
     the processing_status columns from our migration.
+
+    Also sets DATABASE_URL environment variable for orchestrator functions.
     """
     conn = psycopg2.connect(test_database_schema)
     cursor = conn.cursor()
@@ -76,7 +78,17 @@ def orchestrator_test_database(test_database_schema):
     conn.commit()
     conn.close()
 
-    return test_database_schema
+    # Set DATABASE_URL for orchestrator to use
+    old_db_url = os.environ.get('DATABASE_URL')
+    os.environ['DATABASE_URL'] = test_database_schema
+
+    yield test_database_schema
+
+    # Restore old DATABASE_URL or remove it
+    if old_db_url is not None:
+        os.environ['DATABASE_URL'] = old_db_url
+    elif 'DATABASE_URL' in os.environ:
+        del os.environ['DATABASE_URL']
 
 
 @pytest.fixture
@@ -1064,7 +1076,7 @@ class TestDiscovery:
                 if v is not None:
                     os.environ[k] = v
 
-    @patch('src.orchestrator.OptimizedChinaXivScraper')
+    @patch('src.harvest_chinaxiv_optimized.OptimizedChinaXivScraper')
     @patch('src.orchestrator.upload_records_to_b2')
     def test_run_discover_with_mocked_scraper(
         self,
@@ -1143,7 +1155,7 @@ class TestDiscovery:
         os.environ['BRIGHTDATA_API_KEY'] = 'test_key'
         os.environ['BRIGHTDATA_ZONE'] = 'test_zone'
 
-        with patch('src.orchestrator.OptimizedChinaXivScraper') as mock_scraper_class:
+        with patch('src.harvest_chinaxiv_optimized.OptimizedChinaXivScraper') as mock_scraper_class:
             mock_scraper = mock_scraper_class.return_value
             mock_scraper.extract_homepage_max_ids.return_value = {'202501': 1}
             mock_scraper.scrape_month_optimized.return_value = [

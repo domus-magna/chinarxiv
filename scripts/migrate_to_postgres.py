@@ -75,6 +75,20 @@ def create_postgres_schema(pg_conn):
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS english_pdf_url TEXT;")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figure_urls TEXT;")
 
+    # Orchestrator columns for pipeline processing status tracking
+    logger.info("  Ensuring orchestrator columns exist...")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_error TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS text_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS text_completed_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figures_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figures_completed_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS pdf_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS pdf_completed_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS has_chinese_pdf BOOLEAN DEFAULT FALSE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS has_english_pdf BOOLEAN DEFAULT FALSE;")
+
     # Normalized subjects table (same as SQLite approach)
     logger.info("  Creating paper_subjects table...")
     cursor.execute("""

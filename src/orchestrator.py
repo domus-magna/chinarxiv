@@ -409,11 +409,18 @@ def insert_paper_if_new(conn, record: dict) -> bool:
 
     Args:
         conn: Database connection
-        record: Paper metadata dict from scraper
+        record: Paper metadata dict from scraper (has 'title', 'abstract', 'creators', 'subjects')
 
     Returns:
         True if paper was inserted (new), False if already existed
+
+    Note:
+        The scraper returns Chinese metadata. During discovery, we store the Chinese
+        title/abstract in the _en columns as placeholders - they'll be translated later.
+        Subjects are stored in the separate paper_subjects table.
     """
+    import json
+
     cursor = conn.cursor()
 
     # Check if paper already exists
@@ -421,24 +428,41 @@ def insert_paper_if_new(conn, record: dict) -> bool:
     if cursor.fetchone():
         return False  # Already exists
 
-    # Insert new paper
+    # Convert creators list to JSONB format
+    creators = record.get('creators', [])
+    if isinstance(creators, list):
+        creators_json = json.dumps(creators)
+    else:
+        creators_json = json.dumps([])
+
+    # Insert new paper (using _en columns - will be translated later)
     cursor.execute("""
         INSERT INTO papers (
-            id, title, abstract, authors, subjects,
+            id, title_en, abstract_en, creators_en,
             date, source_url, pdf_url, processing_status,
             text_status, figures_status, pdf_status
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', 'pending', 'pending', 'pending')
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending', 'pending', 'pending', 'pending')
     """, (
         record['id'],
         record.get('title', ''),
         record.get('abstract', ''),
-        record.get('creators', []),
-        record.get('subjects', []),
+        creators_json,
         record.get('date'),
         record.get('source_url'),
         record.get('pdf_url'),
     ))
+
+    # Insert subjects into paper_subjects table
+    subjects = record.get('subjects', [])
+    if subjects:
+        for subject in subjects:
+            cursor.execute("""
+                INSERT INTO paper_subjects (paper_id, subject)
+                VALUES (%s, %s)
+                ON CONFLICT DO NOTHING
+            """, (record['id'], subject))
+
     return True
 
 
