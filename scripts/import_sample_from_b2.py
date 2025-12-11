@@ -89,13 +89,15 @@ def import_paper_to_postgres(paper_json_path, db_conn):
 
     try:
         # Insert paper
+        # NOTE: These are from validated/translations/ so they're already translated
         cursor.execute("""
             INSERT INTO papers (
                 id, title_en, abstract_en, creators_en, date,
                 has_figures, has_full_text, qa_status,
-                source_url, pdf_url, created_at
+                source_url, pdf_url, created_at,
+                text_status, body_md
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, %s, %s)
             ON CONFLICT (id) DO NOTHING
         """, (
             paper['id'],
@@ -107,7 +109,9 @@ def import_paper_to_postgres(paper_json_path, db_conn):
             paper.get('has_full_text', False),
             'pass',  # All validated papers have qa_status='pass'
             paper.get('source_url'),
-            paper.get('pdf_url')
+            paper.get('pdf_url'),
+            'complete',  # Validated papers are already translated
+            paper.get('body_md', '')  # Include translated body content
         ))
 
         # Insert subjects (use English subjects)
