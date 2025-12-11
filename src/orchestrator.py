@@ -361,7 +361,7 @@ def run_discover(month: str, dry_run: bool = False) -> list[str]:
         max_id = homepage_maxes[month]
         log(f"    Found max ID from homepage: {month}.{max_id:05d}")
     else:
-        log(f"    Not on homepage, using binary search...")
+        log("    Not on homepage, using binary search...")
         max_id = scraper.find_max_id_binary_search(month)
         log(f"    Found max ID via search: {month}.{max_id:05d}")
 
@@ -379,7 +379,7 @@ def run_discover(month: str, dry_run: bool = False) -> list[str]:
         return [r['id'] for r in records]
 
     # Phase 3: Import to database
-    log(f"  Phase 3: Importing to database...")
+    log("  Phase 3: Importing to database...")
     conn = get_db_connection()
     new_ids = []
     existing_count = 0
@@ -396,7 +396,7 @@ def run_discover(month: str, dry_run: bool = False) -> list[str]:
         conn.close()
 
     # Phase 4: Upload records to B2 for archival
-    log(f"  Phase 4: Uploading records to B2...")
+    log("  Phase 4: Uploading records to B2...")
     upload_records_to_b2(month, records)
 
     log(f"Discovery complete for {month}: {len(new_ids)} new papers")
@@ -474,13 +474,12 @@ def upload_records_to_b2(month: str, records: list[dict]) -> bool:
     if success:
         log(f"    Uploaded records to B2: {remote_key}")
     else:
-        log(f"    WARNING: Failed to upload records to B2")
+        log("    WARNING: Failed to upload records to B2")
 
     # Cleanup temp file
-    try:
+    import contextlib
+    with contextlib.suppress(Exception):
         tmp.unlink()
-    except Exception:
-        pass
 
     return success
 
