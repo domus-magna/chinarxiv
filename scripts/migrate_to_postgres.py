@@ -50,11 +50,12 @@ def create_postgres_schema(pg_conn):
     logger.info("Creating PostgreSQL schema...")
 
     # Papers table (with proper types and constraints)
+    # Note: title_en is nullable because it's set during translation (title_cn is the source of truth)
     logger.info("  Creating papers table...")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS papers (
         id TEXT PRIMARY KEY,
-        title_en TEXT NOT NULL,
+        title_en TEXT,  -- Nullable, populated during translation
         abstract_en TEXT,
         creators_en JSONB,  -- Native JSONB (better than TEXT)
         date TIMESTAMP WITH TIME ZONE,  -- Proper timestamp type
@@ -74,6 +75,19 @@ def create_postgres_schema(pg_conn):
     logger.info("  Ensuring optional columns exist...")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS english_pdf_url TEXT;")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figure_urls TEXT;")
+
+    # Chinese source columns for database-as-source-of-truth
+    # These store the original Chinese metadata (before translation)
+    logger.info("  Ensuring Chinese source columns exist...")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS title_cn TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS abstract_cn TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS creators_cn JSONB;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS subjects_cn JSONB;")
+
+    # Make title_en nullable (for existing databases with NOT NULL constraint)
+    # title_cn is the source of truth; title_en is populated during translation
+    logger.info("  Making title_en nullable (if constraint exists)...")
+    cursor.execute("ALTER TABLE papers ALTER COLUMN title_en DROP NOT NULL;")
 
     # Orchestrator columns for pipeline processing status tracking
     logger.info("  Ensuring orchestrator columns exist...")
