@@ -60,6 +60,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install psycopg2-binary boto3
 
+      - name: Validate credentials
+        run: |
+          missing=""
+          [ -z "${{ secrets.DATABASE_URL }}" ] && missing="$missing DATABASE_URL"
+          [ -z "${{ secrets.BACKBLAZE_KEY_ID }}" ] && missing="$missing BACKBLAZE_KEY_ID"
+          [ -z "${{ secrets.BACKBLAZE_APPLICATION_KEY }}" ] && missing="$missing BACKBLAZE_APPLICATION_KEY"
+          [ -z "${{ secrets.BACKBLAZE_BUCKET }}" ] && missing="$missing BACKBLAZE_BUCKET"
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:$missing"
+            exit 1
+          fi
+          echo "All required credentials present"
+
       - name: Reconcile state from B2
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
