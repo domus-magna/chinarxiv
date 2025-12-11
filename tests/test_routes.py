@@ -29,9 +29,11 @@ class TestPrepareForTemplate:
             'id': 'chinaxiv-202201.00001',
             'has_full_text': True,
             'has_figures': True,
+            'figure_urls': '[{"number": 1, "url": "https://example.com/fig1.png"}]'
         }
         result = _prepare_paper_for_template(paper)
         assert result['_has_full_text'] is True
+        # _has_translated_figures is derived from figure_urls content, not has_figures flag
         assert result['_has_translated_figures'] is True
 
     def test_has_fields_default_to_false(self):
@@ -107,6 +109,40 @@ class TestPrepareForTemplate:
         paper = {'id': 'test', 'has_figures': True, 'figure_urls': '[]'}
         result = _prepare_paper_for_template(paper)
         assert result['_translated_figures'] == []
+
+    def test_has_translated_figures_derived_from_figure_urls(self):
+        """Verify _has_translated_figures is derived from figure_urls content, not has_figures flag.
+
+        This ensures the gallery displays when figure_urls is populated,
+        even if has_figures is False (sync script populates URLs but doesn't
+        necessarily update the has_figures flag).
+        """
+        # Case 1: has_figures=False but figure_urls populated -> should show gallery
+        paper_with_urls = {
+            'id': 'test1',
+            'has_figures': False,  # Flag not set
+            'figure_urls': '[{"number": 1, "url": "https://example.com/fig1.png"}]'
+        }
+        result = _prepare_paper_for_template(paper_with_urls)
+        assert result['_has_translated_figures'] is True  # Derived from URLs
+
+        # Case 2: has_figures=True but no figure_urls -> should NOT show gallery
+        paper_no_urls = {
+            'id': 'test2',
+            'has_figures': True,  # Flag set
+            'figure_urls': None
+        }
+        result = _prepare_paper_for_template(paper_no_urls)
+        assert result['_has_translated_figures'] is False  # No actual URLs
+
+        # Case 3: has_figures=True with empty array -> should NOT show gallery
+        paper_empty_array = {
+            'id': 'test3',
+            'has_figures': True,
+            'figure_urls': '[]'
+        }
+        result = _prepare_paper_for_template(paper_empty_array)
+        assert result['_has_translated_figures'] is False  # Empty array
 
     def test_creators_en_string_converted_to_list(self):
         """Verify string creators_en is converted to list."""

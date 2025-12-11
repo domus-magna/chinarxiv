@@ -51,7 +51,6 @@ def _prepare_paper_for_template(paper):
     """
     # Map DB fields to template fields
     paper['_has_full_text'] = bool(paper.get('has_full_text', False))
-    paper['_has_translated_figures'] = bool(paper.get('has_figures', False))
     paper['_has_english_pdf'] = bool(paper.get('english_pdf_url'))
     paper['_english_pdf_url'] = paper.get('english_pdf_url', '')
 
@@ -66,6 +65,10 @@ def _prepare_paper_for_template(paper):
             paper['_translated_figures'] = []
     else:
         paper['_translated_figures'] = []
+
+    # Derive _has_translated_figures from actual figure_urls content (not has_figures flag)
+    # This ensures gallery displays when figure_urls is populated, regardless of has_figures
+    paper['_has_translated_figures'] = bool(paper['_translated_figures'])
 
     # Map body_md to formatted_body_md for template
     paper['formatted_body_md'] = paper.get('body_md', '')
