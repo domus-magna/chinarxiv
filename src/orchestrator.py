@@ -342,6 +342,199 @@ def release_paper_lock(conn, paper_id: str) -> None:
     conn.commit()
 
 
+def ensure_paper_exists(conn, paper_id: str) -> bool:
+    """
+    Ensure a paper record exists in the database.
+
+    If the paper doesn't exist, tries to create it from:
+    1. B2 records files (harvested metadata)
+    2. B2 validated translations (if already translated)
+    3. Minimal stub record (as last resort)
+
+    Args:
+        conn: Database connection
+        paper_id: Paper identifier (e.g., chinaxiv-202401.00001)
+
+    Returns:
+        True if paper exists (or was created), False if creation failed
+    """
+    import json
+    from pathlib import Path
+
+    cursor = conn.cursor()
+
+    # Check if paper already exists
+    cursor.execute("SELECT id FROM papers WHERE id = %s", (paper_id,))
+    if cursor.fetchone():
+        return True
+
+    log(f"Paper {paper_id} not in DB, attempting to ingest...")
+
+    # Try to find paper data from records files first
+    paper_data = _load_paper_from_records(paper_id)
+
+    # If not in records, try B2 validated translation
+    if not paper_data:
+        paper_data = _load_paper_from_b2_translation(paper_id)
+
+    # If still nothing, create a minimal stub
+    if not paper_data:
+        log(f"  No data found for {paper_id}, creating minimal stub")
+        paper_data = {
+            'id': paper_id,
+            'title_en': f'[Pending] {paper_id}',
+            'abstract_en': None,
+            'creators_en': [],
+            'date': None,
+            'has_figures': False,
+            'has_full_text': False,
+            'source_url': None,
+            'pdf_url': None,
+        }
+
+    # Insert the paper
+    try:
+        cursor.execute("""
+            INSERT INTO papers (
+                id, title_en, abstract_en, creators_en, date,
+                has_figures, has_full_text, qa_status,
+                source_url, pdf_url, processing_status,
+                text_status, figures_status, pdf_status
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s, 'pending', 'pending', 'pending', 'pending')
+            ON CONFLICT (id) DO NOTHING
+        """, (
+            paper_data['id'],
+            paper_data.get('title_en') or f'[Pending] {paper_id}',
+            paper_data.get('abstract_en'),
+            json.dumps(paper_data.get('creators_en', [])),
+            paper_data.get('date'),
+            paper_data.get('has_figures', False),
+            paper_data.get('has_full_text', False),
+            paper_data.get('source_url'),
+            paper_data.get('pdf_url'),
+        ))
+        conn.commit()
+        log(f"  Created paper record for {paper_id}")
+        return True
+
+    except Exception as e:
+        log(f"  Failed to create paper record: {e}")
+        conn.rollback()
+        return False
+
+
+def _load_paper_from_records(paper_id: str) -> dict | None:
+    """Load paper data from local records files."""
+    import json
+    from pathlib import Path
+
+    records_dir = Path("data/records")
+    if not records_dir.exists():
+        return None
+
+    # Extract month from paper_id (e.g., chinaxiv-202401.00001 -> 202401)
+    try:
+        month = paper_id.split('-')[1].split('.')[0]
+        records_file = records_dir / f"chinaxiv_{month}.json"
+    except (IndexError, ValueError):
+        return None
+
+    if not records_file.exists():
+        # Try to download from B2
+        if not _download_records_from_b2(month):
+            return None
+        if not records_file.exists():
+            return None
+
+    try:
+        with open(records_file, encoding='utf-8') as f:
+            records = json.load(f)
+        for rec in records:
+            if rec.get('id') == paper_id:
+                log(f"  Found {paper_id} in records file")
+                return rec
+    except Exception as e:
+        log(f"  Error reading records: {e}")
+
+    return None
+
+
+def _download_records_from_b2(month: str) -> bool:
+    """Download records file from B2 storage."""
+    import boto3
+    from botocore.config import Config
+    from pathlib import Path
+
+    key_id = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('BACKBLAZE_KEY_ID')
+    secret = os.environ.get('AWS_SECRET_ACCESS_KEY') or os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    endpoint = os.environ.get('BACKBLAZE_S3_ENDPOINT')
+    bucket = os.environ.get('BACKBLAZE_BUCKET')
+    prefix = os.environ.get('BACKBLAZE_PREFIX', '')
+
+    if not all([key_id, secret, endpoint, bucket]):
+        return False
+
+    s3 = boto3.client(
+        's3',
+        endpoint_url=endpoint,
+        aws_access_key_id=key_id,
+        aws_secret_access_key=secret,
+        config=Config(signature_version='s3v4', region_name='us-west-004')
+    )
+
+    records_dir = Path("data/records")
+    records_dir.mkdir(parents=True, exist_ok=True)
+
+    key = f"{prefix}records/chinaxiv_{month}.json"
+    output_path = records_dir / f"chinaxiv_{month}.json"
+
+    try:
+        s3.download_file(bucket, key, str(output_path))
+        log(f"  Downloaded records for {month} from B2")
+        return True
+    except Exception as e:
+        log(f"  Records not found in B2: {e}")
+        return False
+
+
+def _load_paper_from_b2_translation(paper_id: str) -> dict | None:
+    """Load paper data from B2 validated translation."""
+    import json
+    import boto3
+    from botocore.config import Config
+    from pathlib import Path
+
+    key_id = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('BACKBLAZE_KEY_ID')
+    secret = os.environ.get('AWS_SECRET_ACCESS_KEY') or os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    endpoint = os.environ.get('BACKBLAZE_S3_ENDPOINT')
+    bucket = os.environ.get('BACKBLAZE_BUCKET')
+    prefix = os.environ.get('BACKBLAZE_PREFIX', '')
+
+    if not all([key_id, secret, endpoint, bucket]):
+        return None
+
+    s3 = boto3.client(
+        's3',
+        endpoint_url=endpoint,
+        aws_access_key_id=key_id,
+        aws_secret_access_key=secret,
+        config=Config(signature_version='s3v4', region_name='us-west-004')
+    )
+
+    key = f"{prefix}validated/translations/{paper_id}.json"
+    tmp_path = Path(f"/tmp/{paper_id}.json")
+
+    try:
+        s3.download_file(bucket, key, str(tmp_path))
+        with open(tmp_path, encoding='utf-8') as f:
+            data = json.load(f)
+        log(f"  Found {paper_id} in B2 validated translations")
+        return data
+    except Exception:
+        return None
+
+
 # ============================================================================
 # Pipeline Stage Functions
 # ============================================================================
@@ -820,7 +1013,15 @@ def get_work_queue(
         # Filter by what needs doing (unless force)
         if force:
             log(f"Force mode: processing all {len(papers)} papers")
-            return papers
+            # Still need to ensure papers exist in DB for force mode
+            valid_papers = []
+            for paper_id in papers:
+                status = get_paper_status(conn, paper_id)
+                if status or ensure_paper_exists(conn, paper_id):
+                    valid_papers.append(paper_id)
+                else:
+                    log(f"SKIP {paper_id} - could not create paper record")
+            return valid_papers
 
         # Filter out already-complete papers (and optionally failed papers)
         work_queue = []
@@ -828,8 +1029,11 @@ def get_work_queue(
             status = get_paper_status(conn, paper_id)
 
             if not status:
-                # Paper not in DB - add to queue
-                work_queue.append(paper_id)
+                # Paper not in DB - try to create it, then add to queue
+                if ensure_paper_exists(conn, paper_id):
+                    work_queue.append(paper_id)
+                else:
+                    log(f"SKIP {paper_id} - could not create paper record")
                 continue
 
             proc_status = status.get('processing_status')
