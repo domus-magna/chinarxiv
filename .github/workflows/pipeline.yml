@@ -7,6 +7,14 @@ name: Universal Pipeline
 #
 # ALL LOGIC IS IN PYTHON (src/orchestrator.py) - THIS YAML IS INTENTIONALLY DUMB.
 #
+# IMPORTANT: DATABASE IS SOURCE OF TRUTH
+# Papers must exist in the PostgreSQL database BEFORE this workflow can process
+# them. The orchestrator does NOT harvest/discover new papers automatically.
+#
+# To add new papers to the database:
+#   python scripts/import_to_postgres.py --month YYYYMM
+#   OR: python -m src.harvest_chinaxiv_optimized --start YYYYMM --end YYYYMM
+#
 # USE CASES:
 # - Process specific month: --scope month --target 202401
 # - Process specific papers: --scope list --target id1,id2
@@ -132,13 +140,15 @@ jobs:
             errors=1
           fi
 
-          # Only require figure credentials if not text-only
+          # Figure credentials required unless text-only mode
           if [ "${{ inputs.text_only }}" != "true" ]; then
             if [ -z "$GEMINI_API_KEY" ]; then
-              echo "::warning::GEMINI_API_KEY not set (required for figure translation)"
+              echo "::error::GEMINI_API_KEY is required for figure translation (use text_only=true to skip figures)"
+              errors=1
             fi
             if [ -z "$MOONDREAM_API_KEY" ]; then
-              echo "::warning::MOONDREAM_API_KEY not set (required for figure QA)"
+              echo "::error::MOONDREAM_API_KEY is required for figure QA (use text_only=true to skip figures)"
+              errors=1
             fi
           fi
 
