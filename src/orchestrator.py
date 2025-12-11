@@ -10,7 +10,8 @@ Usage:
     python -m src.orchestrator --scope month --target 202401
 
     # Process specific papers
-    python -m src.orchestrator --scope list --target chinaxiv-202401.00001,chinaxiv-202401.00002
+    python -m src.orchestrator --scope list \\
+        --target chinaxiv-202401.00001,chinaxiv-202401.00002
 
     # Resume pending/zombie papers (scheduled runs)
     python -m src.orchestrator --scope smart-resume
@@ -31,6 +32,7 @@ Environment:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 import traceback
@@ -200,8 +202,9 @@ def get_paper_status(conn, paper_id: str) -> dict:
     cursor = conn.cursor()
     cursor.execute("""
         SELECT id, processing_status, text_status, figures_status, pdf_status,
-               has_chinese_pdf, has_english_pdf, processing_started_at, processing_error,
-               text_completed_at, figures_completed_at, pdf_completed_at
+               has_chinese_pdf, has_english_pdf, processing_started_at,
+               processing_error, text_completed_at, figures_completed_at,
+               pdf_completed_at
         FROM papers
         WHERE id = %s
     """, (paper_id,))
@@ -400,7 +403,10 @@ def ensure_paper_exists(conn, paper_id: str) -> bool:
                 source_url, pdf_url, processing_status,
                 text_status, figures_status, pdf_status
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s, 'pending', 'pending', 'pending', 'pending')
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s,
+                'pending', 'pending', 'pending', 'pending'
+            )
             ON CONFLICT (id) DO NOTHING
         """, (
             paper_data['id'],
@@ -465,8 +471,14 @@ def _download_records_from_b2(month: str) -> bool:
     from botocore.config import Config
     from pathlib import Path
 
-    key_id = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('BACKBLAZE_KEY_ID')
-    secret = os.environ.get('AWS_SECRET_ACCESS_KEY') or os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    key_id = (
+        os.environ.get('AWS_ACCESS_KEY_ID') or
+        os.environ.get('BACKBLAZE_KEY_ID')
+    )
+    secret = (
+        os.environ.get('AWS_SECRET_ACCESS_KEY') or
+        os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    )
     endpoint = os.environ.get('BACKBLAZE_S3_ENDPOINT')
     bucket = os.environ.get('BACKBLAZE_BUCKET')
     prefix = os.environ.get('BACKBLAZE_PREFIX', '')
@@ -504,8 +516,14 @@ def _load_paper_from_b2_translation(paper_id: str) -> dict | None:
     from botocore.config import Config
     from pathlib import Path
 
-    key_id = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('BACKBLAZE_KEY_ID')
-    secret = os.environ.get('AWS_SECRET_ACCESS_KEY') or os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    key_id = (
+        os.environ.get('AWS_ACCESS_KEY_ID') or
+        os.environ.get('BACKBLAZE_KEY_ID')
+    )
+    secret = (
+        os.environ.get('AWS_SECRET_ACCESS_KEY') or
+        os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    )
     endpoint = os.environ.get('BACKBLAZE_S3_ENDPOINT')
     bucket = os.environ.get('BACKBLAZE_BUCKET')
     prefix = os.environ.get('BACKBLAZE_PREFIX', '')
@@ -616,8 +634,14 @@ def _download_pdf_from_b2(paper_id: str, output_path: str) -> bool:
     import boto3
     from botocore.config import Config
 
-    key_id = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('BACKBLAZE_KEY_ID')
-    secret = os.environ.get('AWS_SECRET_ACCESS_KEY') or os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    key_id = (
+        os.environ.get('AWS_ACCESS_KEY_ID') or
+        os.environ.get('BACKBLAZE_KEY_ID')
+    )
+    secret = (
+        os.environ.get('AWS_SECRET_ACCESS_KEY') or
+        os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    )
     endpoint = os.environ.get('BACKBLAZE_S3_ENDPOINT')
     bucket = os.environ.get('BACKBLAZE_BUCKET')
     prefix = os.environ.get('BACKBLAZE_PREFIX', '')
@@ -704,7 +728,8 @@ def run_figure_translation(paper_id: str, dry_run: bool = False) -> bool:
     Run figure translation for a paper.
 
     Returns:
-        True if figure translation succeeded (ALL figures translated or no figures), False otherwise
+        True if figure translation succeeded (ALL figures translated or
+        no figures), False otherwise
     """
     from .figure_pipeline import FigurePipeline, PipelineConfig
 
@@ -727,7 +752,10 @@ def run_figure_translation(paper_id: str, dry_run: bool = False) -> bool:
         # Require ALL figures to be translated for success
         # Partial translations should be treated as failures
         if result.failed > 0:
-            log(f"    Figure translation FAILED: {result.failed}/{result.total_figures} figures failed")
+            log(
+                f"    Figure translation FAILED: "
+                f"{result.failed}/{result.total_figures} figures failed"
+            )
             return False
 
         if result.translated == result.total_figures:
@@ -735,7 +763,10 @@ def run_figure_translation(paper_id: str, dry_run: bool = False) -> bool:
             return True
 
         # Some figures weren't translated and didn't fail - unexpected state
-        log(f"    Unexpected: {result.translated}/{result.total_figures} translated, {result.failed} failed")
+        log(
+            f"    Unexpected: {result.translated}/{result.total_figures} "
+            f"translated, {result.failed} failed"
+        )
         return False
 
     except Exception as e:
@@ -807,7 +838,8 @@ def process_paper(
     dry_run: bool = False,
     notify: Optional[Callable] = None,
     is_partial_mode: bool = False,
-    include_failed: bool = False
+    include_failed: bool = False,
+    force: bool = False
 ) -> ProcessingResult:
     """
     Process a single paper through the pipeline stages.
@@ -820,6 +852,7 @@ def process_paper(
         is_partial_mode: If True (text-only or figures-only), don't mark paper
                         as fully complete - only update stage-specific status
         include_failed: If True, allow retrying previously failed papers
+        force: If True, re-run stages even if already complete
 
     Returns:
         ProcessingResult with status and any errors
@@ -848,8 +881,8 @@ def process_paper(
                     result.stages_completed.append('harvest')
 
                 elif stage == 'text':
-                    # Skip if already complete
-                    if status.get('text_status') == 'complete':
+                    # Skip if already complete (unless force)
+                    if not force and status.get('text_status') == 'complete':
                         log(f"    Text already complete for {paper_id}")
                         result.stages_completed.append('text')
                         continue
@@ -863,8 +896,8 @@ def process_paper(
                         raise RuntimeError("Text translation failed")
 
                 elif stage == 'figures':
-                    # Skip if already complete
-                    if status.get('figures_status') == 'complete':
+                    # Skip if already complete (unless force)
+                    if not force and status.get('figures_status') == 'complete':
                         log(f"    Figures already complete for {paper_id}")
                         result.stages_completed.append('figures')
                         continue
@@ -878,8 +911,8 @@ def process_paper(
                         raise RuntimeError("Figure translation failed")
 
                 elif stage == 'pdf':
-                    # Skip if already complete
-                    if status.get('pdf_status') == 'complete':
+                    # Skip if already complete (unless force)
+                    if not force and status.get('pdf_status') == 'complete':
                         log(f"    PDF already complete for {paper_id}")
                         result.stages_completed.append('pdf')
                         continue
@@ -1004,7 +1037,10 @@ def get_work_queue(
                 figures_only=figures_only,
                 include_failed=include_failed
             )
-            log(f"Found {len(papers)} papers needing work (include_failed={include_failed})")
+            log(
+                f"Found {len(papers)} papers needing work "
+                f"(include_failed={include_failed})"
+            )
 
         else:
             raise ValueError(f"Unknown scope: {scope}")
@@ -1039,9 +1075,8 @@ def get_work_queue(
 
             if proc_status == 'complete':
                 # Check if specific stages are requested and incomplete
-                if text_only and status.get('text_status') != 'complete':
-                    work_queue.append(paper_id)
-                elif figures_only and status.get('figures_status') != 'complete':
+                if (text_only and status.get('text_status') != 'complete') or \
+                   (figures_only and status.get('figures_status') != 'complete'):
                     work_queue.append(paper_id)
                 # Otherwise skip complete papers
             elif proc_status == 'failed':
@@ -1130,10 +1165,8 @@ def run_orchestrator(
 
     # Discord notification callback
     def notify(message: str):
-        try:
+        with contextlib.suppress(Exception):
             alert_critical("Pipeline Error", message, source="orchestrator")
-        except Exception:
-            pass
 
     # Process papers
     log(f"Processing {len(work_queue)} papers with {workers} workers...")
@@ -1143,7 +1176,8 @@ def run_orchestrator(
         for paper_id in work_queue:
             result = process_paper(
                 paper_id, stages, dry_run=dry_run, notify=notify,
-                is_partial_mode=is_partial_mode, include_failed=include_failed
+                is_partial_mode=is_partial_mode, include_failed=include_failed,
+                force=force
             )
             if result.status == 'success':
                 stats.success += 1
@@ -1159,7 +1193,7 @@ def run_orchestrator(
             futures = {
                 executor.submit(
                     process_paper, pid, stages, dry_run, notify,
-                    is_partial_mode, include_failed
+                    is_partial_mode, include_failed, force
                 ): pid
                 for pid in work_queue
             }

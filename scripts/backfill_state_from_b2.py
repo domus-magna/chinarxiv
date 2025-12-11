@@ -42,12 +42,21 @@ logger = logging.getLogger(__name__)
 
 def get_b2_client():
     """Create B2 S3 client."""
-    key_id = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('BACKBLAZE_KEY_ID')
-    secret = os.environ.get('AWS_SECRET_ACCESS_KEY') or os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    key_id = (
+        os.environ.get('AWS_ACCESS_KEY_ID') or
+        os.environ.get('BACKBLAZE_KEY_ID')
+    )
+    secret = (
+        os.environ.get('AWS_SECRET_ACCESS_KEY') or
+        os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    )
     endpoint = os.environ.get('BACKBLAZE_S3_ENDPOINT')
 
     if not all([key_id, secret, endpoint]):
-        logger.error("B2 credentials not set. Need: BACKBLAZE_KEY_ID, BACKBLAZE_APPLICATION_KEY, BACKBLAZE_S3_ENDPOINT")
+        logger.error(
+            "B2 credentials not set. Need: BACKBLAZE_KEY_ID, "
+            "BACKBLAZE_APPLICATION_KEY, BACKBLAZE_S3_ENDPOINT"
+        )
         sys.exit(1)
 
     return boto3.client(
@@ -101,7 +110,8 @@ def list_figure_papers(s3_client, bucket: str, prefix: str) -> set:
 
     try:
         # List at the "figures/{paper_id}/" level
-        for page in paginator.paginate(Bucket=bucket, Prefix=full_prefix, Delimiter='/'):
+        paginate_args = {'Bucket': bucket, 'Prefix': full_prefix, 'Delimiter': '/'}
+        for page in paginator.paginate(**paginate_args):
             for common_prefix in page.get('CommonPrefixes', []):
                 # e.g., "figures/chinaxiv-202401.00001/" -> "chinaxiv-202401.00001"
                 folder = common_prefix['Prefix'].rstrip('/').split('/')[-1]
@@ -120,11 +130,15 @@ def scan_b2_state(s3_client, bucket: str, prefix: str) -> dict:
 
     # Scan each folder in parallel
     with ThreadPoolExecutor(max_workers=4) as executor:
+        submit = executor.submit
         futures = {
-            executor.submit(list_b2_prefixes, s3_client, bucket, prefix, 'pdfs'): 'chinese_pdfs',
-            executor.submit(list_b2_prefixes, s3_client, bucket, prefix, 'validated/translations'): 'text_translations',
-            executor.submit(list_b2_prefixes, s3_client, bucket, prefix, 'english-pdfs'): 'english_pdfs',
-            executor.submit(list_figure_papers, s3_client, bucket, prefix): 'figures',
+            submit(list_b2_prefixes, s3_client, bucket, prefix, 'pdfs'):
+                'chinese_pdfs',
+            submit(list_b2_prefixes, s3_client, bucket, prefix,
+                   'validated/translations'): 'text_translations',
+            submit(list_b2_prefixes, s3_client, bucket, prefix, 'english-pdfs'):
+                'english_pdfs',
+            submit(list_figure_papers, s3_client, bucket, prefix): 'figures',
         }
 
         results = {}
@@ -140,7 +154,9 @@ def scan_b2_state(s3_client, bucket: str, prefix: str) -> dict:
     return results
 
 
-def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Optional[int] = None):
+def backfill_database(
+    conn, b2_state: dict, dry_run: bool = False, limit: Optional[int] = None
+):
     """
     Update database with processing status from B2 state.
 
@@ -209,7 +225,12 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
         pdf_status = smart_status(current['pdf_status'], has_english_pdf)
 
         # Overall processing status - only complete if ALL stages complete
-        if text_status == 'complete' and figures_status == 'complete' and pdf_status == 'complete':
+        all_complete = (
+            text_status == 'complete' and
+            figures_status == 'complete' and
+            pdf_status == 'complete'
+        )
+        if all_complete:
             processing_status = 'complete'
         elif any(s == 'failed' for s in [text_status, figures_status, pdf_status]):
             processing_status = 'failed'  # Any failure means overall failure
@@ -219,10 +240,18 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
             processing_status = 'pending'
 
         # Track whether we're making a change
-        if (text_status != current['text_status'] or
+        status_changed = (
+            text_status != current['text_status'] or
             figures_status != current['figures_status'] or
-            pdf_status != current['pdf_status']):
-            if 'failed' in [current['text_status'], current['figures_status'], current['pdf_status']]:
+            pdf_status != current['pdf_status']
+        )
+        if status_changed:
+            cur_statuses = [
+                current['text_status'],
+                current['figures_status'],
+                current['pdf_status']
+            ]
+            if 'failed' in cur_statuses:
                 changes_summary['preserved_failed'] += 1
             else:
                 changes_summary['upgraded'] += 1
@@ -230,9 +259,18 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
             changes_summary['no_change'] += 1
 
         # Only set completed_at if transitioning to complete AND not already set
-        text_completed = current['text_completed_at'] is not None or (text_status == 'complete' and current['text_status'] != 'complete')
-        figures_completed = current['figures_completed_at'] is not None or (figures_status == 'complete' and current['figures_status'] != 'complete')
-        pdf_completed = current['pdf_completed_at'] is not None or (pdf_status == 'complete' and current['pdf_status'] != 'complete')
+        text_completed = (
+            current['text_completed_at'] is not None or
+            (text_status == 'complete' and current['text_status'] != 'complete')
+        )
+        figures_completed = (
+            current['figures_completed_at'] is not None or
+            (figures_status == 'complete' and current['figures_status'] != 'complete')
+        )
+        pdf_completed = (
+            current['pdf_completed_at'] is not None or
+            (pdf_status == 'complete' and current['pdf_status'] != 'complete')
+        )
 
         updates.append((
             paper_id,
@@ -251,7 +289,10 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
         # Show sample of updates
         logger.info("Dry run - would update the following (first 10):")
         for u in updates[:10]:
-            logger.info(f"  {u[0]}: processing={u[1]}, text={u[2]}, figures={u[3]}, pdf={u[4]}")
+            logger.info(
+                f"  {u[0]}: processing={u[1]}, text={u[2]}, "
+                f"figures={u[3]}, pdf={u[4]}"
+            )
 
         # Summary stats
         complete = sum(1 for u in updates if u[1] == 'complete')
@@ -273,7 +314,10 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
 
     # Batch update using execute_values
     logger.info("Updating database...")
-    logger.info(f"  Changes: {changes_summary['upgraded']} upgrades, {changes_summary['preserved_failed']} preserved failures")
+    logger.info(
+        f"  Changes: {changes_summary['upgraded']} upgrades, "
+        f"{changes_summary['preserved_failed']} preserved failures"
+    )
 
     # Create temp table for bulk update
     cursor.execute("""
@@ -297,7 +341,8 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
         """
         INSERT INTO paper_status_updates
             (paper_id, processing_status, text_status, figures_status, pdf_status,
-             has_chinese_pdf, has_english_pdf, set_text_completed, set_figures_completed, set_pdf_completed)
+             has_chinese_pdf, has_english_pdf,
+             set_text_completed, set_figures_completed, set_pdf_completed)
         VALUES %s
         """,
         updates,
@@ -305,7 +350,7 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
     )
 
     # Update papers table from temp table
-    # Smart update: only set completed_at if transitioning to complete AND not already set
+    # Smart update: only set completed_at if transitioning AND not already set
     cursor.execute("""
         UPDATE papers p
         SET
@@ -316,15 +361,18 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
             has_chinese_pdf = u.has_chinese_pdf,
             has_english_pdf = u.has_english_pdf,
             text_completed_at = CASE
-                WHEN u.set_text_completed AND p.text_completed_at IS NULL THEN NOW()
+                WHEN u.set_text_completed AND p.text_completed_at IS NULL
+                THEN NOW()
                 ELSE p.text_completed_at
             END,
             figures_completed_at = CASE
-                WHEN u.set_figures_completed AND p.figures_completed_at IS NULL THEN NOW()
+                WHEN u.set_figures_completed AND p.figures_completed_at IS NULL
+                THEN NOW()
                 ELSE p.figures_completed_at
             END,
             pdf_completed_at = CASE
-                WHEN u.set_pdf_completed AND p.pdf_completed_at IS NULL THEN NOW()
+                WHEN u.set_pdf_completed AND p.pdf_completed_at IS NULL
+                THEN NOW()
                 ELSE p.pdf_completed_at
             END
         FROM paper_status_updates u
@@ -387,9 +435,15 @@ def main():
     # Verify migration was applied
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'papers' AND column_name = 'processing_status'")
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'papers' AND column_name = 'processing_status'"
+        )
         if not cursor.fetchone():
-            logger.error("Migration 001_add_processing_status not applied. Run scripts/migrations/apply.py first")
+            logger.error(
+                "Migration 001_add_processing_status not applied. "
+                "Run scripts/migrations/apply.py first"
+            )
             sys.exit(1)
     except Exception as e:
         logger.error(f"Error checking schema: {e}")

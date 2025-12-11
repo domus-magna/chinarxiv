@@ -1,24 +1,26 @@
 """
-Publish post-QA outputs to Backblaze B2 via awscli and generate CSV manifests and pointers.
+Publish post-QA outputs to Backblaze B2 via awscli.
+
+Generates CSV manifests and pointers.
 
 Assumptions:
 - Validated translations are saved under data/translated/*.json
 - Flagged translations (diagnostics) are saved under data/flagged/*.json
-- PDFs live under data/pdfs/{paper_id}.pdf (archival; default ON at workflow level)
-- Cost and token logs may be in data/costs/<YYYY-MM-DD>.json (from cost_tracker)
+- PDFs live under data/pdfs/{paper_id}.pdf (archival; default ON)
+- Cost and token logs may be in data/costs/<YYYY-MM-DD>.json
 
 Inputs via env:
 - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 - B2_S3_ENDPOINT, B2_BUCKET, B2_PREFIX
-- SELECT_KEY (B2 selection key used), RECORDS_KEYS (comma-separated B2 keys)
+- SELECT_KEY (B2 selection key), RECORDS_KEYS (comma-separated B2 keys)
 - GITHUB_RUN_ID, GITHUB_SHA, RUN_STARTED_AT (ISO UTC)
 
 This script:
 1) Uploads validated translations, flagged translations, and PDFs to B2
 2) Builds/updates CSV manifests (validated and flagged) under indexes/*
-3) Writes per-paper pointer JSON under indexes/validated/by-paper/{paper_id}.json
+3) Writes per-paper pointer JSON under indexes/validated/by-paper/
 4) Appends a row to indexes/runs/YYYYMMDD.csv with run summary
-5) If any B2 ops are skipped/fail, buffers a Discord alert via b2_alerts (15-min throttle)
+5) Buffers a Discord alert via b2_alerts if B2 ops fail (15-min throttle)
 """
 
 from __future__ import annotations
