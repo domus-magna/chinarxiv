@@ -63,12 +63,17 @@ on:
         default: false
         description: "Dry run (no actual processing)"
 
+      include_failed:
+        type: boolean
+        default: false
+        description: "Include previously failed papers for retry"
+
   schedule:
     # Daily at 3 AM UTC - processes pending and zombie papers
     - cron: '0 3 * * *'
 
 run-name: >-
-  pipeline: ${{ inputs.scope || 'smart-resume' }}${{ inputs.target && format(' {0}', inputs.target) || '' }}${{ inputs.force && ' [force]' || '' }}${{ inputs.text_only && ' [text-only]' || '' }}${{ inputs.figures_only && ' [figures-only]' || '' }}
+  pipeline: ${{ inputs.scope || 'smart-resume' }}${{ inputs.target && format(' {0}', inputs.target) || '' }}${{ inputs.force && ' [force]' || '' }}${{ inputs.text_only && ' [text-only]' || '' }}${{ inputs.figures_only && ' [figures-only]' || '' }}${{ inputs.include_failed && ' [retry-failed]' || '' }}
 
 jobs:
   pipeline:
@@ -87,7 +92,18 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install dependencies
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ghostscript \
+            poppler-utils \
+            tesseract-ocr \
+            tesseract-ocr-chi-sim \
+            tesseract-ocr-eng \
+            ocrmypdf
+
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -186,6 +202,10 @@ jobs:
 
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
+          fi
+
+          if [ "${{ inputs.include_failed }}" = "true" ]; then
+            ARGS="$ARGS --include-failed"
           fi
 
           echo "Running: python -m src.orchestrator $ARGS"
