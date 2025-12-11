@@ -66,9 +66,16 @@ def create_postgres_schema(pg_conn):
         source_url TEXT,
         pdf_url TEXT,
         body_md TEXT,
+        english_pdf_url TEXT,  -- URL to English PDF in B2
+        figure_urls TEXT,  -- JSON array of translated figure URLs [{number, url}, ...]
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
     """)
+
+    # Add columns if they don't exist (for existing databases)
+    logger.info("  Ensuring optional columns exist...")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS english_pdf_url TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figure_urls TEXT;")
 
     # Normalized subjects table (same as SQLite approach)
     logger.info("  Creating paper_subjects table...")

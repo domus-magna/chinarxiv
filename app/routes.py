@@ -55,6 +55,18 @@ def _prepare_paper_for_template(paper):
     paper['_has_english_pdf'] = bool(paper.get('english_pdf_url'))
     paper['_english_pdf_url'] = paper.get('english_pdf_url', '')
 
+    # Parse figure_urls JSON column into _translated_figures list
+    # Expected format: [{"number": N, "url": "..."}, ...]
+    figure_urls = paper.get('figure_urls')
+    if figure_urls:
+        try:
+            paper['_translated_figures'] = json.loads(figure_urls)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"Invalid JSON in figure_urls for paper {paper.get('id')}")
+            paper['_translated_figures'] = []
+    else:
+        paper['_translated_figures'] = []
+
     # Map body_md to formatted_body_md for template
     paper['formatted_body_md'] = paper.get('body_md', '')
 
