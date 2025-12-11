@@ -285,8 +285,12 @@ def paper_detail(paper_id):
     adapter = get_adapter()
 
     # PostgreSQL query with RealDictCursor (via adapter pattern)
+    # Only show papers that have passed QA (i.e., have translations)
     cursor = adapter.get_cursor(db)
-    cursor.execute("SELECT * FROM papers WHERE id = %s", (paper_id,))
+    cursor.execute(
+        "SELECT * FROM papers WHERE id = %s AND qa_status = 'pass'",
+        (paper_id,)
+    )
     paper = cursor.fetchone()
 
     if not paper:
