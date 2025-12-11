@@ -90,26 +90,34 @@ def _load_costs_for_today() -> Dict[str, Dict]:
 
 
 def main() -> int:
-    # Validate env
-    missing = [
-        n
-        for n in [
-            "AWS_ACCESS_KEY_ID",
-            "AWS_SECRET_ACCESS_KEY",
-            "B2_S3_ENDPOINT",
-            "B2_BUCKET",
-        ]
-        if not _env(n)
-    ]
+    # Support both B2_* and BACKBLAZE_* env var naming conventions
+    # B2_* takes precedence for backwards compatibility
+    def get_b2_env(b2_name: str, backblaze_name: str, default: str | None = None) -> str | None:
+        return _env(b2_name) or _env(backblaze_name) or default
+
+    # Check for required credentials (supporting both naming conventions)
+    aws_key = _env("AWS_ACCESS_KEY_ID") or _env("BACKBLAZE_KEY_ID")
+    aws_secret = _env("AWS_SECRET_ACCESS_KEY") or _env("BACKBLAZE_APPLICATION_KEY")
+    endpoint = get_b2_env("B2_S3_ENDPOINT", "BACKBLAZE_S3_ENDPOINT")
+    bucket = get_b2_env("B2_BUCKET", "BACKBLAZE_BUCKET")
+
+    missing = []
+    if not aws_key:
+        missing.append("AWS_ACCESS_KEY_ID or BACKBLAZE_KEY_ID")
+    if not aws_secret:
+        missing.append("AWS_SECRET_ACCESS_KEY or BACKBLAZE_APPLICATION_KEY")
+    if not endpoint:
+        missing.append("B2_S3_ENDPOINT or BACKBLAZE_S3_ENDPOINT")
+    if not bucket:
+        missing.append("B2_BUCKET or BACKBLAZE_BUCKET")
+
     if missing:
         _alert(f"B2 publish skipped: missing env {', '.join(missing)}")
         # Ensure alert is flushed even on failure
         _run("python -m src.tools.b2_alerts flush")
         return 2
 
-    endpoint = _env("B2_S3_ENDPOINT")
-    bucket = _env("B2_BUCKET")
-    prefix = _env("B2_PREFIX", "") or ""
+    prefix = get_b2_env("B2_PREFIX", "BACKBLAZE_PREFIX", "") or ""
     dest_root = f"s3://{bucket}/{prefix}"
 
     select_key = _env("SELECT_KEY", "")
