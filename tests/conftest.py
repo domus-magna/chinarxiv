@@ -34,9 +34,13 @@ def test_database_url():
     Get PostgreSQL test database URL from environment or use local default.
 
     Override with: TEST_DATABASE_URL='postgresql://user:pass@host/dbname'
-    Default: postgresql://localhost/chinaxiv_test
+    Default: postgresql://postgres:password@localhost/chinaxiv_test (local dev)
+    CI uses: postgresql://postgres:postgres@localhost:5432/chinaxiv_test
     """
-    return os.environ.get('TEST_DATABASE_URL', 'postgresql://localhost/chinaxiv_test')
+    return os.environ.get(
+        'TEST_DATABASE_URL',
+        'postgresql://postgres:password@localhost/chinaxiv_test'
+    )
 
 
 @pytest.fixture(scope='session')
