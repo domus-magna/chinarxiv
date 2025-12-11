@@ -1,0 +1,258 @@
+name: Translate papers from B2 data
+# ============================================================================
+# PURPOSE: Translate papers using existing PDFs and records from B2.
+#
+# USE CASES:
+# - Papers that have PDFs in B2 but no text translations
+# - Papers that have been harvested but not yet translated
+# - Retranslating papers without re-downloading PDFs
+#
+# HOW IT WORKS:
+# 1. Downloads PDFs from B2 (no BrightData needed)
+# 2. Downloads records from B2 (no BrightData needed)
+# 3. Runs translation using local PDFs
+# 4. Uploads results to B2
+#
+# SECRETS REQUIRED:
+# - OPENROUTER_API_KEY: Text translation (required)
+# - BACKBLAZE_*: B2 storage credentials (required)
+# ============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      paper_ids:
+        description: 'Comma-separated paper IDs (e.g., chinaxiv-202201.00009,chinaxiv-202201.00010)'
+        required: true
+      workers:
+        description: 'Parallel translation workers'
+        required: false
+        default: '10'
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180  # 3 hours max
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install awscli
+
+      - name: Preflight credentials check
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+        run: |
+          errors=0
+
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY is required for text translation"
+            errors=1
+          fi
+
+          if [ -z "$BACKBLAZE_KEY_ID" ] || [ -z "$BACKBLAZE_APPLICATION_KEY" ] || [ -z "$BACKBLAZE_S3_ENDPOINT" ] || [ -z "$BACKBLAZE_BUCKET" ]; then
+            echo "::error::B2 credentials required"
+            errors=1
+          fi
+
+          if [ "$errors" -eq 1 ]; then
+            exit 1
+          fi
+
+          echo "All required credentials present"
+
+      - name: Parse paper IDs
+        id: parse
+        run: |
+          # Convert comma-separated to newline-separated for file
+          echo "${{ inputs.paper_ids }}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' > paper_ids.txt
+
+          count=$(wc -l < paper_ids.txt | tr -d ' ')
+          echo "Processing $count paper(s)"
+          echo "paper_count=$count" >> $GITHUB_OUTPUT
+
+          cat paper_ids.txt
+
+      - name: Download records from B2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          AWS_DEFAULT_REGION: us-west-004
+          B2_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+        run: |
+          set -e
+          mkdir -p data/records
+
+          echo "Downloading records from B2..."
+          aws s3 sync "s3://${B2_BUCKET}/records/" data/records/ \
+            --exclude "*" \
+            --include "chinaxiv_*.json" \
+            --endpoint-url "${B2_S3_ENDPOINT}" \
+            --only-show-errors
+
+          record_count=$(ls -1 data/records/*.json 2>/dev/null | wc -l | tr -d ' ')
+          echo "Downloaded $record_count record files"
+
+      - name: Download PDFs from B2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          AWS_DEFAULT_REGION: us-west-004
+          B2_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+        run: |
+          set -e
+          mkdir -p data/pdfs
+
+          echo "Downloading PDFs for requested papers..."
+          downloaded=0
+          failed=0
+
+          while IFS= read -r paper_id || [ -n "$paper_id" ]; do
+            [ -z "$paper_id" ] && continue
+
+            pdf_key="pdfs/${paper_id}.pdf"
+            local_path="data/pdfs/${paper_id}.pdf"
+
+            if aws s3 cp "s3://${B2_BUCKET}/${pdf_key}" "$local_path" \
+                --endpoint-url "${B2_S3_ENDPOINT}" \
+                --only-show-errors 2>/dev/null; then
+              downloaded=$((downloaded + 1))
+              echo "Downloaded: $paper_id"
+            else
+              failed=$((failed + 1))
+              echo "::warning::PDF not found in B2: $paper_id"
+            fi
+          done < paper_ids.txt
+
+          echo "Downloaded $downloaded PDFs, $failed missing"
+          echo "pdf_downloaded=$downloaded" >> $GITHUB_OUTPUT
+
+      - name: Translate papers
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -e
+
+          workers="${{ inputs.workers || '10' }}"
+          echo "Translating papers with $workers workers..."
+
+          success=0
+          failed=0
+          skipped=0
+
+          while IFS= read -r paper_id || [ -n "$paper_id" ]; do
+            [ -z "$paper_id" ] && continue
+
+            pdf_path="data/pdfs/${paper_id}.pdf"
+            if [ ! -f "$pdf_path" ]; then
+              echo "::warning::Skipping $paper_id - PDF not available"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            echo "::group::Translating: $paper_id"
+
+            if python -m src.translate "$paper_id"; then
+              success=$((success + 1))
+              echo "Successfully translated $paper_id"
+            else
+              failed=$((failed + 1))
+              echo "::warning::Failed to translate $paper_id"
+            fi
+
+            echo "::endgroup::"
+          done < paper_ids.txt
+
+          echo ""
+          echo "============================================"
+          echo "Summary: $success succeeded, $failed failed, $skipped skipped"
+          echo "============================================"
+
+          # Don't fail the job if some papers failed - we still want to upload the successful ones
+          echo "translation_success=$success" >> $GITHUB_OUTPUT
+          echo "translation_failed=$failed" >> $GITHUB_OUTPUT
+
+      - name: Upload translations to B2
+        if: always()
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          AWS_DEFAULT_REGION: us-west-004
+          B2_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          B2_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+
+          if [ ! -d data/translated ] || [ -z "$(ls -A data/translated/*.json 2>/dev/null)" ]; then
+            echo "No translations to upload"
+            exit 0
+          fi
+
+          DEST="s3://${B2_BUCKET}/${B2_PREFIX}"
+
+          echo "Uploading validated translations to B2..."
+          aws s3 sync data/translated "${DEST}validated/translations/" \
+            --exclude "*" --include "*.json" \
+            --endpoint-url "${B2_S3_ENDPOINT}" \
+            --only-show-errors
+
+          uploaded=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
+          echo "Uploaded $uploaded translations to B2"
+
+      - name: Upload flagged translations to B2
+        if: always()
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          AWS_DEFAULT_REGION: us-west-004
+          B2_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          B2_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+
+          if [ ! -d data/flagged ] || [ -z "$(ls -A data/flagged/*.json 2>/dev/null)" ]; then
+            echo "No flagged translations to upload"
+            exit 0
+          fi
+
+          DEST="s3://${B2_BUCKET}/${B2_PREFIX}"
+
+          echo "Uploading flagged translations to B2..."
+          aws s3 sync data/flagged "${DEST}flagged/translations/" \
+            --exclude "*" --include "*.json" \
+            --endpoint-url "${B2_S3_ENDPOINT}" \
+            --only-show-errors
+
+          flagged=$(ls -1 data/flagged/*.json 2>/dev/null | wc -l | tr -d ' ')
+          echo "Uploaded $flagged flagged translations to B2"
+
+      - name: Upload translations artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: translations-${{ github.run_id }}
+          path: |
+            data/translated/*.json
+            data/flagged/*.json
+          if-no-files-found: ignore
+          retention-days: 30
