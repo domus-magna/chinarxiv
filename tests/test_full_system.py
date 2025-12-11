@@ -458,3 +458,81 @@ class TestAccessibilityAndUsability:
         # Should have some filter controls (category tabs, date inputs, etc.)
         # Exact implementation varies, but should have interactive elements
         assert 'category' in html.lower() or 'filter' in html.lower() or '<select' in html or '<input' in html
+
+
+class TestFigureDisplay:
+    """Test translated figures display on paper detail pages."""
+
+    def test_paper_with_figures_shows_gallery(self, client, sample_papers_with_figures):
+        """Paper with figure_urls should display figure gallery section."""
+        response = client.get('/items/chinaxiv-202201.00001')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        # Should have the figure gallery section
+        assert 'figure-gallery' in html
+        assert 'Translated Figures' in html
+
+        # Should have figure images
+        assert 'fig_1_en.png' in html
+        assert 'fig_2_en.png' in html
+        assert 'fig_3_en.png' in html
+
+    def test_paper_with_single_figure_shows_gallery(self, client, sample_papers_with_figures):
+        """Paper with single figure should still show gallery."""
+        response = client.get('/items/chinaxiv-202206.00002')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        # Should have the figure gallery
+        assert 'figure-gallery' in html
+        assert 'fig_1_en.jpeg' in html
+
+    def test_paper_without_figures_shows_warning(self, client, sample_papers_with_figures):
+        """Paper without translated figures should show warning banner."""
+        response = client.get('/items/chinaxiv-202212.00003')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        # Should show warning about untranslated figures
+        assert 'Figures in this paper have not yet been translated' in html
+
+        # Should NOT have figure gallery
+        assert 'figure-gallery' not in html
+
+    def test_paper_with_empty_figure_urls_no_gallery(self, client, sample_papers_with_figures):
+        """Paper with has_figures=True but empty figure_urls should not show gallery."""
+        response = client.get('/items/chinaxiv-202301.00004')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        # Has figures flag is True, but no actual figures translated
+        # The warning banner should appear (no figures translated yet)
+        # But the gallery section should NOT appear (empty array)
+        assert 'figure-gallery' not in html
+
+    def test_figure_urls_properly_linked(self, client, sample_papers_with_figures):
+        """Verify figure URLs are properly rendered as links."""
+        response = client.get('/items/chinaxiv-202201.00001')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        # Figure URLs should be in anchor tags or img tags
+        assert 'https://f004.backblazeb2.com/file/chinaxiv/figures/' in html
+
+    def test_figure_gallery_structure(self, client, sample_papers_with_figures):
+        """Verify figure gallery has proper HTML structure."""
+        response = client.get('/items/chinaxiv-202201.00001')
+        assert response.status_code == 200
+        html = response.data.decode('utf-8')
+
+        # Should have figure elements
+        assert '<figure' in html
+        assert '</figure>' in html
+
+        # Should have captions
+        assert '<figcaption' in html
+
+        # Should have image tags
+        assert '<img' in html
+        assert 'loading="lazy"' in html  # Images should have lazy loading

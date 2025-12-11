@@ -320,6 +320,115 @@ def sample_papers(test_database):
 
 
 @pytest.fixture
+def sample_papers_with_figures(test_database):
+    """
+    Insert sample papers with figure_urls populated for testing figure display.
+
+    Creates papers that have:
+    - figure_urls JSON column populated with translated figure URLs
+    - Different numbers of figures per paper
+    - Mix of papers with and without figures
+    """
+    conn = psycopg2.connect(test_database)
+    cursor = conn.cursor()
+
+    papers = [
+        # Paper with multiple translated figures
+        {
+            'id': 'chinaxiv-202201.00001',
+            'title_en': 'Deep Learning for Neural Network Optimization',
+            'abstract_en': 'This paper presents a novel approach to optimize neural networks.',
+            'creators_en': json.dumps(['Zhang Wei', 'Li Ming']),
+            'date': '2022-01-15T10:00:00',
+            'has_figures': True,
+            'has_full_text': True,
+            'qa_status': 'pass',
+            'figure_urls': json.dumps([
+                {"number": 1, "url": "https://f004.backblazeb2.com/file/chinaxiv/figures/chinaxiv-202201.00001/translated/fig_1_en.png"},
+                {"number": 2, "url": "https://f004.backblazeb2.com/file/chinaxiv/figures/chinaxiv-202201.00001/translated/fig_2_en.png"},
+                {"number": 3, "url": "https://f004.backblazeb2.com/file/chinaxiv/figures/chinaxiv-202201.00001/translated/fig_3_en.png"}
+            ]),
+            'subjects': ['Computer Science', 'Artificial Intelligence']
+        },
+        # Paper with single translated figure
+        {
+            'id': 'chinaxiv-202206.00002',
+            'title_en': 'Transformer Models for NLP',
+            'abstract_en': 'We explore transformer architectures for NLP tasks.',
+            'creators_en': json.dumps(['Wang Hua']),
+            'date': '2022-06-20T14:30:00',
+            'has_figures': True,
+            'has_full_text': True,
+            'qa_status': 'pass',
+            'figure_urls': json.dumps([
+                {"number": 1, "url": "https://f004.backblazeb2.com/file/chinaxiv/figures/chinaxiv-202206.00002/translated/fig_1_en.jpeg"}
+            ]),
+            'subjects': ['Computer Science']
+        },
+        # Paper without translated figures (has_figures=False)
+        {
+            'id': 'chinaxiv-202212.00003',
+            'title_en': 'Graph Neural Networks',
+            'abstract_en': 'This study applies graph neural networks.',
+            'creators_en': json.dumps(['Chen Xiao']),
+            'date': '2022-12-31T23:59:59',
+            'has_figures': False,
+            'has_full_text': True,
+            'qa_status': 'pass',
+            'figure_urls': None,  # No figure URLs
+            'subjects': ['Computer Science']
+        },
+        # Paper with has_figures=True but empty figure_urls (partial translation)
+        {
+            'id': 'chinaxiv-202301.00004',
+            'title_en': 'CRISPR Gene Editing',
+            'abstract_en': 'We demonstrate CRISPR-based gene editing.',
+            'creators_en': json.dumps(['Zhao Yu']),
+            'date': '2023-01-10T09:00:00',
+            'has_figures': True,
+            'has_full_text': True,
+            'qa_status': 'pass',
+            'figure_urls': '[]',  # Empty array - figures exist but not translated
+            'subjects': ['Biology']
+        },
+    ]
+
+    # Insert papers with figure_urls
+    for paper in papers:
+        cursor.execute("""
+        INSERT INTO papers (
+            id, title_en, abstract_en, creators_en, date,
+            has_figures, has_full_text, qa_status, figure_urls
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            paper['id'],
+            paper['title_en'],
+            paper['abstract_en'],
+            paper['creators_en'],
+            paper['date'],
+            paper['has_figures'],
+            paper['has_full_text'],
+            paper['qa_status'],
+            paper['figure_urls']
+        ))
+
+        # Insert subjects
+        for subject in paper['subjects']:
+            cursor.execute("""
+            INSERT INTO paper_subjects (paper_id, subject)
+            VALUES (%s, %s)
+            """, (paper['id'], subject))
+
+    # Refresh materialized view with test data
+    cursor.execute("REFRESH MATERIALIZED VIEW category_counts;")
+
+    conn.commit()
+    conn.close()
+
+    yield test_database
+
+
+@pytest.fixture
 def sample_category_taxonomy():
     """
     Provide sample category taxonomy for filter testing.
