@@ -31,3 +31,4 @@ assets/logo-white-bg.png
 
 # Screenshots (test artifacts)
 screenshot*.png
+.claude/post-commit-test-results.md

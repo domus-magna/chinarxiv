@@ -72,12 +72,17 @@ on:
         default: false
         description: "Dry run (no actual processing)"
 
+      include_failed:
+        type: boolean
+        default: false
+        description: "Include previously failed papers for retry"
+
   schedule:
     # Daily at 3 AM UTC - processes pending and zombie papers
     - cron: '0 3 * * *'
 
 run-name: >-
-  pipeline: ${{ inputs.scope || 'smart-resume' }}${{ inputs.target && format(' {0}', inputs.target) || '' }}${{ inputs.force && ' [force]' || '' }}${{ inputs.text_only && ' [text-only]' || '' }}${{ inputs.figures_only && ' [figures-only]' || '' }}
+  pipeline: ${{ inputs.scope || 'smart-resume' }}${{ inputs.target && format(' {0}', inputs.target) || '' }}${{ inputs.force && ' [force]' || '' }}${{ inputs.text_only && ' [text-only]' || '' }}${{ inputs.figures_only && ' [figures-only]' || '' }}${{ inputs.include_failed && ' [retry-failed]' || '' }}
 
 jobs:
   pipeline:
@@ -211,6 +216,7 @@ jobs:
           INPUT_TEXT_ONLY: ${{ inputs.text_only }}
           INPUT_FIGURES_ONLY: ${{ inputs.figures_only }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_INCLUDE_FAILED: ${{ inputs.include_failed }}
         run: |
           set -e
 
@@ -242,6 +248,10 @@ jobs:
 
           if [ "$INPUT_DRY_RUN" = "true" ]; then
             CMD+=(--dry-run)
+          fi
+
+          if [ "$INPUT_INCLUDE_FAILED" = "true" ]; then
+            CMD+=(--include-failed)
           fi
 
           echo "Running: ${CMD[*]}"
