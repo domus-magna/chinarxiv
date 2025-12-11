@@ -15,7 +15,6 @@ import json
 import logging
 import re
 import uuid
-from psycopg2.extras import RealDictCursor
 from .database import query_papers, get_db
 from .db_adapter import get_adapter
 from .filters import build_categories, get_available_filters
