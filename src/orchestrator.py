@@ -415,9 +415,9 @@ def insert_paper_if_new(conn, record: dict) -> bool:
         True if paper was inserted (new), False if already existed
 
     Note:
-        The scraper returns Chinese metadata. During discovery, we store the Chinese
-        title/abstract in the _en columns as placeholders - they'll be translated later.
-        Subjects are stored in the separate paper_subjects table.
+        The scraper returns Chinese metadata. We store this in _cn columns (source of truth).
+        The _en columns are left NULL until translation runs.
+        Subjects are stored in both subjects_cn (JSONB) and paper_subjects table.
     """
     import json
 
@@ -435,26 +435,36 @@ def insert_paper_if_new(conn, record: dict) -> bool:
     else:
         creators_json = json.dumps([])
 
-    # Insert new paper (using _en columns - will be translated later)
+    # Convert subjects list to JSONB format
+    subjects = record.get('subjects', [])
+    if isinstance(subjects, list):
+        subjects_json = json.dumps(subjects)
+    else:
+        subjects_json = json.dumps([])
+
+    # Insert new paper with Chinese metadata in _cn columns
+    # _en columns are left NULL - populated by translation
     cursor.execute("""
         INSERT INTO papers (
-            id, title_en, abstract_en, creators_en,
+            id,
+            title_cn, abstract_cn, creators_cn, subjects_cn,
+            title_en, abstract_en, creators_en,
             date, source_url, pdf_url, processing_status,
             text_status, figures_status, pdf_status
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending', 'pending', 'pending', 'pending')
+        VALUES (%s, %s, %s, %s, %s, NULL, NULL, NULL, %s, %s, %s, 'pending', 'pending', 'pending', 'pending')
     """, (
         record['id'],
         record.get('title', ''),
         record.get('abstract', ''),
         creators_json,
+        subjects_json,
         record.get('date'),
         record.get('source_url'),
         record.get('pdf_url'),
     ))
 
-    # Insert subjects into paper_subjects table
-    subjects = record.get('subjects', [])
+    # Also insert subjects into paper_subjects table (for queries)
     if subjects:
         for subject in subjects:
             cursor.execute("""
@@ -630,9 +640,15 @@ def run_text_translation(paper_id: str, dry_run: bool = False) -> bool:
     log(f"  Translating text for {paper_id}...")
 
     try:
-        result_path = translate_paper(paper_id, dry_run=dry_run)
-        if result_path and os.path.exists(result_path):
-            log(f"    Translation saved: {result_path}")
+        # translate_paper returns paper_id on success (saves to DB + local file)
+        result = translate_paper(paper_id, dry_run=dry_run)
+        if result:
+            # Verify local backup was written (optional check)
+            local_path = f"data/translated/{paper_id}.json"
+            if os.path.exists(local_path):
+                log(f"    Translation saved: {local_path}")
+            else:
+                log(f"    Translation saved to database for {paper_id}")
             return True
         return False
     except Exception as e:
