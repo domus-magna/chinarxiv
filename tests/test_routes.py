@@ -8,7 +8,6 @@ These tests verify that:
 """
 
 import json
-import pytest
 import sys
 from pathlib import Path
 
@@ -17,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.routes import _prepare_paper_for_template
+from app.routes import _prepare_paper_for_template  # noqa: E402
 
 
 class TestPrepareForTemplate:
