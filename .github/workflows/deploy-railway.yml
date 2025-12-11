@@ -24,7 +24,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          railway link d1fc933e-fd7b-4b3b-94b2-ea6888c02da4 --environment production
+          railway link --project d1fc933e-fd7b-4b3b-94b2-ea6888c02da4 --environment production
           railway up --service chinaxiv-web --detach
 
       - name: Verify deployment
