@@ -7,39 +7,29 @@
 ## Planned Features
 
 ### Advanced Filters Modal
-**Status**: UI complete, JavaScript needed
-**Files**: `src/templates/index.html:113-233`, `site/assets/site.js`
+**Status**: Server‑side modal working; enhancements optional
+**Files**: `src/templates/index.html`, `app/routes.py`, `app/database.py`
 
 **Requirements**:
-- [ ] Wire up modal open/close handlers
 - [ ] Field-specific search (title/author/abstract only)
-- [ ] Date range filters (7d/30d/90d/1y)
-- [ ] Category accordion (hierarchical tree with expand/collapse)
-- [ ] Figures-only filter
-- [ ] Sync modal state with current filters
-- [ ] Filter indicator pills below search bar
-- [ ] URL state: `?category=X&date=Y&figures=true`
+- [ ] Date quick‑ranges (7d/30d/90d/1y) as helper buttons
+- [ ] Optional subcategory drilldown breadcrumbs
+- [ ] Preserve URL state (already supported for category/date/figures/subjects)
 
 **Implementation Notes**:
-- Modal HTML/CSS exists, zero JavaScript wired
-- Should integrate with existing `applyFiltersAndRender()` in `site/assets/site.js`
-- Paper count format: "Showing X papers" (consistent with tabs)
-- See inline comments in `site/assets/site.js:372-385` for integration approach
+- Modal open/close, accordion expand/collapse, and server‑side filtering are implemented.
+- Remaining items are UX polish, not blockers.
 
 ### Filter Indicator Pills
-**Status**: HTML exists, needs JavaScript
-**Files**: `src/templates/index.html:45-48`
+**Status**: Completed (server‑rendered)
+**Files**: `src/templates/index.html`
 
 **Requirements**:
-- [ ] Show active filters as dismissible pills
-- [ ] Click X to remove individual filter
-- [ ] "Clear all" button when multiple filters active
-- [ ] Pills update in real-time as filters change
+- [x] Show active filters as pills with remove links
+- [x] Clear‑all resets to `/`
 
 **Implementation Notes**:
-- Container exists: `<div class="filter-indicators" id="filterIndicators">`
-- Should display pills for: active category, date range, figures-only
-- Example: `[AI & Computer Science ×] [Last 30 days ×] [With figures ×] [Clear all]`
+- Implemented in Jinja with simple query‑param preservation.
 
 ### Subcategory Drilling
 **Status**: Planned

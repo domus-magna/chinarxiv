@@ -302,10 +302,11 @@ def generate_pdf_for_paper(
     paper_figures = figure_manifest.get("papers", {}).get(paper_id, {})
     if paper_figures:
         for fig in paper_figures.get("figures", []):
-            if fig.get("translated_url"):
+            url = fig.get("translated_url") or fig.get("url")
+            if url:
                 figures.append({
                     "number": fig.get("number", ""),
-                    "url": fig.get("translated_url"),
+                    "url": url,
                 })
 
     # Inject figures into body (with cap for PDF), or replace markers with placeholders

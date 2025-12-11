@@ -43,9 +43,44 @@ def create_schema(conn):
         english_pdf_url TEXT,
         body_md TEXT,
         figure_urls TEXT,
+        license JSONB,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
     """)
+
+    # Pipeline source-of-truth columns and orchestrator status tracking.
+    # Keep these idempotent so create_schema works on existing DBs too.
+    logger.info("Ensuring Chinese source columns exist...")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS title_cn TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS abstract_cn TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS creators_cn JSONB;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS subjects_cn JSONB;")
+
+    logger.info("Making title_en nullable (pipeline populates later)...")
+    cursor.execute("ALTER TABLE papers ALTER COLUMN title_en DROP NOT NULL;")
+
+    logger.info("Ensuring orchestrator columns exist...")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_error TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS text_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS text_completed_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figures_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figures_completed_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS pdf_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS pdf_completed_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS has_chinese_pdf BOOLEAN DEFAULT FALSE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS has_english_pdf BOOLEAN DEFAULT FALSE;")
+
+    logger.info("Creating status constraints...")
+    for constraint, check in [
+        ("chk_processing_status", "processing_status IN ('pending', 'processing', 'complete', 'failed')"),
+        ("chk_text_status", "text_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')"),
+        ("chk_figures_status", "figures_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')"),
+        ("chk_pdf_status", "pdf_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')"),
+    ]:
+        cursor.execute(f"ALTER TABLE papers DROP CONSTRAINT IF EXISTS {constraint};")
+        cursor.execute(f"ALTER TABLE papers ADD CONSTRAINT {constraint} CHECK ({check});")
 
     # Paper subjects table
     logger.info("Creating paper_subjects table...")
@@ -55,6 +90,54 @@ def create_schema(conn):
         subject TEXT NOT NULL,
         PRIMARY KEY (paper_id, subject)
     );
+    """)
+
+    # Translation requests table (figure/text requests from users)
+    logger.info("Creating translation_requests table...")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS translation_requests (
+        id SERIAL PRIMARY KEY,
+        paper_id VARCHAR(30) NOT NULL,
+        request_type VARCHAR(10) NOT NULL CHECK (request_type IN ('figure', 'text')),
+        ip_hash VARCHAR(16) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    logger.info("Creating translation_requests indexes...")
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_translation_requests_dedup
+        ON translation_requests(paper_id, request_type, ip_hash, created_at DESC);
+    """)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_translation_requests_type_created
+        ON translation_requests(request_type, created_at DESC);
+    """)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_translation_requests_paper
+        ON translation_requests(paper_id);
+    """)
+
+    # User reports table (problem reports from readers)
+    logger.info("Creating user_reports table...")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_reports (
+        id SERIAL PRIMARY KEY,
+        paper_id VARCHAR(30),
+        issue_type VARCHAR(32) NOT NULL,
+        description TEXT NOT NULL,
+        context JSONB,
+        ip_hash VARCHAR(16),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    logger.info("Creating user_reports indexes...")
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_user_reports_paper
+        ON user_reports(paper_id);
+    """)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_user_reports_created
+        ON user_reports(created_at DESC);
     """)
 
     # Full-text search column

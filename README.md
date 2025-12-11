@@ -34,13 +34,14 @@ See [SETUP.md](docs/SETUP.md) for detailed instructions.
 - [PRD](docs/PRD.md) - Product requirements document
 
 ### Backfill by Month
-Use the "backfill-month" GitHub Actions workflow to backfill a single month (YYYYMM). It harvests optimized, selects unseen items, translates all in parallel, and can optionally deploy to Cloudflare Pages. The workflow also persists cross-job dedupe by committing `data/seen.json` back to the repo after a successful run.
+Use the "backfill-month" GitHub Actions workflow to backfill a single month (YYYYMM). It harvests via BrightData, translates all papers in parallel, writes validated outputs to Backblaze B2, and updates PostgreSQL status so the Railway web app can serve the results.
 
 ## Architecture
 - **Harvesting**: ChinaXiv via BrightData Web Unlocker (default)
-- **Translation**: OpenRouter API with DeepSeek V3.2-Exp model
-- **Deployment**: Cloudflare Pages with GitHub Actions
-- **Monitoring**: Consolidated monitoring service with alerts, analytics, and performance metrics
+- **Translation**: OpenRouter API (default `moonshotai/kimi-k2-thinking` with GLM fallback)
+- **Web App**: Railway Flask app (`chinaxiv-web`) backed by Railway PostgreSQL
+- **Storage**: PostgreSQL is source of truth; Backblaze B2 stores durable artifacts (PDFs, figures, translations)
+- **CDN/DNS**: Cloudflare for caching and the `chinarxiv.org` domain
 
 ## Support ChinaRxiv
 
@@ -130,15 +131,11 @@ The script copies small sample JSON/PDF files into `data/` only when real artifa
 - Homebrew: `brew install python@3.11` (then ensure `python3.11` is on PATH)
 - pyenv: `brew install pyenv && pyenv install 3.11.9 && pyenv global 3.11.9`
 
-## Production Deploy (Cloudflare Pages)
+## Production Deploy (Railway)
 
-- Add GitHub repository secrets:
-  - `OPENROUTER_API_KEY`: your OpenRouter key (rotate if exposed).
-  - `CLOUDFLARE_ACCOUNT_ID`: from Cloudflare dashboard.
-  - `CF_API_TOKEN`: API token with Pages:Edit permission.
-- CI builds nightly at 03:00 UTC and deploys `site/` to Cloudflare Pages using `cloudflare/pages-action`.
-- First-time project creation happens on deploy (project name: `chinarxiv`).
-- Map a custom domain in Cloudflare Pages → Custom domains.
+- Pushes to `main` that touch `app/`, templates, or `requirements-web.txt` auto‑deploy the Flask app to Railway via `deploy-railway.yml`.  
+- The translation pipeline still runs in GitHub Actions (`pipeline.yml` / `backfill-*.yml`) and publishes to PostgreSQL + B2; the Railway app reads from PostgreSQL at request time.
+- The previous Cloudflare Pages static‑site deploy is legacy and no longer used in production.
 
 Batch translation (future option)
 - Some providers offer asynchronous batch endpoints with longer SLAs (e.g., 12–24h) at significantly lower cost (~50%).

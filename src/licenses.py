@@ -99,16 +99,22 @@ def decide_derivatives_allowed(
         cfg = get_config()
     raw = (record.get("license") or {}).get("raw") or ""
     label = parse_license_string(raw)
-    if not label and record.get("source_url"):
+    # Optional landing‑page scrape for missing licenses.
+    # Disabled by default for simplicity and test determinism.
+    scrape_cfg = cfg.get("license_scrape") or {}
+    scrape_enabled = bool(scrape_cfg.get("enabled", False))
+    if not label and scrape_enabled and record.get("source_url"):
         label = scrape_license_from_landing(record["source_url"])
 
     mapping = cfg.get("license_mappings", {})
     meta = mapping.get(label or "") if label else None
     if meta:
-        allowed = bool(meta.get("derivatives_allowed"))
+        allowed: Optional[bool] = bool(meta.get("derivatives_allowed"))
         badge = meta.get("badge")
     else:
-        allowed = False
+        # Unknown or unmapped licenses should not be treated as "no derivatives".
+        # We represent them as "unknown" (None) so callers can decide a safe default.
+        allowed = None
         badge = None
 
     record["license"] = {

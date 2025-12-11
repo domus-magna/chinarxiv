@@ -55,16 +55,17 @@ validation_thresholds:
   pdf_detection:
     min_char_threshold: 1500
 
-# DISABLED: We do not care about licenses. All papers translated in full.
-# license_mappings:
-#   CC-BY: { derivatives_allowed: true, badge: "CC BY" }
-#   CC BY: { derivatives_allowed: true, badge: "CC BY" }
-#   CC-BY-SA: { derivatives_allowed: true, badge: "CC BY-SA" }
-#   CC BY-SA: { derivatives_allowed: true, badge: "CC BY-SA" }
-#   CC-BY-ND: { derivatives_allowed: false, badge: "CC BY-ND" }
-#   CC BY-ND: { derivatives_allowed: false, badge: "CC BY-ND" }
-#   CC0: { derivatives_allowed: true, badge: "CC0" }
-#   Public Domain: { derivatives_allowed: true, badge: "Public Domain" }
+# License policy (V1): honor "no derivatives" (CC BY-ND) by publishing
+# title+abstract only. Unknown licenses are treated as allowed.
+license_mappings:
+  CC-BY: { derivatives_allowed: true, badge: "CC BY" }
+  CC BY: { derivatives_allowed: true, badge: "CC BY" }
+  CC-BY-SA: { derivatives_allowed: true, badge: "CC BY-SA" }
+  CC BY-SA: { derivatives_allowed: true, badge: "CC BY-SA" }
+  CC-BY-ND: { derivatives_allowed: false, badge: "CC BY-ND" }
+  CC BY-ND: { derivatives_allowed: false, badge: "CC BY-ND" }
+  CC0: { derivatives_allowed: true, badge: "CC0" }
+  Public Domain: { derivatives_allowed: true, badge: "Public Domain" }
 
 cost:
   pricing_per_mtoken:
