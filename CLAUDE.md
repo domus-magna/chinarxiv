@@ -268,8 +268,11 @@ download_pdf()
 
 ### Text Translation
 - **Location**: `src/translate.py`, `src/pipeline.py`
-- **API**: OpenRouter (DeepSeek V3.2-Exp model)
+- **Model**: Kimi K2 Thinking (`moonshotai/kimi-k2-thinking`) via OpenRouter
+- **Mode**: Whole-paper synthesis (NOT paragraph-by-paragraph)
+- **Config**: `src/config.yaml` - controls model, chunk size (28K tokens), temperature
 - **QA**: Chinese leakage check (<0.5%), math preservation
+- **Cost**: ~$0.08/paper (Kimi K2 pricing: $0.45/M input, $2.35/M output)
 
 ### Figure Translation
 - **Location**: `src/figure_pipeline/`
@@ -794,3 +797,4 @@ Or use data attributes on HTML elements:
 | `app/__init__.py` | Config vars |
 | `assets/site.js` | `trackEvent()` helper |
 | `~/.claude/skills/umami/SKILL.md` | Full documentation |
+- never write local translation scripts. ALWAYS use our async cloud functions for translation and uploads
