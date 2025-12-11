@@ -89,6 +89,34 @@ def _load_costs_for_today() -> Dict[str, Dict]:
     return costs
 
 
+def upload_translation(paper_id: str, local_path: str) -> bool:
+    """
+    Upload a single translation file to B2.
+
+    Args:
+        paper_id: Paper identifier (e.g., chinaxiv-202401.00001)
+        local_path: Local path to the translation JSON file
+
+    Returns:
+        True if upload succeeded, False otherwise
+    """
+    # Support both B2_* and BACKBLAZE_* env var naming conventions
+    def get_b2_env(b2_name: str, backblaze_name: str, default: str | None = None) -> str | None:
+        return _env(b2_name) or _env(backblaze_name) or default
+
+    endpoint = get_b2_env("B2_S3_ENDPOINT", "BACKBLAZE_S3_ENDPOINT")
+    bucket = get_b2_env("B2_BUCKET", "BACKBLAZE_BUCKET")
+    prefix = get_b2_env("B2_PREFIX", "BACKBLAZE_PREFIX", "") or ""
+
+    if not endpoint or not bucket:
+        return False
+
+    dest_root = f"s3://{bucket}/{prefix}"
+    validated_key = f"validated/translations/{paper_id}.json"
+
+    return _aws_cp(local_path, f"{dest_root}{validated_key}", endpoint)
+
+
 def main() -> int:
     # Support both B2_* and BACKBLAZE_* env var naming conventions
     # B2_* takes precedence for backwards compatibility
