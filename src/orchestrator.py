@@ -36,7 +36,7 @@ import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from enum import Enum
 from typing import Callable, Optional
 
@@ -359,7 +359,6 @@ def ensure_paper_exists(conn, paper_id: str) -> bool:
         True if paper exists (or was created), False if creation failed
     """
     import json
-    from pathlib import Path
 
     cursor = conn.cursor()
 
@@ -755,7 +754,7 @@ def run_pdf_generation(paper_id: str, dry_run: bool = False) -> bool:
     try:
         from scripts.generate_english_pdfs import generate_english_pdf
     except ImportError:
-        log(f"    PDF generation not available")
+        log("    PDF generation not available")
         return False
 
     log(f"  Generating English PDF for {paper_id}...")
@@ -763,7 +762,7 @@ def run_pdf_generation(paper_id: str, dry_run: bool = False) -> bool:
     try:
         result = generate_english_pdf(paper_id, dry_run=dry_run)
         if result:
-            log(f"    English PDF generated")
+            log("    English PDF generated")
             return True
         return False
     except Exception as e:
@@ -781,7 +780,7 @@ def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
     log(f"  Post-processing {paper_id}...")
 
     if dry_run:
-        log(f"    [DRY RUN] Would upload to B2")
+        log("    [DRY RUN] Would upload to B2")
         return True
 
     # Upload translation to B2
@@ -790,7 +789,7 @@ def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
         translation_path = f"data/translated/{paper_id}.json"
         if os.path.exists(translation_path):
             upload_translation(paper_id, translation_path)
-            log(f"    Uploaded translation to B2")
+            log("    Uploaded translation to B2")
     except Exception as e:
         log(f"    B2 upload failed: {e}")
         # Non-fatal - continue
