@@ -120,6 +120,50 @@ def create_postgres_schema(pg_conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_subjects_subject ON paper_subjects(subject);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_search ON papers USING GIN(search_vector);")
 
+    # Orchestrator indexes for queue queries
+    logger.info("  Creating orchestrator indexes...")
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_papers_processing_queue
+            ON papers (processing_status, processing_started_at)
+            WHERE processing_status IN ('pending', 'processing');
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_papers_text_status
+            ON papers (text_status) WHERE text_status != 'complete';
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_papers_figures_status
+            ON papers (figures_status) WHERE figures_status != 'complete';
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_papers_pdf_status
+            ON papers (pdf_status) WHERE pdf_status != 'complete';
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_papers_orchestrator_queue
+            ON papers (processing_status, text_status, figures_status, pdf_status);
+    """)
+
+    # Status column constraints (idempotent - drop then add)
+    logger.info("  Creating status constraints...")
+    for constraint, check in [
+        ("chk_processing_status", "processing_status IN ('pending', 'processing', 'complete', 'failed')"),
+        ("chk_text_status", "text_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')"),
+        ("chk_figures_status", "figures_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')"),
+        ("chk_pdf_status", "pdf_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')"),
+    ]:
+        cursor.execute(f"ALTER TABLE papers DROP CONSTRAINT IF EXISTS {constraint};")
+        cursor.execute(f"ALTER TABLE papers ADD CONSTRAINT {constraint} CHECK ({check});")
+
+    # Schema migrations tracking table
+    logger.info("  Creating schema_migrations table...")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version VARCHAR(50) PRIMARY KEY,
+            applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
     # Translation requests table (for figure and text translation requests from users)
     logger.info("  Creating translation_requests table...")
     cursor.execute("""
