@@ -10,7 +10,6 @@ Tests cover:
 """
 
 import json
-import time
 
 
 class TestFigureTranslationRequest:
