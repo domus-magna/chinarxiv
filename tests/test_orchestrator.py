@@ -1068,6 +1068,53 @@ class TestDiscovery:
         finally:
             conn.close()
 
+    def test_insert_paper_stores_chinese_in_cn_columns(self, orchestrator_test_database):
+        """insert_paper_if_new should store Chinese metadata in _cn columns."""
+        from src.orchestrator import insert_paper_if_new
+
+        # Record with Chinese metadata (as returned by scraper)
+        record = {
+            'id': 'chinaxiv-202501.00002',
+            'title': '中文论文标题',
+            'abstract': '这是中文摘要。',
+            'creators': ['张三', '李四'],
+            'subjects': ['计算机科学', '人工智能'],
+            'date': '2025-01-15T00:00:00Z',
+            'source_url': 'https://chinaxiv.org/abs/202501.00002',
+            'pdf_url': 'https://chinaxiv.org/pdf/202501.00002',
+        }
+
+        conn = get_db_connection()
+        try:
+            result = insert_paper_if_new(conn, record)
+            conn.commit()
+            assert result is True
+
+            # Verify Chinese is stored in _cn columns
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT title_cn, abstract_cn, creators_cn, subjects_cn,
+                       title_en, abstract_en, creators_en
+                FROM papers WHERE id = %s
+            """, ('chinaxiv-202501.00002',))
+            row = cursor.fetchone()
+
+            assert row['title_cn'] == '中文论文标题'
+            assert row['abstract_cn'] == '这是中文摘要。'
+            # creators_cn should be JSON list
+            import json
+            creators = row['creators_cn'] if isinstance(row['creators_cn'], list) else json.loads(row['creators_cn'])
+            assert creators == ['张三', '李四']
+            subjects = row['subjects_cn'] if isinstance(row['subjects_cn'], list) else json.loads(row['subjects_cn'])
+            assert subjects == ['计算机科学', '人工智能']
+
+            # Verify _en columns are NULL (not populated until translation)
+            assert row['title_en'] is None
+            assert row['abstract_en'] is None
+            assert row['creators_en'] is None
+        finally:
+            conn.close()
+
     def test_run_discover_requires_brightdata_credentials(self, orchestrator_test_database):
         """run_discover should fail without BrightData credentials."""
         from src.orchestrator import run_discover
