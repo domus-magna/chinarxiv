@@ -202,47 +202,50 @@ jobs:
           BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
           BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Pass inputs via env vars to prevent command substitution attacks
+          # GitHub Actions expressions in double quotes allow $(cmd) execution
+          INPUT_SCOPE: ${{ inputs.scope || 'smart-resume' }}
+          INPUT_TARGET: ${{ inputs.target }}
+          INPUT_WORKERS: ${{ inputs.workers || '10' }}
+          INPUT_FORCE: ${{ inputs.force }}
+          INPUT_TEXT_ONLY: ${{ inputs.text_only }}
+          INPUT_FIGURES_ONLY: ${{ inputs.figures_only }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -e
 
-          # Build command args
-          SCOPE="${{ inputs.scope || 'smart-resume' }}"
-          TARGET="${{ inputs.target }}"
-          WORKERS="${{ inputs.workers || '10' }}"
-
           # Validate worker count is a number between 1-20
-          if ! [[ "$WORKERS" =~ ^[0-9]+$ ]] || [ "$WORKERS" -lt 1 ] || [ "$WORKERS" -gt 20 ]; then
-            echo "::error::workers must be a number between 1 and 20 (got: $WORKERS)"
+          # INPUT_WORKERS comes from env (safe from command substitution)
+          if ! [[ "$INPUT_WORKERS" =~ ^[0-9]+$ ]] || [ "$INPUT_WORKERS" -lt 1 ] || [ "$INPUT_WORKERS" -gt 20 ]; then
+            echo "::error::workers must be a number between 1 and 20 (got: $INPUT_WORKERS)"
             exit 1
           fi
 
-          # Quote all variables to prevent shell injection
-          ARGS="--scope '$SCOPE'"
+          # Build command using array to avoid eval (prevents quote-escape attacks)
+          CMD=(python -m src.orchestrator --scope "$INPUT_SCOPE" --workers "$INPUT_WORKERS")
 
-          if [ -n "$TARGET" ]; then
-            ARGS="$ARGS --target '$TARGET'"
+          if [ -n "$INPUT_TARGET" ]; then
+            CMD+=(--target "$INPUT_TARGET")
           fi
 
-          ARGS="$ARGS --workers '$WORKERS'"
-
-          if [ "${{ inputs.force }}" = "true" ]; then
-            ARGS="$ARGS --force"
+          if [ "$INPUT_FORCE" = "true" ]; then
+            CMD+=(--force)
           fi
 
-          if [ "${{ inputs.text_only }}" = "true" ]; then
-            ARGS="$ARGS --text-only"
+          if [ "$INPUT_TEXT_ONLY" = "true" ]; then
+            CMD+=(--text-only)
           fi
 
-          if [ "${{ inputs.figures_only }}" = "true" ]; then
-            ARGS="$ARGS --figures-only"
+          if [ "$INPUT_FIGURES_ONLY" = "true" ]; then
+            CMD+=(--figures-only)
           fi
 
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            ARGS="$ARGS --dry-run"
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
+            CMD+=(--dry-run)
           fi
 
-          echo "Running: python -m src.orchestrator $ARGS"
-          eval "python -m src.orchestrator $ARGS"
+          echo "Running: ${CMD[*]}"
+          "${CMD[@]}"
 
       - name: Upload artifacts
         if: always()
