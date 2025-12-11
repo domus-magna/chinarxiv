@@ -121,7 +121,12 @@ def get_papers_by_month(conn, month: str) -> list[str]:
     return [row['id'] for row in cursor.fetchall()]
 
 
-def get_papers_needing_work(conn, text_only: bool = False, figures_only: bool = False) -> list[str]:
+def get_papers_needing_work(
+    conn,
+    text_only: bool = False,
+    figures_only: bool = False,
+    include_failed: bool = False
+) -> list[str]:
     """
     Get paper IDs that need processing.
 
@@ -129,39 +134,63 @@ def get_papers_needing_work(conn, text_only: bool = False, figures_only: bool = 
     - Papers with processing_status = 'pending'
     - Zombie papers (processing > ZOMBIE_TIMEOUT hours ago)
     - Papers missing specific stages (text, figures, pdf)
+    - Optionally: failed papers (for retry)
 
     Args:
         text_only: Only find papers needing text translation
         figures_only: Only find papers needing figure translation
+        include_failed: Include papers that previously failed (for retry)
     """
     cursor = conn.cursor()
 
     if text_only:
         # Papers that have no text translation
-        cursor.execute("""
-            SELECT id FROM papers
-            WHERE text_status != 'complete'
-              AND text_status != 'skipped'
-            ORDER BY id
-        """)
+        if include_failed:
+            cursor.execute("""
+                SELECT id FROM papers
+                WHERE text_status NOT IN ('complete', 'skipped')
+                ORDER BY id
+            """)
+        else:
+            cursor.execute("""
+                SELECT id FROM papers
+                WHERE text_status NOT IN ('complete', 'skipped', 'failed')
+                ORDER BY id
+            """)
     elif figures_only:
         # Papers that have text but no figures
-        cursor.execute("""
-            SELECT id FROM papers
-            WHERE text_status = 'complete'
-              AND figures_status != 'complete'
-              AND figures_status != 'skipped'
-            ORDER BY id
-        """)
+        if include_failed:
+            cursor.execute("""
+                SELECT id FROM papers
+                WHERE text_status = 'complete'
+                  AND figures_status NOT IN ('complete', 'skipped')
+                ORDER BY id
+            """)
+        else:
+            cursor.execute("""
+                SELECT id FROM papers
+                WHERE text_status = 'complete'
+                  AND figures_status NOT IN ('complete', 'skipped', 'failed')
+                ORDER BY id
+            """)
     else:
-        # Papers that need any work (pending or zombie)
-        cursor.execute("""
-            SELECT id FROM papers
-            WHERE processing_status = 'pending'
-               OR (processing_status = 'processing'
-                   AND processing_started_at < NOW() - INTERVAL '4 hours')
-            ORDER BY id
-        """)
+        # Papers that need any work (pending, zombie, or optionally failed)
+        if include_failed:
+            cursor.execute("""
+                SELECT id FROM papers
+                WHERE processing_status IN ('pending', 'failed')
+                   OR (processing_status = 'processing'
+                       AND processing_started_at < NOW() - INTERVAL '4 hours')
+                ORDER BY id
+            """)
+        else:
+            cursor.execute("""
+                SELECT id FROM papers
+                WHERE processing_status = 'pending'
+                   OR (processing_status = 'processing'
+                       AND processing_started_at < NOW() - INTERVAL '4 hours')
+                ORDER BY id
+            """)
 
     return [row['id'] for row in cursor.fetchall()]
 
@@ -180,28 +209,48 @@ def get_paper_status(conn, paper_id: str) -> dict:
     return dict(row) if row else {}
 
 
-def acquire_paper_lock(conn, paper_id: str) -> bool:
+def acquire_paper_lock(conn, paper_id: str, include_failed: bool = False) -> bool:
     """
     Try to acquire exclusive lock on a paper for processing.
 
     Uses UPDATE with RETURNING to atomically claim the paper.
-    Only succeeds if paper is pending or is a zombie.
+    Only succeeds if paper is pending, is a zombie, or (optionally) failed.
+
+    Args:
+        conn: Database connection
+        paper_id: Paper ID to lock
+        include_failed: If True, also allow locking failed papers for retry
 
     Returns:
         True if lock acquired, False if paper is already being processed
     """
     cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE papers
-        SET processing_status = 'processing',
-            processing_started_at = NOW(),
-            processing_error = NULL
-        WHERE id = %s
-          AND (processing_status = 'pending'
-               OR (processing_status = 'processing'
-                   AND processing_started_at < NOW() - INTERVAL '4 hours'))
-        RETURNING id
-    """, (paper_id,))
+
+    if include_failed:
+        cursor.execute("""
+            UPDATE papers
+            SET processing_status = 'processing',
+                processing_started_at = NOW(),
+                processing_error = NULL
+            WHERE id = %s
+              AND (processing_status IN ('pending', 'failed')
+                   OR (processing_status = 'processing'
+                       AND processing_started_at < NOW() - INTERVAL '4 hours'))
+            RETURNING id
+        """, (paper_id,))
+    else:
+        cursor.execute("""
+            UPDATE papers
+            SET processing_status = 'processing',
+                processing_started_at = NOW(),
+                processing_error = NULL
+            WHERE id = %s
+              AND (processing_status = 'pending'
+                   OR (processing_status = 'processing'
+                       AND processing_started_at < NOW() - INTERVAL '4 hours'))
+            RETURNING id
+        """, (paper_id,))
+
     conn.commit()
     return cursor.fetchone() is not None
 
@@ -297,44 +346,143 @@ def release_paper_lock(conn, paper_id: str) -> None:
 # Pipeline Stage Functions
 # ============================================================================
 
-def run_harvest(paper_id: str) -> bool:
+def run_harvest(conn, paper_id: str) -> bool:
     """
     Harvest/download PDF for a paper.
+
+    Tries in order:
+    1. Check if PDF exists locally
+    2. Download from B2 storage
+    3. Download from source (requires pdf_url in DB or records)
+
+    Args:
+        conn: Database connection (to lookup pdf_url if needed)
+        paper_id: Paper identifier
 
     Returns:
         True if PDF is available, False otherwise
     """
-    from .pdf_pipeline import download_pdf_if_needed
+    from .pdf_pipeline import download_pdf
 
     log(f"  Harvesting PDF for {paper_id}...")
 
-    # Check if PDF already exists locally or in B2
-    pdf_path = f"data/pdfs/{paper_id}.pdf"
+    # Ensure data/pdfs directory exists
+    pdf_dir = "data/pdfs"
+    os.makedirs(pdf_dir, exist_ok=True)
+
+    pdf_path = f"{pdf_dir}/{paper_id}.pdf"
+
+    # 1. Check if PDF already exists locally
     if os.path.exists(pdf_path):
         log(f"    PDF already exists: {pdf_path}")
         return True
 
-    # Try to download from B2 first
+    # 2. Try to download from B2 first (cheaper than source scraping)
     try:
-        from .tools.b2_download import download_pdf_from_b2
-        if download_pdf_from_b2(paper_id, pdf_path):
+        if _download_pdf_from_b2(paper_id, pdf_path):
             log(f"    Downloaded from B2: {pdf_path}")
             return True
-    except ImportError:
-        pass  # B2 download not available
     except Exception as e:
         log(f"    B2 download failed: {e}")
 
-    # Fall back to downloading from source
+    # 3. Fall back to downloading from source - need pdf_url
+    cursor = conn.cursor()
+    cursor.execute("SELECT pdf_url, source_url FROM papers WHERE id = %s", (paper_id,))
+    row = cursor.fetchone()
+
+    if not row or not row.get('pdf_url'):
+        log(f"    No pdf_url in database for {paper_id}")
+        # Try to find in records files
+        pdf_url, source_url = _find_pdf_url_in_records(paper_id)
+        if not pdf_url:
+            log(f"    Could not find pdf_url for {paper_id}")
+            return False
+    else:
+        pdf_url = row['pdf_url']
+        source_url = row.get('source_url')
+
+    # Download from source
     try:
-        result = download_pdf_if_needed(paper_id)
-        if result:
-            log(f"    Downloaded PDF: {result}")
+        referer = source_url if source_url else None
+        success = download_pdf(pdf_url, pdf_path, referer=referer, session_id=paper_id)
+        if success:
+            log(f"    Downloaded PDF from source: {pdf_path}")
             return True
     except Exception as e:
         log(f"    PDF download failed: {e}")
 
     return False
+
+
+def _download_pdf_from_b2(paper_id: str, output_path: str) -> bool:
+    """
+    Download PDF from B2 storage.
+
+    Returns:
+        True if downloaded successfully, False otherwise
+    """
+    import boto3
+    from botocore.config import Config
+
+    key_id = os.environ.get('AWS_ACCESS_KEY_ID') or os.environ.get('BACKBLAZE_KEY_ID')
+    secret = os.environ.get('AWS_SECRET_ACCESS_KEY') or os.environ.get('BACKBLAZE_APPLICATION_KEY')
+    endpoint = os.environ.get('BACKBLAZE_S3_ENDPOINT')
+    bucket = os.environ.get('BACKBLAZE_BUCKET')
+    prefix = os.environ.get('BACKBLAZE_PREFIX', '')
+
+    if not all([key_id, secret, endpoint, bucket]):
+        return False
+
+    s3 = boto3.client(
+        's3',
+        endpoint_url=endpoint,
+        aws_access_key_id=key_id,
+        aws_secret_access_key=secret,
+        config=Config(signature_version='s3v4', region_name='us-west-004')
+    )
+
+    key = f"{prefix}pdfs/{paper_id}.pdf"
+    try:
+        s3.download_file(bucket, key, output_path)
+        return os.path.exists(output_path)
+    except Exception:
+        return False
+
+
+def _find_pdf_url_in_records(paper_id: str) -> tuple[str, str]:
+    """
+    Find pdf_url for a paper from records files.
+
+    Returns:
+        Tuple of (pdf_url, source_url) or (None, None) if not found
+    """
+    import json
+    from pathlib import Path
+
+    records_dir = Path("data/records")
+    if not records_dir.exists():
+        return None, None
+
+    # Extract month from paper_id (e.g., chinaxiv-202401.00001 -> 202401)
+    try:
+        month = paper_id.split('-')[1].split('.')[0]
+        records_file = records_dir / f"chinaxiv_{month}.json"
+    except (IndexError, ValueError):
+        return None, None
+
+    if not records_file.exists():
+        return None, None
+
+    try:
+        with open(records_file, encoding='utf-8') as f:
+            records = json.load(f)
+        for rec in records:
+            if rec.get('id') == paper_id:
+                return rec.get('pdf_url'), rec.get('source_url')
+    except Exception:
+        pass
+
+    return None, None
 
 
 def run_text_translation(paper_id: str, dry_run: bool = False) -> bool:
@@ -460,7 +608,9 @@ def process_paper(
     paper_id: str,
     stages: list[str],
     dry_run: bool = False,
-    notify: Optional[Callable] = None
+    notify: Optional[Callable] = None,
+    is_partial_mode: bool = False,
+    include_failed: bool = False
 ) -> ProcessingResult:
     """
     Process a single paper through the pipeline stages.
@@ -470,6 +620,9 @@ def process_paper(
         stages: List of stages to run (harvest, text, figures, pdf, post)
         dry_run: If True, skip actual processing
         notify: Optional callback for alerts
+        is_partial_mode: If True (text-only or figures-only), don't mark paper
+                        as fully complete - only update stage-specific status
+        include_failed: If True, allow retrying previously failed papers
 
     Returns:
         ProcessingResult with status and any errors
@@ -481,8 +634,8 @@ def process_paper(
         conn = get_db_connection()
 
         # Try to acquire lock
-        if not acquire_paper_lock(conn, paper_id):
-            log(f"SKIP {paper_id} - already being processed")
+        if not acquire_paper_lock(conn, paper_id, include_failed=include_failed):
+            log(f"SKIP {paper_id} - already being processed or not eligible")
             result.status = 'skipped'
             return result
 
@@ -493,7 +646,7 @@ def process_paper(
         for stage in stages:
             try:
                 if stage == 'harvest':
-                    if not run_harvest(paper_id):
+                    if not run_harvest(conn, paper_id):
                         raise RuntimeError("PDF not available")
                     result.stages_completed.append('harvest')
 
@@ -559,9 +712,28 @@ def process_paper(
                     notify(f"Stage '{stage}' failed for {paper_id}: {e}")
                 return result
 
-        # All stages completed
-        mark_paper_complete(conn, paper_id)
-        log(f"Completed {paper_id}: stages={result.stages_completed}")
+        # All requested stages completed
+        if is_partial_mode:
+            # In partial mode (text-only or figures-only), only release the lock
+            # Don't mark the paper as fully complete since other stages remain
+            release_paper_lock(conn, paper_id)
+            log(f"Partial mode completed {paper_id}: stages={result.stages_completed}")
+        else:
+            # Full pipeline mode - check if paper is actually complete
+            # Refresh status to see if all stages are done
+            updated_status = get_paper_status(conn, paper_id)
+            all_complete = (
+                updated_status.get('text_status') == 'complete' and
+                updated_status.get('figures_status') in ('complete', 'skipped') and
+                updated_status.get('pdf_status') in ('complete', 'skipped')
+            )
+            if all_complete:
+                mark_paper_complete(conn, paper_id)
+                log(f"Fully completed {paper_id}: stages={result.stages_completed}")
+            else:
+                # Not all stages done - release lock but leave as pending
+                release_paper_lock(conn, paper_id)
+                log(f"Partial completion {paper_id}: stages={result.stages_completed}")
         return result
 
     except Exception as e:
@@ -588,7 +760,8 @@ def get_work_queue(
     target: str,
     force: bool = False,
     text_only: bool = False,
-    figures_only: bool = False
+    figures_only: bool = False,
+    include_failed: bool = False
 ) -> list[str]:
     """
     Resolve scope to paper IDs and filter by what needs work.
@@ -599,6 +772,7 @@ def get_work_queue(
         force: If True, include papers even if already complete
         text_only: Only find papers needing text translation
         figures_only: Only find papers needing figure translation
+        include_failed: If True, include failed papers for retry
 
     Returns:
         List of paper IDs to process
@@ -627,8 +801,13 @@ def get_work_queue(
             log(f"Loaded {len(papers)} papers from {target}")
 
         elif scope == 'smart-resume':
-            papers = get_papers_needing_work(conn, text_only=text_only, figures_only=figures_only)
-            log(f"Found {len(papers)} papers needing work")
+            papers = get_papers_needing_work(
+                conn,
+                text_only=text_only,
+                figures_only=figures_only,
+                include_failed=include_failed
+            )
+            log(f"Found {len(papers)} papers needing work (include_failed={include_failed})")
 
         else:
             raise ValueError(f"Unknown scope: {scope}")
@@ -638,7 +817,7 @@ def get_work_queue(
             log(f"Force mode: processing all {len(papers)} papers")
             return papers
 
-        # Filter out already-complete papers
+        # Filter out already-complete papers (and optionally failed papers)
         work_queue = []
         for paper_id in papers:
             status = get_paper_status(conn, paper_id)
@@ -648,13 +827,19 @@ def get_work_queue(
                 work_queue.append(paper_id)
                 continue
 
-            if status.get('processing_status') == 'complete':
+            proc_status = status.get('processing_status')
+
+            if proc_status == 'complete':
                 # Check if specific stages are requested and incomplete
                 if text_only and status.get('text_status') != 'complete':
                     work_queue.append(paper_id)
                 elif figures_only and status.get('figures_status') != 'complete':
                     work_queue.append(paper_id)
                 # Otherwise skip complete papers
+            elif proc_status == 'failed':
+                # Only include failed if explicitly requested
+                if include_failed:
+                    work_queue.append(paper_id)
             else:
                 work_queue.append(paper_id)
 
@@ -673,6 +858,7 @@ def run_orchestrator(
     workers: int = 10,
     text_only: bool = False,
     figures_only: bool = False,
+    include_failed: bool = False,
 ) -> OrchestratorStats:
     """
     Main orchestrator entry point.
@@ -685,13 +871,16 @@ def run_orchestrator(
         workers: Number of parallel workers
         text_only: Only run text translation stage
         figures_only: Only run figure translation stage
+        include_failed: Include previously failed papers for retry
 
     Returns:
         OrchestratorStats with results
     """
     stats = OrchestratorStats()
 
-    # Determine stages based on flags
+    # Determine stages and partial mode based on flags
+    is_partial_mode = text_only or figures_only
+
     if text_only:
         stages = ['harvest', 'text', 'post']
         log("Running TEXT ONLY mode")
@@ -702,11 +891,16 @@ def run_orchestrator(
         stages = DEFAULT_STAGES
         log("Running FULL PIPELINE mode")
 
+    if include_failed:
+        log("Including previously failed papers for retry")
+
     # Get work queue
     try:
         work_queue = get_work_queue(
             scope, target, force,
-            text_only=text_only, figures_only=figures_only
+            text_only=text_only,
+            figures_only=figures_only,
+            include_failed=include_failed
         )
     except Exception as e:
         log(f"ERROR getting work queue: {e}")
@@ -739,7 +933,10 @@ def run_orchestrator(
     if workers == 1:
         # Sequential processing
         for paper_id in work_queue:
-            result = process_paper(paper_id, stages, dry_run=dry_run, notify=notify)
+            result = process_paper(
+                paper_id, stages, dry_run=dry_run, notify=notify,
+                is_partial_mode=is_partial_mode, include_failed=include_failed
+            )
             if result.status == 'success':
                 stats.success += 1
             elif result.status == 'skipped':
@@ -752,7 +949,10 @@ def run_orchestrator(
         # Parallel processing
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(process_paper, pid, stages, dry_run, notify): pid
+                executor.submit(
+                    process_paper, pid, stages, dry_run, notify,
+                    is_partial_mode, include_failed
+                ): pid
                 for pid in work_queue
             }
 
@@ -847,6 +1047,12 @@ def main():
         dest='figures_only',
         help='[Admin] Only run figure translation (skip text)'
     )
+    parser.add_argument(
+        '--include-failed',
+        action='store_true',
+        dest='include_failed',
+        help='Include previously failed papers for retry'
+    )
 
     args = parser.parse_args()
 
@@ -863,6 +1069,7 @@ def main():
         workers=args.workers,
         text_only=args.text_only,
         figures_only=args.figures_only,
+        include_failed=args.include_failed,
     )
 
     # Exit with error code if any failures
