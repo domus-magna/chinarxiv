@@ -68,6 +68,7 @@ def find_python_modules():
 EXPECTED_FAILURES = {
     # Add module names here if they have legitimate import-time requirements
     # that make them fail in test environment
+    'scripts.take_screenshot',  # Requires playwright (optional dev dependency)
 }
 
 
