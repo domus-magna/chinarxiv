@@ -985,3 +985,231 @@ class TestRunHarvestWithPdfUrl:
             for k, v in saved.items():
                 if v is not None:
                     os.environ[k] = v
+
+
+# ============================================================================
+# Test: Discovery Functions
+# ============================================================================
+
+class TestDiscovery:
+    """Tests for paper discovery (harvest) functionality."""
+
+    def test_insert_paper_if_new_inserts_new_paper(self, orchestrator_test_database):
+        """insert_paper_if_new should insert a paper that doesn't exist."""
+        from src.orchestrator import insert_paper_if_new, get_paper_status
+
+        record = {
+            'id': 'chinaxiv-202501.00001',
+            'title': 'Test Paper Title',
+            'abstract': 'Test abstract',
+            'creators': ['Author One', 'Author Two'],
+            'subjects': ['Physics', 'Math'],
+            'date': '2025-01-15T00:00:00Z',
+            'source_url': 'https://chinaxiv.org/abs/202501.00001',
+            'pdf_url': 'https://chinaxiv.org/pdf/202501.00001',
+        }
+
+        conn = get_db_connection()
+        try:
+            # Should return True for new paper
+            result = insert_paper_if_new(conn, record)
+            conn.commit()
+            assert result is True
+
+            # Verify paper exists
+            status = get_paper_status(conn, 'chinaxiv-202501.00001')
+            assert status is not None
+            assert status['processing_status'] == 'pending'
+        finally:
+            conn.close()
+
+    def test_insert_paper_if_new_skips_existing_paper(self, sample_orchestrator_papers):
+        """insert_paper_if_new should skip papers that already exist."""
+        from src.orchestrator import insert_paper_if_new
+
+        # Try to insert a paper that already exists from fixtures
+        record = {
+            'id': 'chinaxiv-202401.00001',  # Already exists
+            'title': 'Different Title',
+            'abstract': 'Different abstract',
+            'creators': ['Different Author'],
+            'subjects': ['Different Subject'],
+            'date': '2024-01-15T00:00:00Z',
+            'source_url': 'https://chinaxiv.org/abs/202401.00001',
+            'pdf_url': 'https://chinaxiv.org/pdf/202401.00001',
+        }
+
+        conn = get_db_connection()
+        try:
+            # Should return False for existing paper
+            result = insert_paper_if_new(conn, record)
+            assert result is False
+        finally:
+            conn.close()
+
+    def test_run_discover_requires_brightdata_credentials(self, orchestrator_test_database):
+        """run_discover should fail without BrightData credentials."""
+        from src.orchestrator import run_discover
+
+        # Clear BrightData environment variables
+        env_vars = ['BRIGHTDATA_API_KEY', 'BRIGHTDATA_ZONE']
+        saved = {k: os.environ.pop(k, None) for k in env_vars}
+
+        try:
+            with pytest.raises(RuntimeError, match="BRIGHTDATA"):
+                run_discover('202501')
+        finally:
+            # Restore environment
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+
+    @patch('src.orchestrator.OptimizedChinaXivScraper')
+    @patch('src.orchestrator.upload_records_to_b2')
+    def test_run_discover_with_mocked_scraper(
+        self,
+        mock_upload,
+        mock_scraper_class,
+        orchestrator_test_database
+    ):
+        """run_discover should scrape, import to DB, and upload to B2."""
+        from src.orchestrator import run_discover, get_paper_status
+
+        # Set up BrightData credentials
+        os.environ['BRIGHTDATA_API_KEY'] = 'test_key'
+        os.environ['BRIGHTDATA_ZONE'] = 'test_zone'
+
+        # Mock scraper instance
+        mock_scraper = mock_scraper_class.return_value
+        mock_scraper.extract_homepage_max_ids.return_value = {'202501': 5}
+        mock_scraper.scrape_month_optimized.return_value = [
+            {
+                'id': 'chinaxiv-202501.00001',
+                'title': 'Paper 1',
+                'abstract': 'Abstract 1',
+                'creators': ['Author 1'],
+                'subjects': ['Subject 1'],
+                'date': '2025-01-01T00:00:00Z',
+                'source_url': 'https://chinaxiv.org/abs/202501.00001',
+                'pdf_url': 'https://chinaxiv.org/pdf/202501.00001',
+            },
+            {
+                'id': 'chinaxiv-202501.00002',
+                'title': 'Paper 2',
+                'abstract': 'Abstract 2',
+                'creators': ['Author 2'],
+                'subjects': ['Subject 2'],
+                'date': '2025-01-02T00:00:00Z',
+                'source_url': 'https://chinaxiv.org/abs/202501.00002',
+                'pdf_url': 'https://chinaxiv.org/pdf/202501.00002',
+            },
+        ]
+        mock_upload.return_value = True
+
+        try:
+            # Run discovery
+            new_ids = run_discover('202501')
+
+            # Should have found 2 new papers
+            assert len(new_ids) == 2
+            assert 'chinaxiv-202501.00001' in new_ids
+            assert 'chinaxiv-202501.00002' in new_ids
+
+            # Verify papers are in database
+            conn = get_db_connection()
+            try:
+                status1 = get_paper_status(conn, 'chinaxiv-202501.00001')
+                status2 = get_paper_status(conn, 'chinaxiv-202501.00002')
+                assert status1 is not None
+                assert status2 is not None
+                assert status1['processing_status'] == 'pending'
+                assert status2['processing_status'] == 'pending'
+            finally:
+                conn.close()
+
+            # Verify B2 upload was called
+            mock_upload.assert_called_once()
+
+        finally:
+            # Cleanup
+            os.environ.pop('BRIGHTDATA_API_KEY', None)
+            os.environ.pop('BRIGHTDATA_ZONE', None)
+
+    def test_run_discover_dry_run_doesnt_modify_db(self, orchestrator_test_database):
+        """run_discover with dry_run=True should not modify database."""
+        from src.orchestrator import run_discover, get_paper_status
+
+        # Set up credentials
+        os.environ['BRIGHTDATA_API_KEY'] = 'test_key'
+        os.environ['BRIGHTDATA_ZONE'] = 'test_zone'
+
+        with patch('src.orchestrator.OptimizedChinaXivScraper') as mock_scraper_class:
+            mock_scraper = mock_scraper_class.return_value
+            mock_scraper.extract_homepage_max_ids.return_value = {'202501': 1}
+            mock_scraper.scrape_month_optimized.return_value = [
+                {
+                    'id': 'chinaxiv-202501.00099',
+                    'title': 'Dry Run Paper',
+                    'abstract': 'Should not be in DB',
+                    'creators': [],
+                    'subjects': [],
+                    'date': '2025-01-01T00:00:00Z',
+                    'source_url': 'https://chinaxiv.org/abs/202501.00099',
+                    'pdf_url': '',
+                },
+            ]
+
+            try:
+                # Run with dry_run=True
+                new_ids = run_discover('202501', dry_run=True)
+
+                # Should return the paper ID
+                assert len(new_ids) == 1
+
+                # But paper should NOT be in database
+                conn = get_db_connection()
+                try:
+                    status = get_paper_status(conn, 'chinaxiv-202501.00099')
+                    assert status == {}  # Empty dict means not found
+                finally:
+                    conn.close()
+
+            finally:
+                os.environ.pop('BRIGHTDATA_API_KEY', None)
+                os.environ.pop('BRIGHTDATA_ZONE', None)
+
+    def test_run_orchestrator_discover_scope(self, orchestrator_test_database):
+        """run_orchestrator with scope=discover should call run_discover."""
+        from src.orchestrator import run_orchestrator
+
+        # Set up credentials
+        os.environ['BRIGHTDATA_API_KEY'] = 'test_key'
+        os.environ['BRIGHTDATA_ZONE'] = 'test_zone'
+
+        with patch('src.orchestrator.run_discover') as mock_discover:
+            mock_discover.return_value = ['chinaxiv-202501.00001', 'chinaxiv-202501.00002']
+
+            try:
+                stats = run_orchestrator(scope='discover', target='202501')
+
+                # Should have called run_discover
+                mock_discover.assert_called_once_with('202501', dry_run=False)
+
+                # Stats should reflect discovery
+                assert stats.total == 2
+                assert stats.success == 2
+                assert stats.failed == 0
+
+            finally:
+                os.environ.pop('BRIGHTDATA_API_KEY', None)
+                os.environ.pop('BRIGHTDATA_ZONE', None)
+
+    def test_run_orchestrator_discover_requires_target(self, orchestrator_test_database):
+        """run_orchestrator with scope=discover should require target."""
+        from src.orchestrator import run_orchestrator
+
+        with pytest.raises(ValueError, match="YYYYMM"):
+            run_orchestrator(scope='discover', target=None)
+
+        with pytest.raises(ValueError, match="YYYYMM"):
+            run_orchestrator(scope='discover', target='invalid')

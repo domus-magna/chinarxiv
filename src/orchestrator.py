@@ -320,6 +320,172 @@ def release_paper_lock(conn, paper_id: str) -> None:
 
 
 # ============================================================================
+# Discovery Functions (Paper Harvesting)
+# ============================================================================
+
+def run_discover(month: str, dry_run: bool = False) -> list[str]:
+    """
+    Discover papers for a month from ChinaXiv and import to DB.
+
+    This scrapes ChinaXiv for all papers in a given month, inserts new papers
+    into the database, and uploads records to B2 for archival.
+
+    Args:
+        month: Month to discover (YYYYMM format, e.g., "202501")
+        dry_run: If True, don't write to DB or B2
+
+    Returns:
+        List of newly discovered paper IDs (papers that weren't in DB before)
+    """
+    from .harvest_chinaxiv_optimized import OptimizedChinaXivScraper
+
+    log(f"Discovering papers for {month}...")
+
+    # Check credentials
+    api_key = os.environ.get('BRIGHTDATA_API_KEY')
+    zone = os.environ.get('BRIGHTDATA_ZONE')
+
+    if not api_key or not zone:
+        raise RuntimeError(
+            "Discovery requires BRIGHTDATA_API_KEY and BRIGHTDATA_ZONE"
+        )
+
+    # Initialize scraper
+    scraper = OptimizedChinaXivScraper(api_key, zone, rate_limit=0.5)
+
+    # Phase 1: Get max ID from homepage or binary search
+    log("  Phase 1: Finding max paper ID...")
+    homepage_maxes = scraper.extract_homepage_max_ids()
+
+    if month in homepage_maxes:
+        max_id = homepage_maxes[month]
+        log(f"    Found max ID from homepage: {month}.{max_id:05d}")
+    else:
+        log(f"    Not on homepage, using binary search...")
+        max_id = scraper.find_max_id_binary_search(month)
+        log(f"    Found max ID via search: {month}.{max_id:05d}")
+
+    if max_id == 0:
+        log(f"  No papers found for {month}")
+        return []
+
+    # Phase 2: Scrape all papers in the month
+    log(f"  Phase 2: Scraping papers 1-{max_id}...")
+    records = scraper.scrape_month_optimized(month, max_id)
+    log(f"    Scraped {len(records)} papers")
+
+    if dry_run:
+        log(f"  [DRY RUN] Would import {len(records)} papers to DB")
+        return [r['id'] for r in records]
+
+    # Phase 3: Import to database
+    log(f"  Phase 3: Importing to database...")
+    conn = get_db_connection()
+    new_ids = []
+    existing_count = 0
+
+    try:
+        for record in records:
+            if insert_paper_if_new(conn, record):
+                new_ids.append(record['id'])
+            else:
+                existing_count += 1
+        conn.commit()
+        log(f"    Imported {len(new_ids)} new papers ({existing_count} already existed)")
+    finally:
+        conn.close()
+
+    # Phase 4: Upload records to B2 for archival
+    log(f"  Phase 4: Uploading records to B2...")
+    upload_records_to_b2(month, records)
+
+    log(f"Discovery complete for {month}: {len(new_ids)} new papers")
+    return new_ids
+
+
+def insert_paper_if_new(conn, record: dict) -> bool:
+    """
+    Insert paper to DB if it doesn't already exist.
+
+    Args:
+        conn: Database connection
+        record: Paper metadata dict from scraper
+
+    Returns:
+        True if paper was inserted (new), False if already existed
+    """
+    cursor = conn.cursor()
+
+    # Check if paper already exists
+    cursor.execute("SELECT 1 FROM papers WHERE id = %s", (record['id'],))
+    if cursor.fetchone():
+        return False  # Already exists
+
+    # Insert new paper
+    cursor.execute("""
+        INSERT INTO papers (
+            id, title, abstract, authors, subjects,
+            date, source_url, pdf_url, processing_status,
+            text_status, figures_status, pdf_status
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', 'pending', 'pending', 'pending')
+    """, (
+        record['id'],
+        record.get('title', ''),
+        record.get('abstract', ''),
+        record.get('creators', []),
+        record.get('subjects', []),
+        record.get('date'),
+        record.get('source_url'),
+        record.get('pdf_url'),
+    ))
+    return True
+
+
+def upload_records_to_b2(month: str, records: list[dict]) -> bool:
+    """
+    Upload harvested records to B2 for archival.
+
+    Args:
+        month: Month string (YYYYMM)
+        records: List of paper metadata dicts
+
+    Returns:
+        True if upload succeeded, False otherwise
+    """
+    import json
+    from pathlib import Path
+    from .tools.b2_publish import _get_b2_config, _aws_cp
+
+    endpoint, bucket, prefix = _get_b2_config()
+    if not endpoint or not bucket:
+        log("    WARNING: B2 not configured, skipping records upload")
+        return False
+
+    # Write to temp file
+    tmp = Path(f"/tmp/chinaxiv_{month}.json")
+    tmp.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    # Upload to B2
+    dest_root = f"s3://{bucket}/{prefix}" if prefix else f"s3://{bucket}/"
+    remote_key = f"records/chinaxiv_{month}.json"
+    success = _aws_cp(str(tmp), f"{dest_root}{remote_key}", endpoint)
+
+    if success:
+        log(f"    Uploaded records to B2: {remote_key}")
+    else:
+        log(f"    WARNING: Failed to upload records to B2")
+
+    # Cleanup temp file
+    try:
+        tmp.unlink()
+    except Exception:
+        pass
+
+    return success
+
+
+# ============================================================================
 # Pipeline Stage Functions
 # ============================================================================
 
@@ -889,7 +1055,7 @@ def run_orchestrator(
     Main orchestrator entry point.
 
     Args:
-        scope: Scope type (month, list, file, smart-resume)
+        scope: Scope type (month, list, file, smart-resume, discover)
         target: Target value for scope
         force: Force reprocessing of complete papers
         dry_run: Skip actual processing
@@ -902,6 +1068,34 @@ def run_orchestrator(
         OrchestratorStats with results
     """
     stats = OrchestratorStats()
+
+    # Handle discover scope - DISCOVERY ONLY, no translation
+    if scope == 'discover':
+        if not target or len(target) != 6:
+            raise ValueError("discover scope requires --target YYYYMM (e.g., 202501)")
+
+        try:
+            new_ids = run_discover(target, dry_run=dry_run)
+            stats.total = len(new_ids)
+            stats.success = len(new_ids)
+
+            log("")
+            log("=" * 50)
+            log("DISCOVERY COMPLETE")
+            log("=" * 50)
+            log(f"Month:      {target}")
+            log(f"New papers: {len(new_ids)}")
+            log("")
+            log("To translate these papers, run:")
+            log(f"  python -m src.orchestrator --scope month --target {target}")
+            log("")
+
+            return stats
+
+        except Exception as e:
+            log(f"ERROR during discovery: {e}")
+            stats.errors.append(str(e))
+            return stats
 
     # Determine stages based on flags
     if text_only:
@@ -1024,8 +1218,8 @@ def main():
     parser.add_argument(
         '--scope',
         required=True,
-        choices=['month', 'list', 'file', 'smart-resume'],
-        help='What to process'
+        choices=['month', 'list', 'file', 'smart-resume', 'discover'],
+        help='What to process (discover = find new papers, others = translate existing)'
     )
     parser.add_argument(
         '--target',

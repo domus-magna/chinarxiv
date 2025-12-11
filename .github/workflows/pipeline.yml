@@ -36,6 +36,7 @@ on:
         required: true
         default: 'smart-resume'
         options:
+          - discover       # Discover new papers for a month (no translation)
           - month          # Process all papers from a specific month (YYYYMM)
           - list           # Process specific papers (comma-separated IDs)
           - file           # Process papers from uploaded file
@@ -124,34 +125,54 @@ jobs:
           MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
           BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
           BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
         run: |
           set -e
           errors=0
+          SCOPE="${{ inputs.scope || 'smart-resume' }}"
 
-          echo "Checking required credentials..."
+          echo "Checking credentials for scope: $SCOPE"
 
+          # Database always required
           if [ -z "$DATABASE_URL" ]; then
             echo "::error::DATABASE_URL is required"
             errors=1
           fi
 
-          if [ -z "$OPENROUTER_API_KEY" ]; then
-            echo "::error::OPENROUTER_API_KEY is required for text translation"
-            errors=1
-          fi
-
-          # Figure credentials required unless text-only mode
-          if [ "${{ inputs.text_only }}" != "true" ]; then
-            if [ -z "$GEMINI_API_KEY" ]; then
-              echo "::error::GEMINI_API_KEY is required for figure translation (use text_only=true to skip figures)"
+          # Discover scope needs BrightData
+          if [ "$SCOPE" = "discover" ]; then
+            if [ -z "$BRIGHTDATA_API_KEY" ]; then
+              echo "::error::BRIGHTDATA_API_KEY is required for discovery"
               errors=1
             fi
-            if [ -z "$MOONDREAM_API_KEY" ]; then
-              echo "::error::MOONDREAM_API_KEY is required for figure QA (use text_only=true to skip figures)"
+            if [ -z "$BRIGHTDATA_ZONE" ]; then
+              echo "::error::BRIGHTDATA_ZONE is required for discovery"
               errors=1
             fi
           fi
 
+          # Translation scopes need translation credentials
+          if [ "$SCOPE" != "discover" ]; then
+            if [ -z "$OPENROUTER_API_KEY" ]; then
+              echo "::error::OPENROUTER_API_KEY is required for text translation"
+              errors=1
+            fi
+
+            # Figure credentials required unless text-only mode
+            if [ "${{ inputs.text_only }}" != "true" ]; then
+              if [ -z "$GEMINI_API_KEY" ]; then
+                echo "::error::GEMINI_API_KEY is required for figure translation (use text_only=true to skip figures)"
+                errors=1
+              fi
+              if [ -z "$MOONDREAM_API_KEY" ]; then
+                echo "::error::MOONDREAM_API_KEY is required for figure QA (use text_only=true to skip figures)"
+                errors=1
+              fi
+            fi
+          fi
+
+          # B2 always required
           if [ -z "$BACKBLAZE_KEY_ID" ] || [ -z "$BACKBLAZE_APPLICATION_KEY" ]; then
             echo "::error::B2 credentials required for storage"
             errors=1
