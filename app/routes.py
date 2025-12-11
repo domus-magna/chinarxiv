@@ -191,6 +191,14 @@ def _get_paper_query_args():
     except (ValueError, TypeError):
         page = 1
 
+    # Allow API callers to override per_page with limit parameter (capped at 1000)
+    default_per_page = current_app.config['PER_PAGE']
+    try:
+        limit = request.args.get('limit')
+        per_page = min(int(limit), 1000) if limit else default_per_page
+    except (ValueError, TypeError):
+        per_page = default_per_page
+
     return {
         'category': category,
         'date_from': date_from,
@@ -199,7 +207,7 @@ def _get_paper_query_args():
         'has_figures': has_figures,
         'subjects': subjects,  # Always a list (empty or populated)
         'page': page,
-        'per_page': current_app.config['PER_PAGE']
+        'per_page': per_page
     }
 
 
