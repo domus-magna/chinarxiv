@@ -91,6 +91,8 @@ def test_database(test_database_schema):
     # Clear all data (but keep schema)
     cursor.execute("DELETE FROM paper_subjects;")
     cursor.execute("DELETE FROM papers;")
+    # Clear translation requests for isolation
+    cursor.execute("DELETE FROM translation_requests;")
 
     conn.commit()
     conn.close()

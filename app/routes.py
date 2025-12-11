@@ -14,7 +14,7 @@ import hashlib
 import json
 import logging
 import re
-from psycopg2.extras import RealDictCursor
+import uuid
 from .database import query_papers, get_db
 from .db_adapter import get_adapter
 from .filters import build_categories, get_available_filters
@@ -371,15 +371,22 @@ def _get_client_ip():
     Railway/proxies set X-Forwarded-For header with the real client IP.
     Falls back to remote_addr if header not present.
 
+    If no IP is available, generates a unique per-request token to prevent
+    all unknown-IP requests from sharing the same dedup bucket (which could
+    cause unrelated requests to DoS each other).
+
     Returns:
-        str: Client IP address or 'unknown'
+        str: Client IP address or unique per-request token
     """
     # X-Forwarded-For may contain multiple IPs: "client, proxy1, proxy2"
     forwarded = request.headers.get('X-Forwarded-For', '')
     if forwarded:
         # Take the first (client) IP
         return forwarded.split(',')[0].strip()
-    return request.remote_addr or 'unknown'
+    if request.remote_addr:
+        return request.remote_addr
+    # Generate unique token so unknown-IP requests don't share dedup bucket
+    return f"unknown-{uuid.uuid4().hex[:12]}"
 
 
 def _hash_ip(ip):
@@ -409,7 +416,9 @@ def _handle_translation_request(request_type):
     # Parse JSON body
     try:
         data = request.get_json()
-        if not data:
+        # P1 fix: Check for dict type - arrays/strings/bools pass truthiness check
+        # but don't have .get() method, causing AttributeError → 500
+        if not data or not isinstance(data, dict):
             return jsonify({
                 'success': False,
                 'message': 'Invalid JSON in request body'
@@ -440,47 +449,55 @@ def _handle_translation_request(request_type):
     client_ip = _get_client_ip()
     ip_hash = _hash_ip(client_ip)
 
-    # Check for duplicate request within window
+    # Database operations with proper cleanup
     db = get_db()
     adapter = get_adapter()
     cursor = adapter.get_cursor(db)
 
-    cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=DUPLICATE_WINDOW_SECONDS)
-
-    cursor.execute("""
-        SELECT 1 FROM translation_requests
-        WHERE paper_id = %s
-          AND request_type = %s
-          AND ip_hash = %s
-          AND created_at > %s
-        LIMIT 1
-    """, (paper_id, request_type, ip_hash, cutoff_time))
-
-    if cursor.fetchone():
-        return jsonify({
-            'success': False,
-            'message': 'Duplicate request detected. Please wait before requesting again.'
-        }), 409
-
-    # Insert the request
     try:
+        cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=DUPLICATE_WINDOW_SECONDS)
+
+        # P1 fix: Use INSERT ... ON CONFLICT to handle race condition atomically
+        # Two concurrent requests could both pass a SELECT check and insert duplicates.
+        # Instead, attempt insert and check if it was a duplicate via RETURNING.
         cursor.execute("""
             INSERT INTO translation_requests (paper_id, request_type, ip_hash)
-            VALUES (%s, %s, %s)
-        """, (paper_id, request_type, ip_hash))
+            SELECT %s, %s, %s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM translation_requests
+                WHERE paper_id = %s
+                  AND request_type = %s
+                  AND ip_hash = %s
+                  AND created_at > %s
+            )
+            RETURNING id
+        """, (paper_id, request_type, ip_hash, paper_id, request_type, ip_hash, cutoff_time))
+
+        result = cursor.fetchone()
         db.commit()
+
+        if result is None:
+            # Insert was blocked by the WHERE NOT EXISTS - duplicate detected
+            return jsonify({
+                'success': False,
+                'message': 'Duplicate request detected. Please wait before requesting again.'
+            }), 409
+
+        return jsonify({
+            'success': True,
+            'message': 'Request logged successfully'
+        }), 200
+
     except Exception as e:
-        logger.error(f"Failed to insert translation request: {e}")
+        logger.error(f"Failed to process translation request: {e}")
         db.rollback()
         return jsonify({
             'success': False,
             'message': 'Internal server error'
         }), 500
-
-    return jsonify({
-        'success': True,
-        'message': 'Request logged successfully'
-    }), 200
+    finally:
+        # P1 fix: Always close cursor to prevent connection leaks
+        cursor.close()
 
 
 @bp.route('/api/request-figure-translation', methods=['POST'])
