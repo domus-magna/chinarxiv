@@ -1,0 +1,88 @@
+name: Reconcile DB State from B2
+# ============================================================================
+# PURPOSE: Weekly sync of PostgreSQL state from B2 storage.
+#
+# The orchestrator trusts PostgreSQL as the source of truth, but state can
+# drift if:
+# - Manual B2 uploads/deletions
+# - Workflow failures after B2 upload but before DB update
+# - Database restore from backup
+#
+# This workflow scans B2 storage and updates PostgreSQL to match reality.
+# Run weekly or manually when drift is suspected.
+#
+# WHAT IT DOES:
+# 1. Scans B2 for existing PDFs, translations, figures
+# 2. Updates processing_status columns in PostgreSQL
+# 3. Logs any discrepancies found
+#
+# SAFE TO RUN ANYTIME - idempotent operation
+# ============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: false
+        description: "Show what would change without modifying DB"
+
+      limit:
+        type: string
+        description: "Limit number of papers to process (for testing)"
+        required: false
+
+  schedule:
+    # Every Sunday at 4 AM UTC
+    - cron: '0 4 * * 0'
+
+run-name: reconcile-state${{ inputs.dry_run && ' [dry-run]' || '' }}
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install psycopg2-binary boto3
+
+      - name: Reconcile state from B2
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          AWS_DEFAULT_REGION: us-west-004
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+        run: |
+          set -e
+
+          ARGS=""
+
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+
+          if [ -n "${{ inputs.limit }}" ]; then
+            ARGS="$ARGS --limit ${{ inputs.limit }}"
+          fi
+
+          echo "Running: python scripts/backfill_state_from_b2.py $ARGS"
+          python scripts/backfill_state_from_b2.py $ARGS
