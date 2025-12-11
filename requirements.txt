@@ -11,6 +11,7 @@ markdown==3.7
 bleach==6.3.0
 PySocks==1.7.1
 ocrmypdf==16.8.0
+pikepdf>=8.10.1,<10  # Pin to avoid breaking API change in pikepdf 10 (pdf.check() renamed)
 Pillow==10.4.0
 pydantic>=2.0.0
 
