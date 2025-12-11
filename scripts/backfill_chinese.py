@@ -80,16 +80,24 @@ def migrate_pending_papers(conn, dry_run: bool = False) -> int:
     migrated = 0
     for paper in papers:
         try:
+            # First, get subjects from paper_subjects table to copy to subjects_cn
+            cursor.execute("""
+                SELECT subject FROM paper_subjects WHERE paper_id = %s
+            """, (paper['id'],))
+            subjects = [row['subject'] for row in cursor.fetchall()]
+            subjects_json = json.dumps(subjects) if subjects else None
+
             cursor.execute("""
                 UPDATE papers SET
                     title_cn = title_en,
                     abstract_cn = abstract_en,
                     creators_cn = creators_en,
+                    subjects_cn = %s,
                     title_en = NULL,
                     abstract_en = NULL,
                     creators_en = NULL
                 WHERE id = %s
-            """, (paper['id'],))
+            """, (subjects_json, paper['id']))
             migrated += 1
 
             if migrated % 100 == 0:
@@ -97,6 +105,7 @@ def migrate_pending_papers(conn, dry_run: bool = False) -> int:
                 print(f"  Migrated {migrated}/{len(papers)} papers...")
 
         except Exception as e:
+            conn.rollback()
             print(f"  ERROR migrating {paper['id']}: {e}")
 
     conn.commit()
@@ -234,6 +243,7 @@ def backfill_from_b2(conn, months: List[str], dry_run: bool = False) -> int:
                     updated += 1
 
             except Exception as e:
+                conn.rollback()
                 print(f"    ERROR updating {paper_id}: {e}")
 
         conn.commit()

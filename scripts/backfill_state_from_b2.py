@@ -88,6 +88,7 @@ def list_b2_prefixes(s3_client, bucket: str, prefix: str, folder: str) -> set:
 
     except Exception as e:
         logger.error(f"Error listing B2 {folder}: {e}")
+        raise  # Re-raise to trigger fail-fast in scan_b2_state
 
     return paper_ids
 
@@ -110,6 +111,7 @@ def list_figure_papers(s3_client, bucket: str, prefix: str) -> set:
 
     except Exception as e:
         logger.error(f"Error listing B2 figures: {e}")
+        raise  # Re-raise to trigger fail-fast in scan_b2_state
 
     return paper_ids
 
@@ -210,6 +212,8 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
         # Overall processing status
         if has_text and has_figures and has_english_pdf:
             processing_status = 'complete'
+        elif text_status == 'failed' or figures_status == 'failed' or pdf_status == 'failed':
+            processing_status = 'failed'  # Any stage failed
         elif has_text or has_figures or has_english_pdf:
             processing_status = 'pending'  # Partially complete
         else:

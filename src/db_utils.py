@@ -221,6 +221,27 @@ def save_translation_result(
             log(f"Warning: No paper found with id {paper_id}")
             return False
 
+        # Update paper_subjects table with translated subjects
+        subjects_en = translation.get('subjects_en', [])
+        if isinstance(subjects_en, str):
+            try:
+                subjects_en = json.loads(subjects_en)
+            except json.JSONDecodeError:
+                subjects_en = []
+
+        if subjects_en:
+            # Replace existing subjects with translated ones
+            cursor.execute(
+                "DELETE FROM paper_subjects WHERE paper_id = %s",
+                (paper_id,)
+            )
+            for subject in subjects_en:
+                if subject:  # Skip empty subjects
+                    cursor.execute(
+                        "INSERT INTO paper_subjects (paper_id, subject) VALUES (%s, %s)",
+                        (paper_id, subject)
+                    )
+
         conn.commit()
         log(f"Saved translation for {paper_id} to database")
         return True
