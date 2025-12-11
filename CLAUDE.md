@@ -216,18 +216,42 @@ curl https://chinaxiv-web-production.up.railway.app/health
 
 ## Quick Reference
 
-### Full Translation (text + figures)
-```bash
-# Local (preferred for debugging)
-python -m src.pipeline --workers 20 --with-qa --with-figures
+> **Skill Available**: Use `chinaxiv-orchestrator` skill for comprehensive pipeline documentation.
 
-# Cloud via GitHub Actions
-gh workflow run backfill.yml -f month=202401 -f with_figures=true
+### Universal Orchestrator (Recommended)
+
+All pipeline operations now go through `src/orchestrator.py` via `pipeline.yml`:
+
+```bash
+# Resume pending/zombie papers (daily operation)
+gh workflow run pipeline.yml -f scope=smart-resume
+
+# Translate all papers from a month
+gh workflow run pipeline.yml -f scope=month -f target=202501
+
+# Discover new papers (adds to DB, no translation)
+gh workflow run pipeline.yml -f scope=discover -f target=202501
+
+# Translate specific papers
+gh workflow run pipeline.yml -f scope=list -f target=chinaxiv-202501.00001,chinaxiv-202501.00002
+
+# Retry ALL failed papers
+gh workflow run pipeline.yml -f scope=smart-resume -f include_failed=true
+
+# Sync DB state from B2 (weekly, or after manual changes)
+gh workflow run reconcile-state.yml
 ```
 
-### Figure-Only Pass (for papers already text-translated)
+### Local Development
 ```bash
-python -m src.figure_pipeline --start 202401 --end 202412
+python -m src.orchestrator --scope smart-resume
+python -m src.orchestrator --scope month --target 202501 --workers 10 --dry-run
+```
+
+### Monitor Progress
+```bash
+gh run list --workflow=pipeline.yml --limit 5
+gh run watch <run-id>
 ```
 
 ## Architecture Overview
@@ -317,30 +341,38 @@ The pipeline uses circuit breakers to stop immediately on billing/auth errors:
 
 ## Running a Backfill
 
-### Step 1: Harvest Papers
+The universal orchestrator handles all backfill operations. Use GitHub Actions (recommended) or run locally.
+
+### Via GitHub Actions (Recommended)
+
 ```bash
-python -m src.harvest_chinaxiv_optimized --start YYYYMM --end YYYYMM
-python scripts/download_missing_pdfs.py
+# Step 1: Discover papers for the month (adds to DB)
+gh workflow run pipeline.yml -f scope=discover -f target=202501
+
+# Step 2: Translate all papers (text + figures + PDF)
+gh workflow run pipeline.yml -f scope=month -f target=202501
+
+# Monitor progress
+gh run list --workflow=pipeline.yml --limit 5
 ```
 
-### Step 2: Translate (TEXT + FIGURES)
+### Via Local Development
+
 ```bash
-# ALWAYS include --with-figures
-python -m src.pipeline --workers 20 --with-qa --with-figures --start YYYYMM --end YYYYMM
+# Step 1: Discover papers
+python -m src.orchestrator --scope discover --target 202501
+
+# Step 2: Translate (full pipeline)
+python -m src.orchestrator --scope month --target 202501 --workers 10
 ```
 
-### Step 3: Publish to B2
-```bash
-python -m src.tools.b2_publish  # Uploads validated translations to B2
-```
+### Deploy to Railway
 
-### Step 4: Deploy to Railway
+Railway auto-deploys on push to main. The Flask app queries PostgreSQL directly.
+
 ```bash
-# Deploy directly (auto-deploys on push to main)
+# Manual deploy (if needed)
 railway up --service chinaxiv-web
-
-# Or commit and push to main for auto-deploy
-git push origin main
 
 # Monitor deployment
 railway logs --service chinaxiv-web
@@ -348,8 +380,6 @@ railway logs --service chinaxiv-web
 # Verify deployment
 curl https://chinaxiv-web-production.up.railway.app/health
 ```
-
-Railway auto-deploys on push to main. The Flask app queries PostgreSQL directly - there is no static site generation step.
 
 ## Common Mistakes to Avoid
 
@@ -363,7 +393,7 @@ Railway auto-deploys on push to main. The Flask app queries PostgreSQL directly 
 ## Monitoring
 
 - Discord alerts for circuit breaker trips
-- Check workflow status: `gh run list --workflow=daily-pipeline.yml --limit 5`
+- Check workflow status: `gh run list --workflow=pipeline.yml --limit 5`
 - B2 manifests in `indexes/validated/manifest-*.csv`
 
 ## GitHub Token Management
