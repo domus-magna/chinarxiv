@@ -844,7 +844,21 @@ def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
     else:
         log("    WARNING: Pointer creation failed")
 
-    return uploaded_count > 0 or True  # Success even if nothing to upload
+    # POST stage succeeds if we uploaded something OR there was nothing to upload
+    # (empty uploaded_count with no files is fine - translation may be DB-only)
+    # Fail if we had files but couldn't upload them
+    has_local_files = (
+        os.path.exists(f"data/translated/{paper_id}.json") or
+        os.path.exists(f"data/flagged/{paper_id}.json") or
+        os.path.exists(f"data/english_pdfs/{paper_id}.pdf") or
+        os.path.isdir(f"data/figures/{paper_id}")
+    )
+
+    if has_local_files and uploaded_count == 0:
+        log("    ERROR: Had files to upload but uploaded_count=0")
+        return False
+
+    return True
 
 
 # ============================================================================

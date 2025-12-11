@@ -30,7 +30,7 @@ def translate_paper(
         dry_run: If True, skip actual translation
 
     Returns:
-        Path to translated JSON file
+        Paper ID on success (translation saved to database and local file)
     """
     return translate_paper_synthesis(paper_id, dry_run=dry_run)
 

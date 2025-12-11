@@ -210,13 +210,20 @@ jobs:
           TARGET="${{ inputs.target }}"
           WORKERS="${{ inputs.workers || '10' }}"
 
-          ARGS="--scope $SCOPE"
-
-          if [ -n "$TARGET" ]; then
-            ARGS="$ARGS --target $TARGET"
+          # Validate worker count is a number between 1-20
+          if ! [[ "$WORKERS" =~ ^[0-9]+$ ]] || [ "$WORKERS" -lt 1 ] || [ "$WORKERS" -gt 20 ]; then
+            echo "::error::workers must be a number between 1 and 20 (got: $WORKERS)"
+            exit 1
           fi
 
-          ARGS="$ARGS --workers $WORKERS"
+          # Quote all variables to prevent shell injection
+          ARGS="--scope '$SCOPE'"
+
+          if [ -n "$TARGET" ]; then
+            ARGS="$ARGS --target '$TARGET'"
+          fi
+
+          ARGS="$ARGS --workers '$WORKERS'"
 
           if [ "${{ inputs.force }}" = "true" ]; then
             ARGS="$ARGS --force"
@@ -235,7 +242,7 @@ jobs:
           fi
 
           echo "Running: python -m src.orchestrator $ARGS"
-          python -m src.orchestrator $ARGS
+          eval "python -m src.orchestrator $ARGS"
 
       - name: Upload artifacts
         if: always()

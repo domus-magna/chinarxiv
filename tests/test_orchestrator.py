@@ -236,7 +236,7 @@ class TestWorkQueue:
         """Test filtering papers by month."""
         conn = get_db_connection()
         try:
-            # January 2024 should have 6 papers
+            # January 2024 should have 7 papers
             jan_papers = get_papers_by_month(conn, '202401')
             assert len(jan_papers) == 7
             assert all(p.startswith('chinaxiv-202401') for p in jan_papers)

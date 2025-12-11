@@ -115,7 +115,11 @@ def list_figure_papers(s3_client, bucket: str, prefix: str) -> set:
 
 
 def scan_b2_state(s3_client, bucket: str, prefix: str) -> dict:
-    """Scan B2 to determine what exists for each paper."""
+    """Scan B2 to determine what exists for each paper.
+
+    Raises:
+        RuntimeError: If any B2 scan fails (to prevent incorrect status updates)
+    """
     logger.info("Scanning B2 storage...")
 
     # Scan each folder in parallel
@@ -128,14 +132,22 @@ def scan_b2_state(s3_client, bucket: str, prefix: str) -> dict:
         }
 
         results = {}
+        errors = []
         for future in as_completed(futures):
             key = futures[future]
             try:
                 results[key] = future.result()
                 logger.info(f"  Found {len(results[key])} papers with {key}")
             except Exception as e:
-                logger.error(f"  Error scanning {key}: {e}")
-                results[key] = set()
+                logger.error(f"  FATAL: Error scanning {key}: {e}")
+                errors.append(f"{key}: {e}")
+
+        # Fail-fast if any scan failed to prevent incorrect status updates
+        if errors:
+            raise RuntimeError(
+                f"B2 scan failed for: {', '.join(errors)}. "
+                "Cannot proceed with partial data - would incorrectly mark translated papers as pending."
+            )
 
     return results
 
@@ -144,27 +156,56 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
     """Update database with processing status from B2 state."""
     cursor = conn.cursor()
 
-    # Get all paper IDs from database
+    # Get all paper IDs and current status from database
     if limit:
-        cursor.execute("SELECT id FROM papers ORDER BY id LIMIT %s", (limit,))
+        cursor.execute("""
+            SELECT id, text_status, figures_status, pdf_status
+            FROM papers ORDER BY id LIMIT %s
+        """, (limit,))
     else:
-        cursor.execute("SELECT id FROM papers ORDER BY id")
+        cursor.execute("""
+            SELECT id, text_status, figures_status, pdf_status
+            FROM papers ORDER BY id
+        """)
 
-    db_papers = [row['id'] for row in cursor.fetchall()]
+    db_papers = cursor.fetchall()
     logger.info(f"Processing {len(db_papers)} papers from database")
 
     # Prepare updates
     updates = []
-    for paper_id in db_papers:
+    for row in db_papers:
+        paper_id = row['id']
+        current_text_status = row.get('text_status')
+        current_figures_status = row.get('figures_status')
+        current_pdf_status = row.get('pdf_status')
+
         has_chinese_pdf = paper_id in b2_state['chinese_pdfs']
         has_text = paper_id in b2_state['text_translations']
         has_figures = paper_id in b2_state['figures']
         has_english_pdf = paper_id in b2_state['english_pdfs']
 
-        # Determine status based on what exists
-        text_status = 'complete' if has_text else 'pending'
-        figures_status = 'complete' if has_figures else 'pending'
-        pdf_status = 'complete' if has_english_pdf else 'pending'
+        # Determine status based on what exists in B2
+        # BUT preserve 'failed' status if no B2 translation (don't reset to pending)
+        if has_text:
+            text_status = 'complete'
+        elif current_text_status == 'failed':
+            text_status = 'failed'  # Preserve failed status
+        else:
+            text_status = 'pending'
+
+        if has_figures:
+            figures_status = 'complete'
+        elif current_figures_status == 'failed':
+            figures_status = 'failed'  # Preserve failed status
+        else:
+            figures_status = 'pending'
+
+        if has_english_pdf:
+            pdf_status = 'complete'
+        elif current_pdf_status == 'failed':
+            pdf_status = 'failed'  # Preserve failed status
+        else:
+            pdf_status = 'pending'
 
         # Overall processing status
         if has_text and has_figures and has_english_pdf:
@@ -231,6 +272,8 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
     )
 
     # Update papers table from temp table
+    # IMPORTANT: Preserve existing timestamps for idempotency
+    # Only set timestamp to NOW() if it was NULL (new completion)
     cursor.execute("""
         UPDATE papers p
         SET
@@ -240,9 +283,21 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
             pdf_status = u.pdf_status,
             has_chinese_pdf = u.has_chinese_pdf,
             has_english_pdf = u.has_english_pdf,
-            text_completed_at = CASE WHEN u.text_status = 'complete' THEN NOW() ELSE NULL END,
-            figures_completed_at = CASE WHEN u.figures_status = 'complete' THEN NOW() ELSE NULL END,
-            pdf_completed_at = CASE WHEN u.pdf_status = 'complete' THEN NOW() ELSE NULL END
+            text_completed_at = CASE
+                WHEN u.text_status = 'complete' AND p.text_completed_at IS NULL THEN NOW()
+                WHEN u.text_status = 'complete' THEN p.text_completed_at
+                ELSE NULL
+            END,
+            figures_completed_at = CASE
+                WHEN u.figures_status = 'complete' AND p.figures_completed_at IS NULL THEN NOW()
+                WHEN u.figures_status = 'complete' THEN p.figures_completed_at
+                ELSE NULL
+            END,
+            pdf_completed_at = CASE
+                WHEN u.pdf_status = 'complete' AND p.pdf_completed_at IS NULL THEN NOW()
+                WHEN u.pdf_status = 'complete' THEN p.pdf_completed_at
+                ELSE NULL
+            END
         FROM paper_status_updates u
         WHERE p.id = u.paper_id
     """)
