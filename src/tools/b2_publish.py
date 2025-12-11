@@ -1,24 +1,26 @@
 """
-Publish post-QA outputs to Backblaze B2 via awscli and generate CSV manifests and pointers.
+Publish post-QA outputs to Backblaze B2 via awscli.
+
+Generates CSV manifests and pointers.
 
 Assumptions:
 - Validated translations are saved under data/translated/*.json
 - Flagged translations (diagnostics) are saved under data/flagged/*.json
-- PDFs live under data/pdfs/{paper_id}.pdf (archival; default ON at workflow level)
-- Cost and token logs may be in data/costs/<YYYY-MM-DD>.json (from cost_tracker)
+- PDFs live under data/pdfs/{paper_id}.pdf (archival; default ON)
+- Cost and token logs may be in data/costs/<YYYY-MM-DD>.json
 
 Inputs via env:
 - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 - B2_S3_ENDPOINT, B2_BUCKET, B2_PREFIX
-- SELECT_KEY (B2 selection key used), RECORDS_KEYS (comma-separated B2 keys)
+- SELECT_KEY (B2 selection key), RECORDS_KEYS (comma-separated B2 keys)
 - GITHUB_RUN_ID, GITHUB_SHA, RUN_STARTED_AT (ISO UTC)
 
 This script:
 1) Uploads validated translations, flagged translations, and PDFs to B2
 2) Builds/updates CSV manifests (validated and flagged) under indexes/*
-3) Writes per-paper pointer JSON under indexes/validated/by-paper/{paper_id}.json
+3) Writes per-paper pointer JSON under indexes/validated/by-paper/
 4) Appends a row to indexes/runs/YYYYMMDD.csv with run summary
-5) If any B2 ops are skipped/fail, buffers a Discord alert via b2_alerts (15-min throttle)
+5) Buffers a Discord alert via b2_alerts if B2 ops fail (15-min throttle)
 """
 
 from __future__ import annotations
@@ -89,27 +91,63 @@ def _load_costs_for_today() -> Dict[str, Dict]:
     return costs
 
 
+def upload_translation(paper_id: str, local_path: str) -> bool:
+    """
+    Upload a single translation file to B2.
+
+    Args:
+        paper_id: Paper identifier (e.g., chinaxiv-202401.00001)
+        local_path: Local path to the translation JSON file
+
+    Returns:
+        True if upload succeeded, False otherwise
+    """
+    # Support both B2_* and BACKBLAZE_* env var naming conventions
+    def get_b2_env(b2_name: str, backblaze_name: str, default: str | None = None) -> str | None:
+        return _env(b2_name) or _env(backblaze_name) or default
+
+    endpoint = get_b2_env("B2_S3_ENDPOINT", "BACKBLAZE_S3_ENDPOINT")
+    bucket = get_b2_env("B2_BUCKET", "BACKBLAZE_BUCKET")
+    prefix = get_b2_env("B2_PREFIX", "BACKBLAZE_PREFIX", "") or ""
+
+    if not endpoint or not bucket:
+        return False
+
+    dest_root = f"s3://{bucket}/{prefix}"
+    validated_key = f"validated/translations/{paper_id}.json"
+
+    return _aws_cp(local_path, f"{dest_root}{validated_key}", endpoint)
+
+
 def main() -> int:
-    # Validate env
-    missing = [
-        n
-        for n in [
-            "AWS_ACCESS_KEY_ID",
-            "AWS_SECRET_ACCESS_KEY",
-            "B2_S3_ENDPOINT",
-            "B2_BUCKET",
-        ]
-        if not _env(n)
-    ]
+    # Support both B2_* and BACKBLAZE_* env var naming conventions
+    # B2_* takes precedence for backwards compatibility
+    def get_b2_env(b2_name: str, backblaze_name: str, default: str | None = None) -> str | None:
+        return _env(b2_name) or _env(backblaze_name) or default
+
+    # Check for required credentials (supporting both naming conventions)
+    aws_key = _env("AWS_ACCESS_KEY_ID") or _env("BACKBLAZE_KEY_ID")
+    aws_secret = _env("AWS_SECRET_ACCESS_KEY") or _env("BACKBLAZE_APPLICATION_KEY")
+    endpoint = get_b2_env("B2_S3_ENDPOINT", "BACKBLAZE_S3_ENDPOINT")
+    bucket = get_b2_env("B2_BUCKET", "BACKBLAZE_BUCKET")
+
+    missing = []
+    if not aws_key:
+        missing.append("AWS_ACCESS_KEY_ID or BACKBLAZE_KEY_ID")
+    if not aws_secret:
+        missing.append("AWS_SECRET_ACCESS_KEY or BACKBLAZE_APPLICATION_KEY")
+    if not endpoint:
+        missing.append("B2_S3_ENDPOINT or BACKBLAZE_S3_ENDPOINT")
+    if not bucket:
+        missing.append("B2_BUCKET or BACKBLAZE_BUCKET")
+
     if missing:
         _alert(f"B2 publish skipped: missing env {', '.join(missing)}")
         # Ensure alert is flushed even on failure
         _run("python -m src.tools.b2_alerts flush")
         return 2
 
-    endpoint = _env("B2_S3_ENDPOINT")
-    bucket = _env("B2_BUCKET")
-    prefix = _env("B2_PREFIX", "") or ""
+    prefix = get_b2_env("B2_PREFIX", "BACKBLAZE_PREFIX", "") or ""
     dest_root = f"s3://{bucket}/{prefix}"
 
     select_key = _env("SELECT_KEY", "")

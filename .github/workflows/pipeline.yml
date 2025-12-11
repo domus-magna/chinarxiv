@@ -1,0 +1,224 @@
+name: Universal Pipeline
+# ============================================================================
+# PURPOSE: Single workflow that handles ALL translation processing.
+#
+# This workflow replaces: backfill.yml, batch_translate.yml, daily-pipeline.yml,
+# translate-from-b2.yml, complete-paper.yml, and more.
+#
+# ALL LOGIC IS IN PYTHON (src/orchestrator.py) - THIS YAML IS INTENTIONALLY DUMB.
+#
+# USE CASES:
+# - Process specific month: --scope month --target 202401
+# - Process specific papers: --scope list --target id1,id2
+# - Process from file: --scope file --target /path/to/ids.txt
+# - Resume pending/zombie: --scope smart-resume (default for scheduled)
+# - Force re-process: Add --force flag
+#
+# ADMIN FLAGS (use sparingly):
+# - --text-only: Skip figure translation
+# - --figures-only: Skip text translation (assumes text complete)
+# ============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        type: choice
+        description: "What to process"
+        required: true
+        default: 'smart-resume'
+        options:
+          - month          # Process all papers from a specific month (YYYYMM)
+          - list           # Process specific papers (comma-separated IDs)
+          - file           # Process papers from uploaded file
+          - smart-resume   # Process pending/zombie papers (default)
+
+      target:
+        type: string
+        description: "YYYYMM for month, comma-separated IDs for list"
+        required: false
+
+      force:
+        type: boolean
+        default: false
+        description: "Force re-process even if complete"
+
+      workers:
+        type: string
+        default: '10'
+        description: "Parallel workers (1-20)"
+
+      text_only:
+        type: boolean
+        default: false
+        description: "[Admin] Skip figure translation"
+
+      figures_only:
+        type: boolean
+        default: false
+        description: "[Admin] Skip text (figures only)"
+
+      dry_run:
+        type: boolean
+        default: false
+        description: "Dry run (no actual processing)"
+
+      include_failed:
+        type: boolean
+        default: false
+        description: "Include previously failed papers for retry"
+
+  schedule:
+    # Daily at 3 AM UTC - processes pending and zombie papers
+    - cron: '0 3 * * *'
+
+run-name: >-
+  pipeline: ${{ inputs.scope || 'smart-resume' }}${{ inputs.target && format(' {0}', inputs.target) || '' }}${{ inputs.force && ' [force]' || '' }}${{ inputs.text_only && ' [text-only]' || '' }}${{ inputs.figures_only && ' [figures-only]' || '' }}${{ inputs.include_failed && ' [retry-failed]' || '' }}
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours max
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ghostscript \
+            poppler-utils \
+            tesseract-ocr \
+            tesseract-ocr-chi-sim \
+            tesseract-ocr-eng \
+            ocrmypdf
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install awscli
+
+      - name: Preflight - Validate credentials
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+        run: |
+          set -e
+          errors=0
+
+          echo "Checking required credentials..."
+
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL is required"
+            errors=1
+          fi
+
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY is required for text translation"
+            errors=1
+          fi
+
+          # Only require figure credentials if not text-only
+          if [ "${{ inputs.text_only }}" != "true" ]; then
+            if [ -z "$GEMINI_API_KEY" ]; then
+              echo "::warning::GEMINI_API_KEY not set (required for figure translation)"
+            fi
+            if [ -z "$MOONDREAM_API_KEY" ]; then
+              echo "::warning::MOONDREAM_API_KEY not set (required for figure QA)"
+            fi
+          fi
+
+          if [ -z "$BACKBLAZE_KEY_ID" ] || [ -z "$BACKBLAZE_APPLICATION_KEY" ]; then
+            echo "::error::B2 credentials required for storage"
+            errors=1
+          fi
+
+          if [ "$errors" -eq 1 ]; then
+            exit 1
+          fi
+
+          echo "All required credentials present"
+
+      - name: Run Orchestrator
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
+          BRIGHTDATA_BROWSER_WSS: ${{ secrets.BRIGHTDATA_BROWSER_WSS }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          AWS_DEFAULT_REGION: us-west-004
+          BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
+          BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BACKBLAZE_S3_ENDPOINT: ${{ secrets.BACKBLAZE_S3_ENDPOINT }}
+          BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
+          BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          set -e
+
+          # Build command args
+          SCOPE="${{ inputs.scope || 'smart-resume' }}"
+          TARGET="${{ inputs.target }}"
+          WORKERS="${{ inputs.workers || '10' }}"
+
+          ARGS="--scope $SCOPE"
+
+          if [ -n "$TARGET" ]; then
+            ARGS="$ARGS --target $TARGET"
+          fi
+
+          ARGS="$ARGS --workers $WORKERS"
+
+          if [ "${{ inputs.force }}" = "true" ]; then
+            ARGS="$ARGS --force"
+          fi
+
+          if [ "${{ inputs.text_only }}" = "true" ]; then
+            ARGS="$ARGS --text-only"
+          fi
+
+          if [ "${{ inputs.figures_only }}" = "true" ]; then
+            ARGS="$ARGS --figures-only"
+          fi
+
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+
+          if [ "${{ inputs.include_failed }}" = "true" ]; then
+            ARGS="$ARGS --include-failed"
+          fi
+
+          echo "Running: python -m src.orchestrator $ARGS"
+          python -m src.orchestrator $ARGS
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-results-${{ github.run_id }}
+          path: |
+            data/translated/*.json
+            data/flagged/*.json
+            reports/*.json
+          if-no-files-found: ignore
+          retention-days: 30

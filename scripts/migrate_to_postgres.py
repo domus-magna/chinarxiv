@@ -68,7 +68,28 @@ def create_postgres_schema(pg_conn):
         body_md TEXT,
         english_pdf_url TEXT,  -- URL to English PDF in B2
         figure_urls TEXT,  -- JSON array of translated figure URLs [{number, url}, ...]
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+        -- Processing status columns (for pipeline orchestrator)
+        processing_status VARCHAR(20) DEFAULT 'pending'
+            CHECK (processing_status IN ('pending', 'processing', 'complete', 'failed')),
+        processing_started_at TIMESTAMP WITH TIME ZONE,
+        processing_error TEXT,
+
+        -- Stage completion status (for idempotency)
+        text_status VARCHAR(20) DEFAULT 'pending'
+            CHECK (text_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')),
+        text_completed_at TIMESTAMP WITH TIME ZONE,
+        figures_status VARCHAR(20) DEFAULT 'pending'
+            CHECK (figures_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')),
+        figures_completed_at TIMESTAMP WITH TIME ZONE,
+        pdf_status VARCHAR(20) DEFAULT 'pending'
+            CHECK (pdf_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')),
+        pdf_completed_at TIMESTAMP WITH TIME ZONE,
+
+        -- Source data tracking
+        has_chinese_pdf BOOLEAN DEFAULT FALSE,
+        has_english_pdf BOOLEAN DEFAULT FALSE
     );
     """)
 
@@ -76,6 +97,20 @@ def create_postgres_schema(pg_conn):
     logger.info("  Ensuring optional columns exist...")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS english_pdf_url TEXT;")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figure_urls TEXT;")
+
+    # Processing status columns (for pipeline orchestrator)
+    logger.info("  Ensuring processing status columns exist...")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_error TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS text_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS text_completed_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figures_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figures_completed_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS pdf_status VARCHAR(20) DEFAULT 'pending';")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS pdf_completed_at TIMESTAMP WITH TIME ZONE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS has_chinese_pdf BOOLEAN DEFAULT FALSE;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS has_english_pdf BOOLEAN DEFAULT FALSE;")
 
     # Normalized subjects table (same as SQLite approach)
     logger.info("  Creating paper_subjects table...")
@@ -108,6 +143,38 @@ def create_postgres_schema(pg_conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_subjects_subject ON paper_subjects(subject);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_search ON papers USING GIN(search_vector);")
 
+    # Pipeline orchestrator indexes
+    logger.info("  Creating pipeline orchestrator indexes...")
+    # Primary queue query: find papers needing work (pending or zombie)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_papers_processing_queue
+        ON papers (processing_status, processing_started_at)
+        WHERE processing_status IN ('pending', 'processing');
+    """)
+    # Index for filtering by text status
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_papers_text_status
+        ON papers (text_status)
+        WHERE text_status != 'complete';
+    """)
+    # Index for filtering by figures status
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_papers_figures_status
+        ON papers (figures_status)
+        WHERE figures_status != 'complete';
+    """)
+    # Index for filtering by pdf status
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_papers_pdf_status
+        ON papers (pdf_status)
+        WHERE pdf_status != 'complete';
+    """)
+    # Composite index for orchestrator queue queries
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_papers_orchestrator_queue
+        ON papers (processing_status, text_status, figures_status, pdf_status);
+    """)
+
     # Translation requests table (for figure and text translation requests from users)
     logger.info("  Creating translation_requests table...")
     cursor.execute("""
@@ -136,6 +203,15 @@ def create_postgres_schema(pg_conn):
     cursor.execute("""
     CREATE INDEX IF NOT EXISTS idx_translation_requests_paper
         ON translation_requests(paper_id);
+    """)
+
+    # Schema migrations table (for tracking applied migrations)
+    logger.info("  Creating schema_migrations table...")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+        version VARCHAR(50) PRIMARY KEY,
+        applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
     """)
 
     pg_conn.commit()
