@@ -199,7 +199,7 @@ def backfill_from_b2(conn, months: List[str], dry_run: bool = False) -> int:
         print(f"  Found {len(papers_needing_cn)} papers needing Chinese metadata")
 
         if dry_run:
-            matched = sum(1 for r in records if r['id'] in papers_needing_cn)
+            matched = sum(1 for r in records if r.get('id') in papers_needing_cn)
             print(f"  [DRY RUN] Would update {matched} papers")
             total_updated += matched
             continue
