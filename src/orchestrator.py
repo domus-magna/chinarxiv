@@ -494,22 +494,73 @@ def run_pdf_generation(paper_id: str, dry_run: bool = False) -> bool:
     """
     Generate English PDF for a paper.
 
+    Loads the translation JSON, fetches figure manifest from B2,
+    and generates the PDF using pandoc/xelatex.
+
     Returns:
         True if PDF generation succeeded, False otherwise
     """
-    # Import here to avoid circular imports
-    try:
-        from scripts.generate_english_pdfs import generate_english_pdf
-    except ImportError:
-        log("    PDF generation not available")
-        return False
+    import json
+    from pathlib import Path
 
     log(f"  Generating English PDF for {paper_id}...")
 
+    if dry_run:
+        log("    [DRY RUN] Would generate English PDF")
+        return True
+
+    # Import the actual function
     try:
-        result = generate_english_pdf(paper_id, dry_run=dry_run)
-        if result:
-            log("    English PDF generated")
+        from scripts.generate_english_pdfs import (
+            generate_pdf_for_paper,
+            check_pdf_tools,
+            get_s3_client,
+            get_figure_manifest,
+        )
+    except ImportError as e:
+        log(f"    PDF generation not available: {e}")
+        return False
+
+    # Check PDF tools (pandoc + xelatex)
+    pdf_engine = check_pdf_tools()
+    if not pdf_engine:
+        log("    PDF tools not available (need pandoc + xelatex)")
+        return False
+
+    # Load the translation JSON
+    translation_path = Path(f"data/translated/{paper_id}.json")
+    if not translation_path.exists():
+        log(f"    Translation not found: {translation_path}")
+        return False
+
+    try:
+        with open(translation_path, 'r', encoding='utf-8') as f:
+            paper = json.load(f)
+    except Exception as e:
+        log(f"    Failed to load translation: {e}")
+        return False
+
+    # Get figure manifest from B2
+    try:
+        s3 = get_s3_client()
+        figure_manifest = get_figure_manifest(s3) if s3 else {}
+    except Exception as e:
+        log(f"    Warning: Could not fetch figure manifest: {e}")
+        figure_manifest = {}
+
+    # Ensure output directory exists
+    output_dir = Path("data/english_pdfs")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        success, figure_count = generate_pdf_for_paper(
+            paper=paper,
+            figure_manifest=figure_manifest,
+            output_dir=output_dir,
+            pdf_engine=pdf_engine,
+        )
+        if success:
+            log(f"    English PDF generated ({figure_count} figures)")
             return True
         return False
     except Exception as e:

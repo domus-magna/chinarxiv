@@ -123,7 +123,7 @@ def scan_b2_state(s3_client, bucket: str, prefix: str) -> dict:
         futures = {
             executor.submit(list_b2_prefixes, s3_client, bucket, prefix, 'pdfs'): 'chinese_pdfs',
             executor.submit(list_b2_prefixes, s3_client, bucket, prefix, 'validated/translations'): 'text_translations',
-            executor.submit(list_b2_prefixes, s3_client, bucket, prefix, 'english-pdfs'): 'english_pdfs',
+            executor.submit(list_b2_prefixes, s3_client, bucket, prefix, 'english_pdfs'): 'english_pdfs',
             executor.submit(list_figure_papers, s3_client, bucket, prefix): 'figures',
         }
 
