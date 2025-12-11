@@ -1032,6 +1032,15 @@ class TestDiscovery:
             status = get_paper_status(conn, 'chinaxiv-202501.00001')
             assert status is not None
             assert status['processing_status'] == 'pending'
+
+            # Verify subjects were inserted into paper_subjects table
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT subject FROM paper_subjects WHERE paper_id = %s ORDER BY subject",
+                ('chinaxiv-202501.00001',)
+            )
+            subjects = [row['subject'] for row in cursor.fetchall()]
+            assert subjects == ['Math', 'Physics'], f"Expected ['Math', 'Physics'], got {subjects}"
         finally:
             conn.close()
 
@@ -1225,3 +1234,96 @@ class TestDiscovery:
 
         with pytest.raises(ValueError, match="YYYYMM"):
             run_orchestrator(scope='discover', target='invalid')
+
+
+class TestBackfillPreservesFailedStatus:
+    """Tests for backfill_state_from_b2.py preserving failed status."""
+
+    def test_backfill_preserves_failed_text_status(self, orchestrator_test_database):
+        """backfill_database should preserve 'failed' status and not revert to 'pending'."""
+        from scripts.backfill_state_from_b2 import backfill_database
+
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Insert a paper with text_status='failed'
+            cursor.execute("""
+                INSERT INTO papers (
+                    id, title_en, abstract_en, processing_status, text_status,
+                    figures_status, pdf_status
+                ) VALUES (
+                    'chinaxiv-202501.00099', 'Test Paper', 'Abstract',
+                    'failed', 'failed', 'pending', 'pending'
+                )
+            """)
+            conn.commit()
+
+            # Create B2 state with NO text translation for this paper
+            b2_state = {
+                'chinese_pdfs': set(),
+                'text_translations': set(),  # Paper has no text translation in B2
+                'figures': set(),
+                'english_pdfs': set(),
+            }
+
+            # Run backfill
+            backfill_database(conn, b2_state, dry_run=False)
+
+            # Verify the failed status is preserved, not reverted to 'pending'
+            cursor.execute("""
+                SELECT text_status, processing_status
+                FROM papers WHERE id = 'chinaxiv-202501.00099'
+            """)
+            row = cursor.fetchone()
+
+            assert row['text_status'] == 'failed', \
+                f"Expected text_status='failed' to be preserved, got '{row['text_status']}'"
+            assert row['processing_status'] == 'failed', \
+                f"Expected processing_status='failed' to be preserved, got '{row['processing_status']}'"
+
+        finally:
+            conn.close()
+
+    def test_backfill_updates_pending_to_complete_with_b2_file(self, orchestrator_test_database):
+        """backfill_database should update 'pending' to 'complete' when B2 file exists."""
+        from scripts.backfill_state_from_b2 import backfill_database
+
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Insert a paper with text_status='pending'
+            cursor.execute("""
+                INSERT INTO papers (
+                    id, title_en, abstract_en, processing_status, text_status,
+                    figures_status, pdf_status
+                ) VALUES (
+                    'chinaxiv-202501.00098', 'Test Paper 2', 'Abstract 2',
+                    'pending', 'pending', 'pending', 'pending'
+                )
+            """)
+            conn.commit()
+
+            # Create B2 state WITH text translation for this paper
+            b2_state = {
+                'chinese_pdfs': set(),
+                'text_translations': {'chinaxiv-202501.00098'},  # Has text in B2
+                'figures': set(),
+                'english_pdfs': set(),
+            }
+
+            # Run backfill
+            backfill_database(conn, b2_state, dry_run=False)
+
+            # Verify status is updated to 'complete'
+            cursor.execute("""
+                SELECT text_status FROM papers WHERE id = 'chinaxiv-202501.00098'
+            """)
+            row = cursor.fetchone()
+
+            assert row['text_status'] == 'complete', \
+                f"Expected text_status='complete' after backfill, got '{row['text_status']}'"
+
+        finally:
+            conn.close()
