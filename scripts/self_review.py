@@ -146,9 +146,8 @@ def check_complexity_added() -> list[str]:
         issues.append(f"COMPLEXITY: Large change ({lines_added} lines added) - consider breaking into smaller commits")
 
     # Check for new abstractions
-    code, diff_content = run_cmd(["git", "diff", "HEAD~1..HEAD"])
+    _, diff_content = run_cmd(["git", "diff", "HEAD~1..HEAD"])
     new_classes = len(re.findall(r"^\+class\s+\w+", diff_content, re.MULTILINE))
-    new_funcs = len(re.findall(r"^\+\s*def\s+\w+", diff_content, re.MULTILINE))
 
     if new_classes > 3:
         issues.append(f"COMPLEXITY: {new_classes} new classes added - is this overengineered?")

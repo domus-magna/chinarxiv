@@ -9,7 +9,6 @@ Empty translation files are those where:
 
 import json
 import os
-import glob
 from pathlib import Path
 
 def is_empty_translation(file_path):

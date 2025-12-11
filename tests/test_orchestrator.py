@@ -11,10 +11,9 @@ Tests cover:
 """
 
 import os
-import json
 import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import psycopg2
 
 from src.orchestrator import (
@@ -30,9 +29,6 @@ from src.orchestrator import (
     process_paper,
     get_work_queue,
     run_orchestrator,
-    ProcessingResult,
-    OrchestratorStats,
-    ZOMBIE_TIMEOUT,
 )
 
 
@@ -631,7 +627,7 @@ class TestProcessPaper:
         mock_text.return_value = True
 
         # Paper 00005 already has text complete
-        result = process_paper(
+        process_paper(
             'chinaxiv-202401.00005',
             stages=['harvest', 'text', 'figures']
         )
@@ -772,13 +768,8 @@ class TestOrchestratorIntegration:
         mock_pdf.return_value = True
         mock_post.return_value = True
 
-        # Get initial status
-        conn = get_db_connection()
-        initial_status = get_paper_status(conn, 'chinaxiv-202401.00001')
-        conn.close()
-
         # Run with dry_run
-        stats = run_orchestrator(
+        run_orchestrator(
             scope='list',
             target='chinaxiv-202401.00001',
             dry_run=True,

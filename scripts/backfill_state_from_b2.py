@@ -195,7 +195,7 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
         has_text = sum(1 for u in updates if u[2] == 'complete')
         has_figs = sum(1 for u in updates if u[3] == 'complete')
         has_pdf = sum(1 for u in updates if u[4] == 'complete')
-        logger.info(f"\nSummary:")
+        logger.info("\nSummary:")
         logger.info(f"  Fully complete: {complete}")
         logger.info(f"  Has text translation: {has_text}")
         logger.info(f"  Has figures: {has_figs}")
@@ -263,7 +263,7 @@ def backfill_database(conn, b2_state: dict, dry_run: bool = False, limit: Option
         FROM papers
     """)
     stats = cursor.fetchone()
-    logger.info(f"\nDatabase state after backfill:")
+    logger.info("\nDatabase state after backfill:")
     logger.info(f"  Fully complete: {stats['complete']}/{stats['total']}")
     logger.info(f"  Has text translation: {stats['has_text']}")
     logger.info(f"  Has figures: {stats['has_figures']}")

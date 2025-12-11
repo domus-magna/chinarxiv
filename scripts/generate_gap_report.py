@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """Generate gap analysis report for 2025 core ML/DL papers."""
-import json
-from pathlib import Path
 from collections import Counter
 
 # Load the filtered paper IDs
@@ -21,16 +19,16 @@ print('=' * 70)
 print()
 print('SUMMARY')
 print('-' * 70)
-print(f'Total 2025 papers with text translations: 1,291')
-print(f'Core ML/DL papers (strict filter):        116 (9.0%)')
-print(f'Current papers with figures:               89 (all years)')
-print(f'Estimated 2025 papers with figures:        ~10-15')
-print(f'Gap (need figure translation):             ~100-106')
+print('Total 2025 papers with text translations: 1,291')
+print('Core ML/DL papers (strict filter):        116 (9.0%)')
+print('Current papers with figures:               89 (all years)')
+print('Estimated 2025 papers with figures:        ~10-15')
+print('Gap (need figure translation):             ~100-106')
 print()
 
 print('BREAKDOWN BY MONTH (Most Recent First)')
 print('-' * 70)
-print(f'Month    Core ML/DL Papers')
+print('Month    Core ML/DL Papers')
 print('-' * 70)
 for month in sorted(months.keys(), reverse=True):
     print(f'{month}   {months[month]:3d}')
@@ -40,27 +38,27 @@ print()
 
 print('COST ESTIMATES (for figure translation)')
 print('-' * 70)
-print(f'Assuming average 5 figures per paper:')
-print(f'  116 papers × 5 figures = 580 figures')
-print(f'  580 figures × $0.08 = $46.40')
+print('Assuming average 5 figures per paper:')
+print('  116 papers × 5 figures = 580 figures')
+print('  580 figures × $0.08 = $46.40')
 print()
-print(f'Budget-optimized (within $50):')
-print(f'  Target: ~115-120 papers')
-print(f'  Available budget: $50')
-print(f'  All 116 papers FIT within budget!')
+print('Budget-optimized (within $50):')
+print('  Target: ~115-120 papers')
+print('  Available budget: $50')
+print('  All 116 papers FIT within budget!')
 print()
 
 print('PRIORITIZATION FOR PILOT RUN')
 print('-' * 70)
 print('Recommended approach: Start with most recent month')
 print()
-print(f'Pilot Batch (December 2025):')
-print(f'  Month:    202512')
+print('Pilot Batch (December 2025):')
+print('  Month:    202512')
 print(f'  Papers:   {months.get("202512", 0)}')
 print(f'  Figures:  ~{months.get("202512", 0) * 5} (assuming 5/paper)')
 print(f'  Cost:     ~${months.get("202512", 0) * 5 * 0.08:.2f}')
 print()
-print(f'Scale-up Batches:')
+print('Scale-up Batches:')
 for i, month in enumerate(sorted(months.keys(), reverse=True)[1:4], start=2):
     count = months[month]
     print(f'  Batch {i}: {month} - {count} papers (~${count * 5 * 0.08:.2f})')

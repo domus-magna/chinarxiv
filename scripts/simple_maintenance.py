@@ -5,7 +5,6 @@ Simple maintenance script for ChinaXiv Translations.
 
 import argparse
 import json
-import os
 import gzip
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,14 +20,14 @@ def cleanup_json_file(file_path: Path, days: int = 7, max_entries: int = 1000):
     """Clean up old entries from a JSON file."""
     if not file_path.exists():
         return
-    
+
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             entries = json.load(f)
-        
+
         cutoff = datetime.now() - timedelta(days=days)
         filtered = []
-        
+
         for entry in entries:
             try:
                 entry_time = datetime.fromisoformat(entry.get("timestamp", ""))
@@ -37,16 +36,16 @@ def cleanup_json_file(file_path: Path, days: int = 7, max_entries: int = 1000):
             except ValueError:
                 # Keep entries with invalid timestamps
                 filtered.append(entry)
-        
+
         # Keep only recent entries
         if len(filtered) > max_entries:
             filtered = filtered[-max_entries:]
-        
+
         if len(filtered) != len(entries):
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(filtered, f, indent=2, ensure_ascii=False)
             log(f"Cleaned up {len(entries) - len(filtered)} old entries from {file_path.name}")
-        
+
     except Exception as e:
         log(f"Failed to cleanup {file_path.name}: {e}")
 
@@ -83,33 +82,33 @@ def optimize_search_index():
     """Optimize search index file."""
     log("Optimizing search index...")
     index_file = Path("site/search-index.json")
-    
+
     if not index_file.exists():
         log("Search index file not found")
         return
-    
+
     try:
         # Check if already compressed
         compressed_file = index_file.with_suffix(index_file.suffix + ".gz")
         if compressed_file.exists():
             log("Search index already compressed")
             return
-        
+
         # Read original file
         with open(index_file, "r", encoding="utf-8") as f:
             content = f.read()
-        
+
         # Compress
         with gzip.open(compressed_file, "wt", encoding="utf-8") as f:
             f.write(content)
-        
+
         # Compare sizes
         original_size = index_file.stat().st_size
         compressed_size = compressed_file.stat().st_size
         compression_ratio = (1 - compressed_size / original_size) * 100
-        
+
         log(f"Search index compressed by {compression_ratio:.1f}% ({original_size} → {compressed_size} bytes)")
-        
+
     except Exception as e:
         log(f"Failed to optimize search index: {e}")
 
@@ -117,13 +116,13 @@ def optimize_search_index():
 def generate_stats():
     """Generate basic system statistics."""
     log("Generating system statistics...")
-    
+
     stats = {
         "generated_at": datetime.now().isoformat(),
         "data_files": {},
         "site_files": {}
     }
-    
+
     # Check data files
     data_dir = Path("data")
     if data_dir.exists():
@@ -133,7 +132,7 @@ def generate_stats():
                 stats["data_files"][str(file_path)] = size
             except OSError:
                 pass
-    
+
     # Check site files
     site_dir = Path("site")
     if site_dir.exists():
@@ -144,13 +143,13 @@ def generate_stats():
                     stats["site_files"][str(file_path)] = size
                 except OSError:
                     pass
-    
+
     # Save stats
     stats_file = Path("data/system_stats.json")
     stats_file.parent.mkdir(exist_ok=True)
     with open(stats_file, "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2, ensure_ascii=False)
-    
+
     log(f"System statistics saved to {stats_file}")
     log(f"Data files: {len(stats['data_files'])}")
     log(f"Site files: {len(stats['site_files'])}")
@@ -163,26 +162,26 @@ def main():
     parser.add_argument("--optimize", action="store_true", help="Run performance optimizations")
     parser.add_argument("--stats", action="store_true", help="Generate system statistics")
     parser.add_argument("--all", action="store_true", help="Run all maintenance tasks")
-    
+
     args = parser.parse_args()
-    
+
     if not any([args.cleanup, args.optimize, args.stats, args.all]):
         parser.print_help()
         return
-    
+
     log("Starting maintenance tasks...")
-    
+
     if args.all or args.cleanup:
         cleanup_alerts()
         cleanup_analytics()
         cleanup_performance()
-    
+
     if args.all or args.optimize:
         optimize_search_index()
-    
+
     if args.all or args.stats:
         generate_stats()
-    
+
     log("Maintenance completed successfully")
 
 

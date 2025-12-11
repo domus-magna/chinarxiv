@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.validators.harvest_gate import run_harvest_gate
+from src.validators.harvest_gate import run_harvest_gate  # noqa: E402
 
 
 def _make_record(record_id: str, pdf_path: Path) -> dict:

@@ -28,7 +28,6 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime
 
 import boto3
 import psycopg2
@@ -201,7 +200,7 @@ def main():
     # Summary
     logger.info("")
     logger.info("=" * 50)
-    logger.info(f"Sync complete!")
+    logger.info("Sync complete!")
     logger.info(f"  Total translations: {len(translations)}")
     logger.info(f"  With full text: {with_full_text}")
     logger.info(f"  Updated: {updated}")
@@ -213,7 +212,7 @@ def main():
         cursor.execute("SELECT COUNT(*), COUNT(CASE WHEN has_full_text THEN 1 END), COUNT(body_md) FROM papers")
         total, full_text_count, body_md_count = cursor.fetchone()
         logger.info("")
-        logger.info(f"Database stats:")
+        logger.info("Database stats:")
         logger.info(f"  Total papers: {total}")
         logger.info(f"  With has_full_text=TRUE: {full_text_count}")
         logger.info(f"  With body_md: {body_md_count}")

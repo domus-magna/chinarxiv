@@ -34,9 +34,10 @@ import argparse
 import os
 import sys
 import traceback
+import contextlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from enum import Enum
 from typing import Callable, Optional
 
@@ -409,7 +410,7 @@ def run_pdf_generation(paper_id: str, dry_run: bool = False) -> bool:
     try:
         from scripts.generate_english_pdfs import generate_english_pdf
     except ImportError:
-        log(f"    PDF generation not available")
+        log("    PDF generation not available")
         return False
 
     log(f"  Generating English PDF for {paper_id}...")
@@ -417,7 +418,7 @@ def run_pdf_generation(paper_id: str, dry_run: bool = False) -> bool:
     try:
         result = generate_english_pdf(paper_id, dry_run=dry_run)
         if result:
-            log(f"    English PDF generated")
+            log("    English PDF generated")
             return True
         return False
     except Exception as e:
@@ -435,7 +436,7 @@ def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
     log(f"  Post-processing {paper_id}...")
 
     if dry_run:
-        log(f"    [DRY RUN] Would upload to B2")
+        log("    [DRY RUN] Would upload to B2")
         return True
 
     # Upload translation to B2
@@ -444,7 +445,7 @@ def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
         translation_path = f"data/translated/{paper_id}.json"
         if os.path.exists(translation_path):
             upload_translation(paper_id, translation_path)
-            log(f"    Uploaded translation to B2")
+            log("    Uploaded translation to B2")
     except Exception as e:
         log(f"    B2 upload failed: {e}")
         # Non-fatal - continue
@@ -650,9 +651,7 @@ def get_work_queue(
 
             if status.get('processing_status') == 'complete':
                 # Check if specific stages are requested and incomplete
-                if text_only and status.get('text_status') != 'complete':
-                    work_queue.append(paper_id)
-                elif figures_only and status.get('figures_status') != 'complete':
+                if text_only and status.get('text_status') != 'complete' or figures_only and status.get('figures_status') != 'complete':
                     work_queue.append(paper_id)
                 # Otherwise skip complete papers
             else:
@@ -728,10 +727,8 @@ def run_orchestrator(
 
     # Discord notification callback
     def notify(message: str):
-        try:
+        with contextlib.suppress(Exception):
             alert_critical("Pipeline Error", message, source="orchestrator")
-        except Exception:
-            pass
 
     # Process papers
     log(f"Processing {len(work_queue)} papers with {workers} workers...")

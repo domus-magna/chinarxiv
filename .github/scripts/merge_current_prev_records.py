@@ -3,7 +3,6 @@
 
 import os
 import json
-import glob
 
 os.makedirs('data/records', exist_ok=True)
 curr = os.popen("date -u +%Y%m").read().strip()
@@ -27,7 +26,7 @@ for p in paths:
             data = json.load(f)
             if isinstance(data, list):
                 merged.extend(data)
-    except Exception as e:
+    except Exception:
         pass
 
 outp = 'data/records/_merged_current_prev.json'

@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.alerts import (
+from src.alerts import (  # noqa: E402
     alert_error,
     alert_critical,
     alert_warning,

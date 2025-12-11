@@ -19,10 +19,8 @@ Requirements:
 """
 
 import psycopg2
-from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
 import sqlite3
-import json
 import os
 import sys
 import logging
@@ -341,7 +339,7 @@ def main():
 
     try:
         # Connect to PostgreSQL
-        logger.info(f"Connecting to PostgreSQL...")
+        logger.info("Connecting to PostgreSQL...")
         pg_conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
         logger.info("✅ Connected to PostgreSQL")
 

@@ -3,10 +3,8 @@
 Scan all PDFs in data/pdfs/ and count figures per paper.
 Uses PyMuPDF for fast extraction (no translation).
 """
-import os
 import sys
 from pathlib import Path
-from collections import defaultdict
 
 import fitz  # PyMuPDF
 
@@ -82,7 +80,7 @@ def main():
     top_20_file.parent.mkdir(exist_ok=True)
 
     with open(top_20_file, "w") as f:
-        for paper_id, count in results[:20]:
+        for paper_id, _count in results[:20]:
             f.write(f"{paper_id}\n")
 
     print(f"\nTop 20 papers saved to: {top_20_file}")

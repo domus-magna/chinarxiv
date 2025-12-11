@@ -47,16 +47,20 @@ def _run(cmd: str) -> Tuple[int, str]:
 
 
 def _aws_cp(local: str, remote: str, endpoint: str) -> bool:
-    code, out = _run(
-        f"aws s3 cp {shlex.quote(local)} {shlex.quote(remote)} --endpoint-url {shlex.quote(endpoint)} --only-show-errors"
+    cmd = (
+        f"aws s3 cp {shlex.quote(local)} {shlex.quote(remote)} "
+        f"--endpoint-url {shlex.quote(endpoint)} --only-show-errors"
     )
+    code, out = _run(cmd)
     return code == 0
 
 
 def _aws_cp_maybe(remote: str, local: str, endpoint: str) -> bool:
-    code, out = _run(
-        f"aws s3 cp {shlex.quote(remote)} {shlex.quote(local)} --endpoint-url {shlex.quote(endpoint)} --only-show-errors"
+    cmd = (
+        f"aws s3 cp {shlex.quote(remote)} {shlex.quote(local)} "
+        f"--endpoint-url {shlex.quote(endpoint)} --only-show-errors"
     )
+    code, out = _run(cmd)
     return code == 0
 
 

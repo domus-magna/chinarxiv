@@ -4,7 +4,6 @@ Create Cloudflare API token for GitHub Actions.
 """
 
 import requests
-import json
 import subprocess
 import sys
 import os
@@ -29,13 +28,13 @@ def get_auth_token():
 def create_api_token():
     """Create API token using Cloudflare API."""
     print("🔧 Creating Cloudflare API token...")
-    
+
     # Get auth token
     auth_token = get_auth_token()
     if not auth_token:
         print("❌ Could not get auth token from Wrangler config")
         return None
-    
+
     # API token payload
     payload = {
         "name": "GitHub Actions - ChinaXiv Translations",
@@ -59,20 +58,20 @@ def create_api_token():
         "not_before": None,
         "condition": {}
     }
-    
+
     # Create token
     headers = {
         "Authorization": f"Bearer {auth_token}",
         "Content-Type": "application/json"
     }
-    
+
     try:
         response = requests.post(
             "https://api.cloudflare.com/client/v4/user/tokens",
             headers=headers,
             json=payload
         )
-        
+
         if response.status_code == 200:
             result = response.json()
             if result.get("success"):
@@ -86,25 +85,25 @@ def create_api_token():
             print(f"❌ HTTP error: {response.status_code}")
             print(f"Response: {response.text}")
             return None
-            
+
     except Exception as e:
         print(f"❌ Error creating token: {e}")
         return None
 
 def add_to_github(token):
     """Add token to GitHub secrets."""
-    print(f"\n🔧 Adding token to GitHub secrets...")
-    
+    print("\n🔧 Adding token to GitHub secrets...")
+
     try:
-        result = subprocess.run([
-            "gh", "secret", "set", "CF_API_TOKEN", 
+        subprocess.run([
+            "gh", "secret", "set", "CF_API_TOKEN",
             "--repo", "seconds-0/chinaxiv-english",
             "--body", token
         ], capture_output=True, text=True, check=True)
-        
+
         print("✅ CF_API_TOKEN added to GitHub secrets")
         return True
-        
+
     except subprocess.CalledProcessError as e:
         print(f"❌ Failed to add token to GitHub: {e.stderr}")
         return False
@@ -112,7 +111,7 @@ def add_to_github(token):
 def main():
     print("🚀 Cloudflare API Token Creation")
     print("=" * 50)
-    
+
     # Create API token
     token = create_api_token()
     if not token:
@@ -124,18 +123,18 @@ def main():
         print("4. Set permissions: Cloudflare Pages:Edit")
         print("5. Copy the token")
         return 1
-    
+
     # Add to GitHub
     if not add_to_github(token):
         return 1
-    
+
     print("\n" + "=" * 50)
     print("🎉 API token setup complete!")
     print("\nNext steps:")
     print("1. Test GitHub Actions workflow")
     print("2. Monitor deployment")
     print("3. Verify site functionality")
-    
+
     return 0
 
 if __name__ == "__main__":
