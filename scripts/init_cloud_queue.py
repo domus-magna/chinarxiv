@@ -97,7 +97,7 @@ def merge_and_deduplicate(ia_ids: List[str], chinaxiv_ids: List[str]) -> List[st
     # Sort for consistent ordering
     merged = sorted(list(all_ids))
 
-    print(f"\nMerged dataset:")
+    print("\nMerged dataset:")
     print(f"  IA papers: {len(ia_ids)}")
     print(f"  ChinaXiv papers: {len(chinaxiv_ids)}")
     print(f"  Total unique: {len(merged)}")
@@ -141,7 +141,6 @@ def initialize_queue(
     # Mark completed jobs
     if completed:
         # Add them as completed
-        from datetime import datetime
 
         for pid in completed:
             cloud_queue.add_jobs([pid])

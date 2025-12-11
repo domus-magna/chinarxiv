@@ -19,10 +19,8 @@ Requirements:
 """
 
 import psycopg2
-from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
 import sqlite3
-import json
 import os
 import sys
 import logging
@@ -52,11 +50,12 @@ def create_postgres_schema(pg_conn):
     logger.info("Creating PostgreSQL schema...")
 
     # Papers table (with proper types and constraints)
+    # Note: title_en is nullable because it's set during translation (title_cn is the source of truth)
     logger.info("  Creating papers table...")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS papers (
         id TEXT PRIMARY KEY,
-        title_en TEXT NOT NULL,
+        title_en TEXT,  -- Nullable, populated during translation
         abstract_en TEXT,
         creators_en JSONB,  -- Native JSONB (better than TEXT)
         date TIMESTAMP WITH TIME ZONE,  -- Proper timestamp type
@@ -68,28 +67,7 @@ def create_postgres_schema(pg_conn):
         body_md TEXT,
         english_pdf_url TEXT,  -- URL to English PDF in B2
         figure_urls TEXT,  -- JSON array of translated figure URLs [{number, url}, ...]
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-
-        -- Processing status columns (for pipeline orchestrator)
-        processing_status VARCHAR(20) DEFAULT 'pending'
-            CHECK (processing_status IN ('pending', 'processing', 'complete', 'failed')),
-        processing_started_at TIMESTAMP WITH TIME ZONE,
-        processing_error TEXT,
-
-        -- Stage completion status (for idempotency)
-        text_status VARCHAR(20) DEFAULT 'pending'
-            CHECK (text_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')),
-        text_completed_at TIMESTAMP WITH TIME ZONE,
-        figures_status VARCHAR(20) DEFAULT 'pending'
-            CHECK (figures_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')),
-        figures_completed_at TIMESTAMP WITH TIME ZONE,
-        pdf_status VARCHAR(20) DEFAULT 'pending'
-            CHECK (pdf_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')),
-        pdf_completed_at TIMESTAMP WITH TIME ZONE,
-
-        -- Source data tracking
-        has_chinese_pdf BOOLEAN DEFAULT FALSE,
-        has_english_pdf BOOLEAN DEFAULT FALSE
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
     """)
 
@@ -98,8 +76,21 @@ def create_postgres_schema(pg_conn):
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS english_pdf_url TEXT;")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figure_urls TEXT;")
 
-    # Processing status columns (for pipeline orchestrator)
-    logger.info("  Ensuring processing status columns exist...")
+    # Chinese source columns for database-as-source-of-truth
+    # These store the original Chinese metadata (before translation)
+    logger.info("  Ensuring Chinese source columns exist...")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS title_cn TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS abstract_cn TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS creators_cn JSONB;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS subjects_cn JSONB;")
+
+    # Make title_en nullable (for existing databases with NOT NULL constraint)
+    # title_cn is the source of truth; title_en is populated during translation
+    logger.info("  Making title_en nullable (if constraint exists)...")
+    cursor.execute("ALTER TABLE papers ALTER COLUMN title_en DROP NOT NULL;")
+
+    # Orchestrator columns for pipeline processing status tracking
+    logger.info("  Ensuring orchestrator columns exist...")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_status VARCHAR(20) DEFAULT 'pending';")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE;")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS processing_error TEXT;")
@@ -143,36 +134,48 @@ def create_postgres_schema(pg_conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_subjects_subject ON paper_subjects(subject);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_search ON papers USING GIN(search_vector);")
 
-    # Pipeline orchestrator indexes
-    logger.info("  Creating pipeline orchestrator indexes...")
-    # Primary queue query: find papers needing work (pending or zombie)
+    # Orchestrator indexes for queue queries
+    logger.info("  Creating orchestrator indexes...")
     cursor.execute("""
-    CREATE INDEX IF NOT EXISTS idx_papers_processing_queue
-        ON papers (processing_status, processing_started_at)
-        WHERE processing_status IN ('pending', 'processing');
+        CREATE INDEX IF NOT EXISTS idx_papers_processing_queue
+            ON papers (processing_status, processing_started_at)
+            WHERE processing_status IN ('pending', 'processing');
     """)
-    # Index for filtering by text status
     cursor.execute("""
-    CREATE INDEX IF NOT EXISTS idx_papers_text_status
-        ON papers (text_status)
-        WHERE text_status != 'complete';
+        CREATE INDEX IF NOT EXISTS idx_papers_text_status
+            ON papers (text_status) WHERE text_status != 'complete';
     """)
-    # Index for filtering by figures status
     cursor.execute("""
-    CREATE INDEX IF NOT EXISTS idx_papers_figures_status
-        ON papers (figures_status)
-        WHERE figures_status != 'complete';
+        CREATE INDEX IF NOT EXISTS idx_papers_figures_status
+            ON papers (figures_status) WHERE figures_status != 'complete';
     """)
-    # Index for filtering by pdf status
     cursor.execute("""
-    CREATE INDEX IF NOT EXISTS idx_papers_pdf_status
-        ON papers (pdf_status)
-        WHERE pdf_status != 'complete';
+        CREATE INDEX IF NOT EXISTS idx_papers_pdf_status
+            ON papers (pdf_status) WHERE pdf_status != 'complete';
     """)
-    # Composite index for orchestrator queue queries
     cursor.execute("""
-    CREATE INDEX IF NOT EXISTS idx_papers_orchestrator_queue
-        ON papers (processing_status, text_status, figures_status, pdf_status);
+        CREATE INDEX IF NOT EXISTS idx_papers_orchestrator_queue
+            ON papers (processing_status, text_status, figures_status, pdf_status);
+    """)
+
+    # Status column constraints (idempotent - drop then add)
+    logger.info("  Creating status constraints...")
+    for constraint, check in [
+        ("chk_processing_status", "processing_status IN ('pending', 'processing', 'complete', 'failed')"),
+        ("chk_text_status", "text_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')"),
+        ("chk_figures_status", "figures_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')"),
+        ("chk_pdf_status", "pdf_status IN ('pending', 'processing', 'complete', 'failed', 'skipped')"),
+    ]:
+        cursor.execute(f"ALTER TABLE papers DROP CONSTRAINT IF EXISTS {constraint};")
+        cursor.execute(f"ALTER TABLE papers ADD CONSTRAINT {constraint} CHECK ({check});")
+
+    # Schema migrations tracking table
+    logger.info("  Creating schema_migrations table...")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version VARCHAR(50) PRIMARY KEY,
+            applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
     # Translation requests table (for figure and text translation requests from users)
@@ -203,15 +206,6 @@ def create_postgres_schema(pg_conn):
     cursor.execute("""
     CREATE INDEX IF NOT EXISTS idx_translation_requests_paper
         ON translation_requests(paper_id);
-    """)
-
-    # Schema migrations table (for tracking applied migrations)
-    logger.info("  Creating schema_migrations table...")
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-        version VARCHAR(50) PRIMARY KEY,
-        applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    );
     """)
 
     pg_conn.commit()
@@ -417,7 +411,7 @@ def main():
 
     try:
         # Connect to PostgreSQL
-        logger.info(f"Connecting to PostgreSQL...")
+        logger.info("Connecting to PostgreSQL...")
         pg_conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
         logger.info("✅ Connected to PostgreSQL")
 

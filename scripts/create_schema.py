@@ -104,7 +104,7 @@ def main():
         logger.error("DATABASE_URL environment variable is required")
         sys.exit(1)
 
-    logger.info(f"Connecting to database...")
+    logger.info("Connecting to database...")
     try:
         conn = psycopg2.connect(database_url)
         create_schema(conn)

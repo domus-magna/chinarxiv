@@ -145,50 +145,89 @@ jobs:
           echo "Downloaded $downloaded PDFs, $failed missing"
           echo "pdf_downloaded=$downloaded" >> $GITHUB_OUTPUT
 
-      - name: Translate papers
+      - name: Create selected.json from paper IDs
+        run: |
+          set -e
+          echo "Creating selected.json from paper IDs and records..."
+
+          # Build selected.json by extracting records for the requested papers
+          python3 << 'EOF'
+          import json
+          import os
+          from pathlib import Path
+
+          # Load all records
+          records_dir = Path("data/records")
+          all_records = {}
+          for rf in records_dir.glob("chinaxiv_*.json"):
+              try:
+                  with open(rf) as f:
+                      for rec in json.load(f):
+                          all_records[rec["id"]] = rec
+              except Exception as e:
+                  print(f"Warning: Error loading {rf}: {e}")
+
+          print(f"Loaded {len(all_records)} total records")
+
+          # Read paper IDs
+          with open("paper_ids.txt") as f:
+              paper_ids = [line.strip() for line in f if line.strip()]
+
+          print(f"Looking for {len(paper_ids)} papers")
+
+          # Build selected.json
+          selected = []
+          missing = []
+          for pid in paper_ids:
+              if pid in all_records:
+                  rec = all_records[pid]
+                  # Add pdf_path if PDF exists
+                  pdf_path = f"data/pdfs/{pid}.pdf"
+                  if os.path.exists(pdf_path):
+                      rec["files"] = {"pdf_path": pdf_path}
+                  selected.append(rec)
+              else:
+                  missing.append(pid)
+
+          print(f"Found {len(selected)} papers in records")
+          if missing:
+              print(f"Missing from records: {missing[:5]}{'...' if len(missing) > 5 else ''}")
+
+          # Write selected.json
+          with open("data/selected.json", "w") as f:
+              json.dump(selected, f, ensure_ascii=False, indent=2)
+
+          print(f"Wrote data/selected.json with {len(selected)} papers")
+          EOF
+
+      - name: Translate papers (parallel)
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           set -e
 
-          workers="${{ inputs.workers || '10' }}"
-          echo "Translating papers with $workers workers..."
+          workers="${{ inputs.workers || '20' }}"
+          echo "Translating papers with $workers parallel workers..."
 
-          success=0
-          failed=0
-          skipped=0
+          # Use the pipeline with --skip-selection since we already created selected.json
+          python -m src.pipeline \
+            --skip-selection \
+            --workers "$workers" \
+            --with-qa || {
+            echo "⚠️ Translation completed with some errors"
+          }
 
-          while IFS= read -r paper_id || [ -n "$paper_id" ]; do
-            [ -z "$paper_id" ] && continue
-
-            pdf_path="data/pdfs/${paper_id}.pdf"
-            if [ ! -f "$pdf_path" ]; then
-              echo "::warning::Skipping $paper_id - PDF not available"
-              skipped=$((skipped + 1))
-              continue
-            fi
-
-            echo "::group::Translating: $paper_id"
-
-            if python -m src.translate "$paper_id"; then
-              success=$((success + 1))
-              echo "Successfully translated $paper_id"
-            else
-              failed=$((failed + 1))
-              echo "::warning::Failed to translate $paper_id"
-            fi
-
-            echo "::endgroup::"
-          done < paper_ids.txt
+          # Count results
+          passed=$(ls -1 data/translated/*.json 2>/dev/null | wc -l | tr -d ' ')
+          flagged=$(ls -1 data/flagged/*.json 2>/dev/null | wc -l | tr -d ' ')
 
           echo ""
           echo "============================================"
-          echo "Summary: $success succeeded, $failed failed, $skipped skipped"
+          echo "Summary: $passed passed QA, $flagged flagged"
           echo "============================================"
 
-          # Don't fail the job if some papers failed - we still want to upload the successful ones
-          echo "translation_success=$success" >> $GITHUB_OUTPUT
-          echo "translation_failed=$failed" >> $GITHUB_OUTPUT
+          echo "translation_success=$passed" >> $GITHUB_OUTPUT
+          echo "translation_flagged=$flagged" >> $GITHUB_OUTPUT
 
       - name: Upload translations to B2
         if: always()

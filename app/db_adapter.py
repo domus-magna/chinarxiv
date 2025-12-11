@@ -10,11 +10,11 @@ Environment requirements:
 
 import os
 import logging
-from typing import Optional, Any, Dict
+from typing import Optional
 
 import psycopg2
+from psycopg2 import pool  # noqa: F401 - used via psycopg2.pool
 from psycopg2.extras import RealDictCursor
-from psycopg2 import pool
 
 logger = logging.getLogger(__name__)
 

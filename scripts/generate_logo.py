@@ -27,8 +27,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import requests
-from src.logging_utils import log
+import requests  # noqa: E402
+from src.logging_utils import log  # noqa: E402
 
 # API config
 API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"

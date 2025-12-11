@@ -15,19 +15,19 @@ Simplicity-first: sequential downloads with basic summary output.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
-import os
+import sys
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
-import sys
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.pdf_pipeline import download_pdf
-from src.file_service import ensure_dir
-from src.logging_utils import log
+from src.pdf_pipeline import download_pdf  # noqa: E402
+from src.file_service import ensure_dir  # noqa: E402
+from src.logging_utils import log  # noqa: E402
 
 
 RECORDS_DIR = Path("data/records")
@@ -136,10 +136,8 @@ def download_missing(
             log(f"[{progress}/{total}] ✗ Failed")
             # remove any partial
             if dst.exists():
-                try:
+                with contextlib.suppress(Exception):
                     dst.unlink()
-                except Exception:
-                    pass
 
     elapsed = time.time() - start_time
     log(f"✅ Download complete in {elapsed:.1f}s: {downloaded} succeeded, {failures} failed")

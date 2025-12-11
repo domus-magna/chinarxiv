@@ -43,6 +43,8 @@ def orchestrator_test_database(test_database_schema):
 
     This extends the base test_database_schema fixture to add
     the processing_status columns from our migration.
+
+    Also sets DATABASE_URL environment variable for orchestrator functions.
     """
     conn = psycopg2.connect(test_database_schema)
     cursor = conn.cursor()
@@ -76,7 +78,17 @@ def orchestrator_test_database(test_database_schema):
     conn.commit()
     conn.close()
 
-    return test_database_schema
+    # Set DATABASE_URL for orchestrator to use
+    old_db_url = os.environ.get('DATABASE_URL')
+    os.environ['DATABASE_URL'] = test_database_schema
+
+    yield test_database_schema
+
+    # Restore old DATABASE_URL or remove it
+    if old_db_url is not None:
+        os.environ['DATABASE_URL'] = old_db_url
+    elif 'DATABASE_URL' in os.environ:
+        del os.environ['DATABASE_URL']
 
 
 @pytest.fixture
@@ -162,15 +174,30 @@ def sample_orchestrator_papers(orchestrator_test_database):
             'figures_status': 'pending',
             'pdf_status': 'pending',
         },
-        # Failed paper
+        # Failed paper (recent - should NOT auto-retry by default)
         {
             'id': 'chinaxiv-202401.00006',
-            'title_en': 'Test Paper 6 - Failed',
+            'title_en': 'Test Paper 6 - Failed Recent',
             'abstract_en': 'Abstract 6',
             'creators_en': '["Author 6"]',
             'date': '2024-01-20T10:00:00',
             'processing_status': 'failed',
+            'processing_started_at': datetime.now(timezone.utc) - timedelta(days=2),
             'processing_error': 'Previous error message',
+            'text_status': 'failed',
+            'figures_status': 'pending',
+            'pdf_status': 'pending',
+        },
+        # Failed paper (old - should auto-retry after 7 days)
+        {
+            'id': 'chinaxiv-202401.00007',
+            'title_en': 'Test Paper 7 - Failed Old',
+            'abstract_en': 'Abstract 7',
+            'creators_en': '["Author 7"]',
+            'date': '2024-01-21T10:00:00',
+            'processing_status': 'failed',
+            'processing_started_at': datetime.now(timezone.utc) - timedelta(days=10),
+            'processing_error': 'Old error message',
             'text_status': 'failed',
             'figures_status': 'pending',
             'pdf_status': 'pending',
@@ -209,9 +236,9 @@ class TestWorkQueue:
         """Test filtering papers by month."""
         conn = get_db_connection()
         try:
-            # January 2024 should have 6 papers
+            # January 2024 should have 7 papers
             jan_papers = get_papers_by_month(conn, '202401')
-            assert len(jan_papers) == 6
+            assert len(jan_papers) == 7
             assert all(p.startswith('chinaxiv-202401') for p in jan_papers)
 
             # February 2024 should have 1 paper
@@ -304,7 +331,7 @@ class TestWorkQueue:
         queue = get_work_queue(scope='month', target='202401', force=True)
 
         # Force mode should include ALL papers in the month
-        assert len(queue) == 6
+        assert len(queue) == 7
         assert 'chinaxiv-202401.00002' in queue  # Even complete papers
 
     def test_work_queue_smart_resume(self, sample_orchestrator_papers):
@@ -627,7 +654,7 @@ class TestProcessPaper:
         mock_text.return_value = True
 
         # Paper 00005 already has text complete
-        _result = process_paper(
+        process_paper(
             'chinaxiv-202401.00005',
             stages=['harvest', 'text', 'figures']
         )
@@ -768,13 +795,8 @@ class TestOrchestratorIntegration:
         mock_pdf.return_value = True
         mock_post.return_value = True
 
-        # Get initial status (verify paper exists)
-        conn = get_db_connection()
-        _initial_status = get_paper_status(conn, 'chinaxiv-202401.00001')
-        conn.close()
-
         # Run with dry_run
-        _stats = run_orchestrator(
+        run_orchestrator(
             scope='list',
             target='chinaxiv-202401.00001',
             dry_run=True,
@@ -848,3 +870,507 @@ class TestEdgeCases:
         finally:
             conn1.close()
             conn2.close()
+
+
+# ============================================================================
+# Test: Auto-Retry Failed Papers
+# ============================================================================
+
+class TestAutoRetryFailed:
+    """Tests for auto-retry of failed papers after 7 days."""
+
+    def test_recent_failed_not_auto_retried(self, sample_orchestrator_papers):
+        """Recent failed papers (< 7 days) should NOT be auto-retried."""
+        conn = get_db_connection()
+        try:
+            papers = get_papers_needing_work(conn)
+
+            # chinaxiv-202401.00006 failed 2 days ago - should NOT be included
+            assert 'chinaxiv-202401.00006' not in papers
+        finally:
+            conn.close()
+
+    def test_old_failed_auto_retried(self, sample_orchestrator_papers):
+        """Failed papers older than 7 days should be auto-retried."""
+        conn = get_db_connection()
+        try:
+            papers = get_papers_needing_work(conn)
+
+            # chinaxiv-202401.00007 failed 10 days ago - should be included
+            assert 'chinaxiv-202401.00007' in papers
+        finally:
+            conn.close()
+
+    def test_include_failed_flag_includes_all_failed(self, sample_orchestrator_papers):
+        """include_failed=True should include ALL failed papers."""
+        conn = get_db_connection()
+        try:
+            papers = get_papers_needing_work(conn, include_failed=True)
+
+            # Both failed papers should be included
+            assert 'chinaxiv-202401.00006' in papers  # Recent failed
+            assert 'chinaxiv-202401.00007' in papers  # Old failed
+        finally:
+            conn.close()
+
+    def test_work_queue_include_failed(self, sample_orchestrator_papers):
+        """Test work queue with include_failed flag."""
+        queue = get_work_queue(
+            scope='smart-resume',
+            target=None,
+            include_failed=True
+        )
+
+        # Both failed papers should be in queue
+        assert 'chinaxiv-202401.00006' in queue
+        assert 'chinaxiv-202401.00007' in queue
+
+
+# ============================================================================
+# Test: Run Harvest with DB pdf_url
+# ============================================================================
+
+class TestRunHarvestWithPdfUrl:
+    """Tests for run_harvest using pdf_url from database."""
+
+    def test_harvest_existing_pdf_returns_true(self, sample_orchestrator_papers, tmp_path):
+        """If PDF exists locally, harvest should succeed without download."""
+        from src.orchestrator import run_harvest
+
+        # Create a fake PDF file
+        pdf_dir = tmp_path / "data" / "pdfs"
+        pdf_dir.mkdir(parents=True)
+        pdf_file = pdf_dir / "chinaxiv-202401.00001.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake pdf content")
+
+        # Temporarily change working directory
+        import os
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = run_harvest('chinaxiv-202401.00001')
+            assert result is True
+        finally:
+            os.chdir(original_cwd)
+
+    def test_harvest_dry_run_succeeds_without_download(self, sample_orchestrator_papers):
+        """Dry run should succeed without actually downloading."""
+        from src.orchestrator import run_harvest
+
+        result = run_harvest('chinaxiv-202401.00001', dry_run=True)
+        assert result is True
+
+    def test_harvest_missing_paper_returns_false(self, sample_orchestrator_papers):
+        """Harvest for non-existent paper should fail gracefully."""
+        from src.orchestrator import run_harvest
+
+        # Paper not in DB should return False
+        result = run_harvest('chinaxiv-999999.99999')
+        assert result is False
+
+    def test_harvest_missing_pdf_url_returns_false(self, sample_orchestrator_papers):
+        """Harvest should fail if paper has no pdf_url in DB."""
+        from src.orchestrator import run_harvest
+
+        # Our test papers don't have pdf_url set, so this should fail
+        # (assuming PDF doesn't exist locally and B2 download fails)
+        with patch('src.orchestrator.download_pdf_from_b2', return_value=False):
+            result = run_harvest('chinaxiv-202401.00001')
+            # Should fail because no pdf_url in test data
+            assert result is False
+
+    def test_download_pdf_from_b2_missing_credentials(self, sample_orchestrator_papers):
+        """download_pdf_from_b2 should return False if credentials missing."""
+        from src.orchestrator import download_pdf_from_b2
+
+        # Clear B2 environment variables
+        import os
+        env_vars = ['BACKBLAZE_BUCKET', 'BACKBLAZE_S3_ENDPOINT', 'BACKBLAZE_KEY_ID',
+                    'BACKBLAZE_APPLICATION_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']
+        saved = {k: os.environ.pop(k, None) for k in env_vars}
+
+        try:
+            result = download_pdf_from_b2('chinaxiv-202401.00001', '/tmp/test.pdf')
+            assert result is False
+        finally:
+            # Restore environment
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+
+
+# ============================================================================
+# Test: Discovery Functions
+# ============================================================================
+
+class TestDiscovery:
+    """Tests for paper discovery (harvest) functionality."""
+
+    def test_insert_paper_if_new_inserts_new_paper(self, orchestrator_test_database):
+        """insert_paper_if_new should insert a paper that doesn't exist."""
+        from src.orchestrator import insert_paper_if_new, get_paper_status
+
+        record = {
+            'id': 'chinaxiv-202501.00001',
+            'title': 'Test Paper Title',
+            'abstract': 'Test abstract',
+            'creators': ['Author One', 'Author Two'],
+            'subjects': ['Physics', 'Math'],
+            'date': '2025-01-15T00:00:00Z',
+            'source_url': 'https://chinaxiv.org/abs/202501.00001',
+            'pdf_url': 'https://chinaxiv.org/pdf/202501.00001',
+        }
+
+        conn = get_db_connection()
+        try:
+            # Should return True for new paper
+            result = insert_paper_if_new(conn, record)
+            conn.commit()
+            assert result is True
+
+            # Verify paper exists
+            status = get_paper_status(conn, 'chinaxiv-202501.00001')
+            assert status is not None
+            assert status['processing_status'] == 'pending'
+
+            # Verify subjects were inserted into paper_subjects table
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT subject FROM paper_subjects WHERE paper_id = %s ORDER BY subject",
+                ('chinaxiv-202501.00001',)
+            )
+            subjects = [row['subject'] for row in cursor.fetchall()]
+            assert subjects == ['Math', 'Physics'], f"Expected ['Math', 'Physics'], got {subjects}"
+        finally:
+            conn.close()
+
+    def test_insert_paper_if_new_skips_existing_paper(self, sample_orchestrator_papers):
+        """insert_paper_if_new should skip papers that already exist."""
+        from src.orchestrator import insert_paper_if_new
+
+        # Try to insert a paper that already exists from fixtures
+        record = {
+            'id': 'chinaxiv-202401.00001',  # Already exists
+            'title': 'Different Title',
+            'abstract': 'Different abstract',
+            'creators': ['Different Author'],
+            'subjects': ['Different Subject'],
+            'date': '2024-01-15T00:00:00Z',
+            'source_url': 'https://chinaxiv.org/abs/202401.00001',
+            'pdf_url': 'https://chinaxiv.org/pdf/202401.00001',
+        }
+
+        conn = get_db_connection()
+        try:
+            # Should return False for existing paper
+            result = insert_paper_if_new(conn, record)
+            assert result is False
+        finally:
+            conn.close()
+
+    def test_insert_paper_stores_chinese_in_cn_columns(self, orchestrator_test_database):
+        """insert_paper_if_new should store Chinese metadata in _cn columns."""
+        from src.orchestrator import insert_paper_if_new
+
+        # Record with Chinese metadata (as returned by scraper)
+        record = {
+            'id': 'chinaxiv-202501.00002',
+            'title': '中文论文标题',
+            'abstract': '这是中文摘要。',
+            'creators': ['张三', '李四'],
+            'subjects': ['计算机科学', '人工智能'],
+            'date': '2025-01-15T00:00:00Z',
+            'source_url': 'https://chinaxiv.org/abs/202501.00002',
+            'pdf_url': 'https://chinaxiv.org/pdf/202501.00002',
+        }
+
+        conn = get_db_connection()
+        try:
+            result = insert_paper_if_new(conn, record)
+            conn.commit()
+            assert result is True
+
+            # Verify Chinese is stored in _cn columns
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT title_cn, abstract_cn, creators_cn, subjects_cn,
+                       title_en, abstract_en, creators_en
+                FROM papers WHERE id = %s
+            """, ('chinaxiv-202501.00002',))
+            row = cursor.fetchone()
+
+            assert row['title_cn'] == '中文论文标题'
+            assert row['abstract_cn'] == '这是中文摘要。'
+            # creators_cn should be JSON list
+            import json
+            creators = row['creators_cn'] if isinstance(row['creators_cn'], list) else json.loads(row['creators_cn'])
+            assert creators == ['张三', '李四']
+            subjects = row['subjects_cn'] if isinstance(row['subjects_cn'], list) else json.loads(row['subjects_cn'])
+            assert subjects == ['计算机科学', '人工智能']
+
+            # Verify _en columns are NULL (not populated until translation)
+            assert row['title_en'] is None
+            assert row['abstract_en'] is None
+            assert row['creators_en'] is None
+        finally:
+            conn.close()
+
+    def test_run_discover_requires_brightdata_credentials(self, orchestrator_test_database):
+        """run_discover should fail without BrightData credentials."""
+        from src.orchestrator import run_discover
+
+        # Clear BrightData environment variables
+        env_vars = ['BRIGHTDATA_API_KEY', 'BRIGHTDATA_ZONE']
+        saved = {k: os.environ.pop(k, None) for k in env_vars}
+
+        try:
+            with pytest.raises(RuntimeError, match="BRIGHTDATA"):
+                run_discover('202501')
+        finally:
+            # Restore environment
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+
+    @patch('src.harvest_chinaxiv_optimized.OptimizedChinaXivScraper')
+    @patch('src.orchestrator.upload_records_to_b2')
+    def test_run_discover_with_mocked_scraper(
+        self,
+        mock_upload,
+        mock_scraper_class,
+        orchestrator_test_database
+    ):
+        """run_discover should scrape, import to DB, and upload to B2."""
+        from src.orchestrator import run_discover, get_paper_status
+
+        # Set up BrightData credentials
+        os.environ['BRIGHTDATA_API_KEY'] = 'test_key'
+        os.environ['BRIGHTDATA_ZONE'] = 'test_zone'
+
+        # Mock scraper instance
+        mock_scraper = mock_scraper_class.return_value
+        mock_scraper.extract_homepage_max_ids.return_value = {'202501': 5}
+        mock_scraper.scrape_month_optimized.return_value = [
+            {
+                'id': 'chinaxiv-202501.00001',
+                'title': 'Paper 1',
+                'abstract': 'Abstract 1',
+                'creators': ['Author 1'],
+                'subjects': ['Subject 1'],
+                'date': '2025-01-01T00:00:00Z',
+                'source_url': 'https://chinaxiv.org/abs/202501.00001',
+                'pdf_url': 'https://chinaxiv.org/pdf/202501.00001',
+            },
+            {
+                'id': 'chinaxiv-202501.00002',
+                'title': 'Paper 2',
+                'abstract': 'Abstract 2',
+                'creators': ['Author 2'],
+                'subjects': ['Subject 2'],
+                'date': '2025-01-02T00:00:00Z',
+                'source_url': 'https://chinaxiv.org/abs/202501.00002',
+                'pdf_url': 'https://chinaxiv.org/pdf/202501.00002',
+            },
+        ]
+        mock_upload.return_value = True
+
+        try:
+            # Run discovery
+            new_ids = run_discover('202501')
+
+            # Should have found 2 new papers
+            assert len(new_ids) == 2
+            assert 'chinaxiv-202501.00001' in new_ids
+            assert 'chinaxiv-202501.00002' in new_ids
+
+            # Verify papers are in database
+            conn = get_db_connection()
+            try:
+                status1 = get_paper_status(conn, 'chinaxiv-202501.00001')
+                status2 = get_paper_status(conn, 'chinaxiv-202501.00002')
+                assert status1 is not None
+                assert status2 is not None
+                assert status1['processing_status'] == 'pending'
+                assert status2['processing_status'] == 'pending'
+            finally:
+                conn.close()
+
+            # Verify B2 upload was called
+            mock_upload.assert_called_once()
+
+        finally:
+            # Cleanup
+            os.environ.pop('BRIGHTDATA_API_KEY', None)
+            os.environ.pop('BRIGHTDATA_ZONE', None)
+
+    def test_run_discover_dry_run_doesnt_modify_db(self, orchestrator_test_database):
+        """run_discover with dry_run=True should not modify database."""
+        from src.orchestrator import run_discover, get_paper_status
+
+        # Set up credentials
+        os.environ['BRIGHTDATA_API_KEY'] = 'test_key'
+        os.environ['BRIGHTDATA_ZONE'] = 'test_zone'
+
+        with patch('src.harvest_chinaxiv_optimized.OptimizedChinaXivScraper') as mock_scraper_class:
+            mock_scraper = mock_scraper_class.return_value
+            mock_scraper.extract_homepage_max_ids.return_value = {'202501': 1}
+            mock_scraper.scrape_month_optimized.return_value = [
+                {
+                    'id': 'chinaxiv-202501.00099',
+                    'title': 'Dry Run Paper',
+                    'abstract': 'Should not be in DB',
+                    'creators': [],
+                    'subjects': [],
+                    'date': '2025-01-01T00:00:00Z',
+                    'source_url': 'https://chinaxiv.org/abs/202501.00099',
+                    'pdf_url': '',
+                },
+            ]
+
+            try:
+                # Run with dry_run=True
+                new_ids = run_discover('202501', dry_run=True)
+
+                # Should return the paper ID
+                assert len(new_ids) == 1
+
+                # But paper should NOT be in database
+                conn = get_db_connection()
+                try:
+                    status = get_paper_status(conn, 'chinaxiv-202501.00099')
+                    assert status == {}  # Empty dict means not found
+                finally:
+                    conn.close()
+
+            finally:
+                os.environ.pop('BRIGHTDATA_API_KEY', None)
+                os.environ.pop('BRIGHTDATA_ZONE', None)
+
+    def test_run_orchestrator_discover_scope(self, orchestrator_test_database):
+        """run_orchestrator with scope=discover should call run_discover."""
+        from src.orchestrator import run_orchestrator
+
+        # Set up credentials
+        os.environ['BRIGHTDATA_API_KEY'] = 'test_key'
+        os.environ['BRIGHTDATA_ZONE'] = 'test_zone'
+
+        with patch('src.orchestrator.run_discover') as mock_discover:
+            mock_discover.return_value = ['chinaxiv-202501.00001', 'chinaxiv-202501.00002']
+
+            try:
+                stats = run_orchestrator(scope='discover', target='202501')
+
+                # Should have called run_discover
+                mock_discover.assert_called_once_with('202501', dry_run=False)
+
+                # Stats should reflect discovery
+                assert stats.total == 2
+                assert stats.success == 2
+                assert stats.failed == 0
+
+            finally:
+                os.environ.pop('BRIGHTDATA_API_KEY', None)
+                os.environ.pop('BRIGHTDATA_ZONE', None)
+
+    def test_run_orchestrator_discover_requires_target(self, orchestrator_test_database):
+        """run_orchestrator with scope=discover should require target."""
+        from src.orchestrator import run_orchestrator
+
+        with pytest.raises(ValueError, match="YYYYMM"):
+            run_orchestrator(scope='discover', target=None)
+
+        with pytest.raises(ValueError, match="YYYYMM"):
+            run_orchestrator(scope='discover', target='invalid')
+
+
+class TestBackfillPreservesFailedStatus:
+    """Tests for backfill_state_from_b2.py preserving failed status."""
+
+    def test_backfill_preserves_failed_text_status(self, orchestrator_test_database):
+        """backfill_database should preserve 'failed' status and not revert to 'pending'."""
+        from scripts.backfill_state_from_b2 import backfill_database
+
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Insert a paper with text_status='failed'
+            cursor.execute("""
+                INSERT INTO papers (
+                    id, title_en, abstract_en, processing_status, text_status,
+                    figures_status, pdf_status
+                ) VALUES (
+                    'chinaxiv-202501.00099', 'Test Paper', 'Abstract',
+                    'failed', 'failed', 'pending', 'pending'
+                )
+            """)
+            conn.commit()
+
+            # Create B2 state with NO text translation for this paper
+            b2_state = {
+                'chinese_pdfs': set(),
+                'text_translations': set(),  # Paper has no text translation in B2
+                'figures': set(),
+                'english_pdfs': set(),
+            }
+
+            # Run backfill
+            backfill_database(conn, b2_state, dry_run=False)
+
+            # Verify the failed status is preserved, not reverted to 'pending'
+            cursor.execute("""
+                SELECT text_status, processing_status
+                FROM papers WHERE id = 'chinaxiv-202501.00099'
+            """)
+            row = cursor.fetchone()
+
+            assert row['text_status'] == 'failed', \
+                f"Expected text_status='failed' to be preserved, got '{row['text_status']}'"
+            assert row['processing_status'] == 'failed', \
+                f"Expected processing_status='failed' to be preserved, got '{row['processing_status']}'"
+
+        finally:
+            conn.close()
+
+    def test_backfill_updates_pending_to_complete_with_b2_file(self, orchestrator_test_database):
+        """backfill_database should update 'pending' to 'complete' when B2 file exists."""
+        from scripts.backfill_state_from_b2 import backfill_database
+
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Insert a paper with text_status='pending'
+            cursor.execute("""
+                INSERT INTO papers (
+                    id, title_en, abstract_en, processing_status, text_status,
+                    figures_status, pdf_status
+                ) VALUES (
+                    'chinaxiv-202501.00098', 'Test Paper 2', 'Abstract 2',
+                    'pending', 'pending', 'pending', 'pending'
+                )
+            """)
+            conn.commit()
+
+            # Create B2 state WITH text translation for this paper
+            b2_state = {
+                'chinese_pdfs': set(),
+                'text_translations': {'chinaxiv-202501.00098'},  # Has text in B2
+                'figures': set(),
+                'english_pdfs': set(),
+            }
+
+            # Run backfill
+            backfill_database(conn, b2_state, dry_run=False)
+
+            # Verify status is updated to 'complete'
+            cursor.execute("""
+                SELECT text_status FROM papers WHERE id = 'chinaxiv-202501.00098'
+            """)
+            row = cursor.fetchone()
+
+            assert row['text_status'] == 'complete', \
+                f"Expected text_status='complete' after backfill, got '{row['text_status']}'"
+
+        finally:
+            conn.close()

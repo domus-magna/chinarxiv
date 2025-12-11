@@ -241,7 +241,7 @@ def delete_translations(
             print(f"   ⚠️  Error deleting {paper_id}: {e}")
             failed.append({'paper_id': paper_id, 'error': str(e)})
 
-    print(f"\n✅ Deletion complete:")
+    print("\n✅ Deletion complete:")
     print(f"   - Deleted: {deleted_count}")
     if archive:
         print(f"   - Archived: {archived_count}")
@@ -362,7 +362,7 @@ def main():
         print("\n" + "=" * 80)
         print("DRY RUN MODE - No deletions performed")
         print("=" * 80)
-        print(f"\nTo actually delete, run with --confirm flag:")
+        print("\nTo actually delete, run with --confirm flag:")
         print(f"  python {__file__} --confirm")
 
     return 0

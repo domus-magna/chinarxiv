@@ -301,28 +301,36 @@ def run_cli() -> None:
     def _translate_one(paper_id: str) -> tuple[str, bool, str | None, bool | None]:
         try:
             log(f"Translating {paper_id}…")
-            result_path = translate_paper(paper_id, dry_run=args.dry_run)
+            # translate_paper returns paper_id on success (saves to DB + local file)
+            result = translate_paper(paper_id, dry_run=args.dry_run)
+            if not result:
+                return paper_id, False, "Translation returned empty result", None
+
+            # Construct path to local backup file
+            result_path = f"data/translated/{paper_id}.json"
 
             # QA filtering if enabled
             qa_passed = None
             if args.with_qa and not args.dry_run:
-                # Load translation
+                # Load translation from local file
                 import json
+                import os
 
-                with open(result_path, "r", encoding="utf-8") as f:
-                    translation = json.load(f)
+                if os.path.exists(result_path):
+                    with open(result_path, "r", encoding="utf-8") as f:
+                        translation = json.load(f)
 
-                # Run QA check using SynthesisQAFilter
-                qa_filter = SynthesisQAFilter()
-                qa_result = qa_filter.check_synthesis_translation(translation)
-                qa_passed = qa_result.status == QAStatus.PASS
+                    # Run QA check using SynthesisQAFilter
+                    qa_filter = SynthesisQAFilter()
+                    qa_result = qa_filter.check_synthesis_translation(translation)
+                    qa_passed = qa_result.status == QAStatus.PASS
 
-                if qa_passed:
-                    log(f"  QA: PASS (score: {qa_result.score:.2f})")
-                else:
-                    log(
-                        f"  QA: FLAGGED ({qa_result.status.value}, score: {qa_result.score:.2f})"
-                    )
+                    if qa_passed:
+                        log(f"  QA: PASS (score: {qa_result.score:.2f})")
+                    else:
+                        log(
+                            f"  QA: FLAGGED ({qa_result.status.value}, score: {qa_result.score:.2f})"
+                        )
 
             return paper_id, True, result_path, qa_passed
         except Exception as e:

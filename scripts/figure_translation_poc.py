@@ -49,7 +49,7 @@ import sys
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
 import requests
 
@@ -788,7 +788,7 @@ Generate the corrected image."""
                 # Success - break out of retry loop
                 break
 
-            except requests.exceptions.Timeout as e:
+            except requests.exceptions.Timeout:
                 if attempt < self.MAX_RETRIES - 1:
                     delay = self.RETRY_DELAYS[attempt]
                     print(f"  [retry] Timeout, waiting {delay}s (attempt {attempt + 1}/{self.MAX_RETRIES})")
@@ -942,7 +942,7 @@ class InpaintRenderer:
         image_size: tuple[int, int],
         regions: list[TextRegion],
         dilation: int = 5,
-    ) -> "Image.Image":
+    ) -> "Image.Image":  # noqa: F821
         """
         Create a binary mask from OCR bounding boxes.
 
@@ -986,8 +986,8 @@ class InpaintRenderer:
     def inpaint(
         self,
         image_path: str,
-        mask: "Image.Image",
-    ) -> "Image.Image":
+        mask: "Image.Image",  # noqa: F821
+    ) -> "Image.Image":  # noqa: F821
         """
         Remove text using inpainting (LaMa or OpenCV fallback).
 
@@ -1031,10 +1031,10 @@ class InpaintRenderer:
 
     def render_text(
         self,
-        image: "Image.Image",
+        image: "Image.Image",  # noqa: F821
         regions: list[TextRegion],
         font_size: int = 0,  # 0 = auto-size
-    ) -> "Image.Image":
+    ) -> "Image.Image":  # noqa: F821
         """
         Render translated text on the image.
 
@@ -1046,7 +1046,7 @@ class InpaintRenderer:
         Returns:
             Image with rendered text
         """
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import ImageDraw, ImageFont
         import numpy as np
 
         draw = ImageDraw.Draw(image)
@@ -1236,11 +1236,11 @@ class BaselineTranslator:
 # =============================================================================
 
 
-import subprocess
-import hashlib
-import tempfile
-import yaml
-from datetime import datetime
+import subprocess  # noqa: E402
+import hashlib  # noqa: E402
+import tempfile  # noqa: E402
+import yaml  # noqa: E402
+from datetime import datetime  # noqa: E402
 
 
 class DependencyChecker:
@@ -1448,8 +1448,8 @@ class MangaTranslatorPipeline:
             result["status"] = "failed"
             result["error"] = str(e)
         finally:
-            # Clean up temp config
-            try:
+            # Clean up temp config - suppress errors intentionally
+            try:  # noqa: SIM105
                 os.unlink(config_path)
             except Exception:
                 pass
@@ -1660,7 +1660,6 @@ class ComparisonRunner:
         fig_output_dir.mkdir(parents=True, exist_ok=True)
 
         # Copy original
-        from shutil import copy2
         original_path = fig_output_dir / "original.png"
         if not original_path.exists():
             from PIL import Image
@@ -2141,7 +2140,7 @@ class HTMLReportGenerator:
                 if img_path and status == "success":
                     html += f'                <img src="{img_path}" alt="{pipeline_name}" loading="lazy">\n'
                 else:
-                    html += f'                <div style="padding:40px;background:#eee;border-radius:4px;">No image</div>\n'
+                    html += '                <div style="padding:40px;background:#eee;border-radius:4px;">No image</div>\n'
 
                 html += f"""                <div class="timing">{timing_str}</div>
                 <span class="status {status}">{status}</span>
@@ -2201,11 +2200,9 @@ def run_poc(
 
     # Step 1: OCR
     print(f"\n[1/3] Extracting text with {ocr_engine.upper()}...")
-    engine: OCREngine
-    if ocr_engine == "paddle":
-        engine = PaddleOCREngine()
-    else:
-        engine = EasyOCREngine()
+    engine: OCREngine = (  # noqa: SIM108
+        PaddleOCREngine() if ocr_engine == "paddle" else EasyOCREngine()
+    )
 
     result.ocr = engine.extract(image_path)
 
@@ -2236,7 +2233,7 @@ def run_poc(
 
     # Step 3: Render translated image
     if method == "inpaint":
-        print(f"\n[3/3] Rendering with inpaint + PIL overlay...")
+        print("\n[3/3] Rendering with inpaint + PIL overlay...")
         output_path = output_dir / f"{Path(image_path).stem}_inpaint_translated.png"
 
         renderer = InpaintRenderer()
@@ -2262,7 +2259,7 @@ def run_poc(
             print(f"  Output: {result.regeneration.output_path}")
 
     else:  # method == "gemini"
-        print(f"\n[3/3] Regenerating image with Gemini...")
+        print("\n[3/3] Regenerating image with Gemini...")
         if max_retries > 0:
             print(f"  (with verification and up to {max_retries} correction retries)")
 
@@ -2294,7 +2291,7 @@ def run_poc(
 
     # Step 4: Baseline comparison (optional)
     if include_baseline:
-        print(f"\n[Baseline] Running current pipeline for comparison...")
+        print("\n[Baseline] Running current pipeline for comparison...")
         baseline_path = output_dir / f"{Path(image_path).stem}_baseline.png"
 
         baseline = BaselineTranslator()
@@ -2316,7 +2313,7 @@ def run_poc(
     print(f"  OCR: {result.ocr.extraction_time_ms:.0f}ms")
     print(f"  Translation: {result.translation.translation_time_ms:.0f}ms")
     print(f"  Regeneration: {result.regeneration.regeneration_time_ms:.0f}ms")
-    print(f"\nOutputs:")
+    print("\nOutputs:")
     print(f"  New approach: {result.regeneration.output_path}")
     if result.baseline_path:
         print(f"  Baseline: {result.baseline_path}")

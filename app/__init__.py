@@ -11,7 +11,6 @@ Requires: DATABASE_URL environment variable for PostgreSQL connection
 
 from flask import Flask, g
 import os
-from pathlib import Path
 import markdown as md
 from markupsafe import Markup
 import bleach

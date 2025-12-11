@@ -7,6 +7,14 @@ name: Universal Pipeline
 #
 # ALL LOGIC IS IN PYTHON (src/orchestrator.py) - THIS YAML IS INTENTIONALLY DUMB.
 #
+# IMPORTANT: DATABASE IS SOURCE OF TRUTH
+# Papers must exist in the PostgreSQL database BEFORE this workflow can process
+# them. The orchestrator does NOT harvest/discover new papers automatically.
+#
+# To add new papers to the database:
+#   python scripts/import_to_postgres.py --month YYYYMM
+#   OR: python -m src.harvest_chinaxiv_optimized --start YYYYMM --end YYYYMM
+#
 # USE CASES:
 # - Process specific month: --scope month --target 202401
 # - Process specific papers: --scope list --target id1,id2
@@ -28,6 +36,7 @@ on:
         required: true
         default: 'smart-resume'
         options:
+          - discover       # Discover new papers for a month (no translation)
           - month          # Process all papers from a specific month (YYYYMM)
           - list           # Process specific papers (comma-separated IDs)
           - file           # Process papers from uploaded file
@@ -101,9 +110,13 @@ jobs:
             tesseract-ocr \
             tesseract-ocr-chi-sim \
             tesseract-ocr-eng \
-            ocrmypdf
+            ocrmypdf \
+            pandoc \
+            texlive-xetex \
+            texlive-fonts-recommended \
+            fonts-noto-cjk
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -117,32 +130,54 @@ jobs:
           MOONDREAM_API_KEY: ${{ secrets.MOONDREAM_API_KEY }}
           BACKBLAZE_KEY_ID: ${{ secrets.BACKBLAZE_KEY_ID }}
           BACKBLAZE_APPLICATION_KEY: ${{ secrets.BACKBLAZE_APPLICATION_KEY }}
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
         run: |
           set -e
           errors=0
+          SCOPE="${{ inputs.scope || 'smart-resume' }}"
 
-          echo "Checking required credentials..."
+          echo "Checking credentials for scope: $SCOPE"
 
+          # Database always required
           if [ -z "$DATABASE_URL" ]; then
             echo "::error::DATABASE_URL is required"
             errors=1
           fi
 
-          if [ -z "$OPENROUTER_API_KEY" ]; then
-            echo "::error::OPENROUTER_API_KEY is required for text translation"
-            errors=1
-          fi
-
-          # Only require figure credentials if not text-only
-          if [ "${{ inputs.text_only }}" != "true" ]; then
-            if [ -z "$GEMINI_API_KEY" ]; then
-              echo "::warning::GEMINI_API_KEY not set (required for figure translation)"
+          # Discover scope needs BrightData
+          if [ "$SCOPE" = "discover" ]; then
+            if [ -z "$BRIGHTDATA_API_KEY" ]; then
+              echo "::error::BRIGHTDATA_API_KEY is required for discovery"
+              errors=1
             fi
-            if [ -z "$MOONDREAM_API_KEY" ]; then
-              echo "::warning::MOONDREAM_API_KEY not set (required for figure QA)"
+            if [ -z "$BRIGHTDATA_ZONE" ]; then
+              echo "::error::BRIGHTDATA_ZONE is required for discovery"
+              errors=1
             fi
           fi
 
+          # Translation scopes need translation credentials
+          if [ "$SCOPE" != "discover" ]; then
+            if [ -z "$OPENROUTER_API_KEY" ]; then
+              echo "::error::OPENROUTER_API_KEY is required for text translation"
+              errors=1
+            fi
+
+            # Figure credentials required unless text-only mode
+            if [ "${{ inputs.text_only }}" != "true" ]; then
+              if [ -z "$GEMINI_API_KEY" ]; then
+                echo "::error::GEMINI_API_KEY is required for figure translation (use text_only=true to skip figures)"
+                errors=1
+              fi
+              if [ -z "$MOONDREAM_API_KEY" ]; then
+                echo "::error::MOONDREAM_API_KEY is required for figure QA (use text_only=true to skip figures)"
+                errors=1
+              fi
+            fi
+          fi
+
+          # B2 always required
           if [ -z "$BACKBLAZE_KEY_ID" ] || [ -z "$BACKBLAZE_APPLICATION_KEY" ]; then
             echo "::error::B2 credentials required for storage"
             errors=1
@@ -172,44 +207,55 @@ jobs:
           BACKBLAZE_BUCKET: ${{ secrets.BACKBLAZE_BUCKET }}
           BACKBLAZE_PREFIX: ${{ secrets.BACKBLAZE_PREFIX }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Pass inputs via env vars to prevent command substitution attacks
+          # GitHub Actions expressions in double quotes allow $(cmd) execution
+          INPUT_SCOPE: ${{ inputs.scope || 'smart-resume' }}
+          INPUT_TARGET: ${{ inputs.target }}
+          INPUT_WORKERS: ${{ inputs.workers || '10' }}
+          INPUT_FORCE: ${{ inputs.force }}
+          INPUT_TEXT_ONLY: ${{ inputs.text_only }}
+          INPUT_FIGURES_ONLY: ${{ inputs.figures_only }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_INCLUDE_FAILED: ${{ inputs.include_failed }}
         run: |
           set -e
 
-          # Build command args
-          SCOPE="${{ inputs.scope || 'smart-resume' }}"
-          TARGET="${{ inputs.target }}"
-          WORKERS="${{ inputs.workers || '10' }}"
-
-          ARGS="--scope $SCOPE"
-
-          if [ -n "$TARGET" ]; then
-            ARGS="$ARGS --target $TARGET"
+          # Validate worker count is a number between 1-20
+          # INPUT_WORKERS comes from env (safe from command substitution)
+          if ! [[ "$INPUT_WORKERS" =~ ^[0-9]+$ ]] || [ "$INPUT_WORKERS" -lt 1 ] || [ "$INPUT_WORKERS" -gt 20 ]; then
+            echo "::error::workers must be a number between 1 and 20 (got: $INPUT_WORKERS)"
+            exit 1
           fi
 
-          ARGS="$ARGS --workers $WORKERS"
+          # Build command using array to avoid eval (prevents quote-escape attacks)
+          CMD=(python -m src.orchestrator --scope "$INPUT_SCOPE" --workers "$INPUT_WORKERS")
 
-          if [ "${{ inputs.force }}" = "true" ]; then
-            ARGS="$ARGS --force"
+          if [ -n "$INPUT_TARGET" ]; then
+            CMD+=(--target "$INPUT_TARGET")
           fi
 
-          if [ "${{ inputs.text_only }}" = "true" ]; then
-            ARGS="$ARGS --text-only"
+          if [ "$INPUT_FORCE" = "true" ]; then
+            CMD+=(--force)
           fi
 
-          if [ "${{ inputs.figures_only }}" = "true" ]; then
-            ARGS="$ARGS --figures-only"
+          if [ "$INPUT_TEXT_ONLY" = "true" ]; then
+            CMD+=(--text-only)
           fi
 
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            ARGS="$ARGS --dry-run"
+          if [ "$INPUT_FIGURES_ONLY" = "true" ]; then
+            CMD+=(--figures-only)
           fi
 
-          if [ "${{ inputs.include_failed }}" = "true" ]; then
-            ARGS="$ARGS --include-failed"
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
+            CMD+=(--dry-run)
           fi
 
-          echo "Running: python -m src.orchestrator $ARGS"
-          python -m src.orchestrator $ARGS
+          if [ "$INPUT_INCLUDE_FAILED" = "true" ]; then
+            CMD+=(--include-failed)
+          fi
+
+          echo "Running: ${CMD[*]}"
+          "${CMD[@]}"
 
       - name: Upload artifacts
         if: always()

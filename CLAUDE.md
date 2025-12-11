@@ -65,8 +65,9 @@ python scripts/migrate_to_postgres.py
 
 **Option 3: Existing PostgreSQL 17** (macOS, if already installed)
 ```bash
-# Add to .env
-echo "DATABASE_URL=postgresql://postgres:password@localhost:5432/chinaxiv_dev" >> .env
+# Add to .env (local password is 'password')
+echo 'DATABASE_URL="postgresql://postgres:password@localhost:5432/chinaxiv_dev"' >> .env
+echo 'TEST_DATABASE_URL="postgresql://postgres:password@localhost/chinaxiv_test"' >> .env
 
 # Create databases
 PGPASSWORD="password" psql -h localhost -U postgres -c "CREATE DATABASE chinaxiv_dev;"
@@ -81,7 +82,7 @@ CREATE TABLE papers (...); -- See scripts/migrate_to_postgres.py for full SQL
 EOF)
 
 # Start Flask (note: port 5000 is used by macOS AirPlay, use 5001)
-export DATABASE_URL="postgresql://postgres:password@localhost:5432/chinaxiv_dev"
+source .env
 python -m flask --app app run --debug --port 5001
 ```
 
@@ -106,18 +107,22 @@ railway run python scripts/migrate_to_postgres.py  # One-time migration
 
 ### Testing Setup
 
-Tests require local PostgreSQL database:
+Tests require local PostgreSQL database with authentication:
 
 ```bash
-# Create test database
-createdb chinaxiv_test
+# Create test database (if not exists)
+PGPASSWORD="password" psql -h localhost -U postgres -c "CREATE DATABASE chinaxiv_test;"
 
-# Run tests (uses TEST_DATABASE_URL or defaults to localhost)
+# Run tests with credentials (local password is 'password')
+TEST_DATABASE_URL="postgresql://postgres:password@localhost/chinaxiv_test" pytest tests/
+
+# Or add to .env for convenience:
+echo 'TEST_DATABASE_URL="postgresql://postgres:password@localhost/chinaxiv_test"' >> .env
+source .env
 pytest tests/
-
-# Or specify custom test database:
-TEST_DATABASE_URL="postgresql://user:pass@host/chinaxiv_test" pytest tests/
 ```
+
+**Local PostgreSQL credentials**: `postgres:password` (user:password)
 
 **Test Database**: All 692 tests use PostgreSQL fixtures (`tests/conftest.py`). Test schema is created using `scripts/migrate_to_postgres.py` functions.
 
@@ -268,8 +273,11 @@ download_pdf()
 
 ### Text Translation
 - **Location**: `src/translate.py`, `src/pipeline.py`
-- **API**: OpenRouter (DeepSeek V3.2-Exp model)
+- **Model**: Kimi K2 Thinking (`moonshotai/kimi-k2-thinking`) via OpenRouter
+- **Mode**: Whole-paper synthesis (NOT paragraph-by-paragraph)
+- **Config**: `src/config.yaml` - controls model, chunk size (28K tokens), temperature
 - **QA**: Chinese leakage check (<0.5%), math preservation
+- **Cost**: ~$0.08/paper (Kimi K2 pricing: $0.45/M input, $2.35/M output)
 
 ### Figure Translation
 - **Location**: `src/figure_pipeline/`
@@ -794,3 +802,4 @@ Or use data attributes on HTML elements:
 | `app/__init__.py` | Config vars |
 | `assets/site.js` | `trackEvent()` helper |
 | `~/.claude/skills/umami/SKILL.md` | Full documentation |
+- never write local translation scripts. ALWAYS use our async cloud functions for translation and uploads

@@ -32,7 +32,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Import Moondream for QA
-import moondream as md
+import moondream as md  # noqa: E402
 
 
 # ============================================================================

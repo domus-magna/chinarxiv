@@ -3,10 +3,8 @@
 Setup script to help configure Cloudflare Pages deployment secrets.
 """
 
-import os
 import sys
 import subprocess
-from pathlib import Path
 
 def run_command(cmd, check=True):
     """Run a command and return the result."""
@@ -61,34 +59,34 @@ def add_secret(name, value):
 def main():
     print("🚀 Cloudflare Pages Setup Helper")
     print("=" * 50)
-    
+
     # Check prerequisites
     if not check_gh_cli():
         return 1
-    
+
     if not check_gh_auth():
         return 1
-    
+
     # Show current secrets
     get_current_secrets()
-    
+
     print("\n" + "=" * 50)
     print("📝 Required Secrets for Cloudflare Pages:")
     print("=" * 50)
-    
+
     secrets = {
         "CF_API_TOKEN": "Cloudflare API token with Pages:Edit permission",
         "CLOUDFLARE_ACCOUNT_ID": "Your Cloudflare Account ID",
         "OPENROUTER_API_KEY": "OpenRouter API key for translations"
     }
-    
+
     print("\nPlease provide the following secrets:")
     print("(Press Enter to skip if already set)")
-    
+
     for secret_name, description in secrets.items():
         print(f"\n{secret_name}: {description}")
         value = input(f"Enter value for {secret_name}: ").strip()
-        
+
         if value:
             if add_secret(secret_name, value):
                 print(f"✅ {secret_name} added successfully")
@@ -96,11 +94,11 @@ def main():
                 print(f"❌ Failed to add {secret_name}")
         else:
             print(f"⏭️  Skipped {secret_name}")
-    
+
     print("\n" + "=" * 50)
     print("🎉 Setup Complete!")
     print("=" * 50)
-    
+
     print("\nNext steps:")
     print("1. Go to Cloudflare Pages: https://pages.cloudflare.com")
     print("2. Connect your GitHub repository")
@@ -108,9 +106,9 @@ def main():
     print("   - Project name: chinaxiv-english")
     print("   - Build output directory: site")
     print("4. Test deployment by running GitHub Actions workflow")
-    
+
     print("\n📚 For detailed instructions, see: docs/CLOUDFLARE_SETUP.md")
-    
+
     return 0
 
 if __name__ == "__main__":

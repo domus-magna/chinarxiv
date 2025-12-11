@@ -23,17 +23,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 # Import from canonical location in src/data_utils.py
-from src.data_utils import is_cs_ai_paper
+from src.data_utils import is_cs_ai_paper  # noqa: E402
 
 
 def filter_papers(
@@ -175,7 +174,7 @@ def main():
     results = filter_papers(args.input, args.month)
 
     # Show stats
-    print(f"\n=== CS/AI Filter Results ===")
+    print("\n=== CS/AI Filter Results ===")
     print(f"Total files scanned: {len(list(args.input.glob('chinaxiv-*.json')))}")
     print(f"CS/AI papers found: {len(results)}")
 
@@ -186,12 +185,12 @@ def main():
             match_type = keyword.split(':')[0] if keyword else 'unknown'
             match_types[match_type] = match_types.get(match_type, 0) + 1
 
-        print(f"\nMatch breakdown:")
+        print("\nMatch breakdown:")
         for mtype, count in sorted(match_types.items(), key=lambda x: -x[1]):
             print(f"  {mtype}: {count}")
 
         if args.verbose:
-            print(f"\nMatched papers:")
+            print("\nMatched papers:")
             for paper_id, keyword in results[:50]:  # Show first 50
                 print(f"  {paper_id}: {keyword}")
             if len(results) > 50:

@@ -6,11 +6,10 @@ This script reads the .env file and pushes all required secrets to GitHub.
 It uses the GitHub CLI (gh) to set secrets securely.
 """
 
-import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 # Required secrets for the pipeline
 REQUIRED_SECRETS = [
@@ -38,7 +37,7 @@ def load_env_file(env_path: Path = Path(".env")) -> Dict[str, str]:
     if not env_path.exists():
         print(f"❌ .env file not found at {env_path}")
         return env_vars
-    
+
     with open(env_path, "r") as f:
         for line in f:
             line = line.strip()
@@ -51,19 +50,17 @@ def load_env_file(env_path: Path = Path(".env")) -> Dict[str, str]:
                 key = key.strip()
                 value = value.strip()
                 # Remove quotes if present
-                if value.startswith('"') and value.endswith('"'):
-                    value = value[1:-1]
-                elif value.startswith("'") and value.endswith("'"):
+                if value.startswith('"') and value.endswith('"') or value.startswith("'") and value.endswith("'"):
                     value = value[1:-1]
                 env_vars[key] = value
-    
+
     return env_vars
 
 
 def check_gh_cli() -> bool:
     """Check if GitHub CLI is installed and authenticated."""
     try:
-        result = subprocess.run(
+        subprocess.run(
             ["gh", "--version"],
             capture_output=True,
             text=True,
@@ -74,10 +71,10 @@ def check_gh_cli() -> bool:
         print("❌ GitHub CLI is not installed or not in PATH")
         print("   Install from: https://cli.github.com/")
         return False
-    
+
     # Check authentication
     try:
-        result = subprocess.run(
+        subprocess.run(
             ["gh", "auth", "status"],
             capture_output=True,
             text=True,
@@ -88,7 +85,7 @@ def check_gh_cli() -> bool:
         print("❌ GitHub CLI is not authenticated")
         print("   Run: gh auth login")
         return False
-    
+
     return True
 
 
@@ -134,7 +131,7 @@ def set_github_secret(repo: str, secret_name: str, secret_value: str) -> bool:
             text=True
         )
         stdout, stderr = process.communicate(input=secret_value)
-        
+
         if process.returncode == 0:
             print(f"  ✅ {secret_name}")
             return True
@@ -149,36 +146,36 @@ def set_github_secret(repo: str, secret_name: str, secret_value: str) -> bool:
 def main() -> int:
     """Main function to push secrets from .env to GitHub."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Push secrets from .env to GitHub")
     parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
     args = parser.parse_args()
-    
+
     print("🚀 Pushing secrets from .env to GitHub")
     print("=" * 60)
-    
+
     # Check prerequisites
     if not check_gh_cli():
         return 1
-    
+
     # Get repository name
     repo = get_repo_name()
     if not repo:
         print("❌ Could not determine repository name")
         print("   Make sure you're in a git repository with GitHub remote")
         return 1
-    
+
     print(f"📦 Repository: {repo}\n")
-    
+
     # Load .env file
     print("📖 Loading .env file...")
     env_vars = load_env_file()
     if not env_vars:
         print("❌ No environment variables found in .env file")
         return 1
-    
+
     print(f"✅ Loaded {len(env_vars)} variables from .env\n")
-    
+
     # Check which secrets are present
     missing = []
     present = []
@@ -188,23 +185,23 @@ def main() -> int:
         else:
             if secret not in OPTIONAL_SECRETS:
                 missing.append(secret)
-    
+
     if missing:
         print("⚠️  Missing required secrets in .env:")
         for secret in missing:
             print(f"   - {secret}")
         print()
-    
+
     if not present:
         print("❌ No secrets found in .env file")
         return 1
-    
+
     # Confirm before pushing
     print(f"📤 Ready to push {len(present)} secrets to GitHub:")
     for secret in present:
         value_preview = env_vars[secret][:20] + "..." if len(env_vars[secret]) > 20 else env_vars[secret]
         print(f"   - {secret}: {value_preview}")
-    
+
     if not args.yes:
         print("\n⚠️  This will overwrite existing secrets in GitHub!")
         response = input("Continue? (yes/no): ").strip().lower()
@@ -213,18 +210,18 @@ def main() -> int:
             return 1
     else:
         print("\n⚠️  Pushing secrets (--yes flag provided)")
-    
+
     # Push secrets
     print("\n🔐 Pushing secrets to GitHub...")
     success_count = 0
     failed = []
-    
+
     for secret in present:
         if set_github_secret(repo, secret, env_vars[secret]):
             success_count += 1
         else:
             failed.append(secret)
-    
+
     # Summary
     print("\n" + "=" * 60)
     print(f"✅ Successfully pushed {success_count} secrets")
@@ -233,12 +230,12 @@ def main() -> int:
         for secret in failed:
             print(f"   - {secret}")
         return 1
-    
+
     print("\n🎉 All secrets pushed successfully!")
     print("\nNext steps:")
     print("1. Verify secrets in GitHub: Settings → Secrets and variables → Actions")
     print("2. Test a workflow run to ensure secrets are working")
-    
+
     return 0
 
 

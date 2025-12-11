@@ -127,7 +127,7 @@ def main():
                 break
 
     # Summary
-    logger.info(f"\nMigration summary:")
+    logger.info("\nMigration summary:")
     logger.info(f"  Applied: {applied_count}")
     logger.info(f"  Skipped: {skipped_count}")
     logger.info(f"  Failed: {failed_count}")

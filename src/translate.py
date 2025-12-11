@@ -8,7 +8,13 @@ which produces readable academic prose output.
 from __future__ import annotations
 
 import argparse
+import glob
+import os
 
+from .db_utils import get_paper_for_translation, save_translation_result
+from .file_service import read_json, write_json
+from .pdf_pipeline import process_paper
+from .qa_filter import SynthesisQAFilter
 from .services.translation_service import TranslationService
 
 
@@ -24,7 +30,7 @@ def translate_paper(
         dry_run: If True, skip actual translation
 
     Returns:
-        Path to translated JSON file
+        Paper ID on success (translation saved to database and local file)
     """
     return translate_paper_synthesis(paper_id, dry_run=dry_run)
 
@@ -32,6 +38,7 @@ def translate_paper(
 def translate_paper_synthesis(
     paper_id: str,
     dry_run: bool = False,
+    db_conn=None,
 ) -> str:
     """
     Translate a paper using synthesis mode for readable output.
@@ -42,39 +49,49 @@ def translate_paper_synthesis(
     - Produces flowing, readable academic English
     - Uses section-aware chunking
 
+    Data source priority:
+    1. Database (_cn columns or _en columns if pending)
+    2. Local files (data/selected.json, data/records/*.json) - fallback
+
     Args:
         paper_id: Paper identifier
         dry_run: If True, skip actual translation
+        db_conn: Optional database connection for reuse
 
     Returns:
-        Path to translated JSON file
+        Paper ID (translation saved to database)
     """
-    import os
-    from .file_service import read_json, write_json
-    from .pdf_pipeline import process_paper
-    from .qa_filter import SynthesisQAFilter
-    import glob
-
     service = TranslationService()
 
-    # Load selected records (if file exists)
-    selected_path = os.path.join("data", "selected.json")
-    selected = read_json(selected_path) if os.path.exists(selected_path) else []
+    # Primary: Load from database
+    rec = None
+    try:
+        rec = get_paper_for_translation(paper_id, conn=db_conn)
+        if rec:
+            print(f"Loaded paper {paper_id} from database")
+    except Exception as e:
+        print(f"Database lookup failed: {e}, falling back to local files")
 
-    # Find the record
-    rec = next((r for r in selected if r["id"] == paper_id), None)
-
+    # Fallback: Load from local files (migration period)
     if not rec:
-        records_dir = os.path.join("data", "records")
-        rec_files = sorted(glob.glob(os.path.join(records_dir, "*.json")), reverse=True)
-        for rf in rec_files:
-            try:
-                records = read_json(rf)
-            except Exception:
-                continue
-            rec = next((r for r in records if r.get("id") == paper_id), None)
-            if rec:
-                break
+        # Load selected records (if file exists)
+        selected_path = os.path.join("data", "selected.json")
+        selected = read_json(selected_path) if os.path.exists(selected_path) else []
+
+        # Find the record
+        rec = next((r for r in selected if r["id"] == paper_id), None)
+
+        if not rec:
+            records_dir = os.path.join("data", "records")
+            rec_files = sorted(glob.glob(os.path.join(records_dir, "*.json")), reverse=True)
+            for rf in rec_files:
+                try:
+                    records = read_json(rf)
+                except Exception:
+                    continue
+                rec = next((r for r in records if r.get("id") == paper_id), None)
+                if rec:
+                    break
 
     if not rec:
         raise ValueError(f"Paper {paper_id} not found")
@@ -114,17 +131,26 @@ def translate_paper_synthesis(
     translation["_qa_issues"] = qa_result.issues
     translation["_qa_chinese_ratio"] = qa_result.chinese_ratio
 
-    # Save
-    out_dir = "data/translated"
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f"{paper_id}.json")
-    write_json(out_path, translation)
+    # Save to database (primary) and local file (backup)
+    if not dry_run:
+        # Primary: Save to database
+        try:
+            save_translation_result(paper_id, translation, conn=db_conn)
+            print(f"Saved translation to database for {paper_id}")
+        except Exception as e:
+            print(f"Warning: Database save failed: {e}")
+
+        # Backup: Save to local file
+        out_dir = "data/translated"
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f"{paper_id}.json")
+        write_json(out_path, translation)
 
     print(
         f"Synthesis translation complete: QA={qa_result.status.value}, score={qa_result.score:.2f}"
     )
 
-    return out_path
+    return paper_id
 
 
 def main():

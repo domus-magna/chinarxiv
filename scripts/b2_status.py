@@ -92,21 +92,21 @@ def main():
 
     # Text translations
     trans_count, trans_last = count_objects(s3, bucket, "validated/translations/")
-    print(f"Text Translations (validated):")
+    print("Text Translations (validated):")
     print(f"  Count:         {trans_count:,}")
     print(f"  Last activity: {trans_last.strftime('%Y-%m-%d %H:%M') if trans_last else 'N/A'}")
     print()
 
     # Flagged translations
     flagged_count, flagged_last = count_objects(s3, bucket, "flagged/translations/")
-    print(f"Flagged Translations (need review):")
+    print("Flagged Translations (need review):")
     print(f"  Count:         {flagged_count:,}")
     print(f"  Last activity: {flagged_last.strftime('%Y-%m-%d %H:%M') if flagged_last else 'N/A'}")
     print()
 
     # PDFs
     pdf_count, pdf_last = count_objects(s3, bucket, "pdfs/")
-    print(f"Source PDFs:")
+    print("Source PDFs:")
     print(f"  Count:         {pdf_count:,}")
     print(f"  Last activity: {pdf_last.strftime('%Y-%m-%d %H:%M') if pdf_last else 'N/A'}")
     print()
@@ -114,7 +114,7 @@ def main():
     # Figures
     fig_count, fig_last = count_objects(s3, bucket, "figures/")
     papers_with_figs = count_papers_with_figures(s3, bucket) if fig_count > 0 else 0
-    print(f"Translated Figures:")
+    print("Translated Figures:")
     print(f"  Total files:   {fig_count:,}")
     print(f"  Papers w/figs: {papers_with_figs:,}")
     print(f"  Last activity: {fig_last.strftime('%Y-%m-%d %H:%M') if fig_last else 'N/A'}")
@@ -122,7 +122,7 @@ def main():
 
     # Records
     rec_count, rec_last = count_objects(s3, bucket, "records/")
-    print(f"Harvested Records:")
+    print("Harvested Records:")
     print(f"  Count:         {rec_count:,}")
     print(f"  Last activity: {rec_last.strftime('%Y-%m-%d %H:%M') if rec_last else 'N/A'}")
     print()

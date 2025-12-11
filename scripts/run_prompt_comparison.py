@@ -22,7 +22,6 @@ from scripts.figure_translation_poc import (
     GeminiRegenerator,
     KimiTranslator,
     EasyOCREngine,
-    OCRResult,
 )
 
 
@@ -149,7 +148,7 @@ def generate_html_report(results: list[dict], output_dir: Path) -> str:
 """
 
     # Navigation links
-    for img in by_image.keys():
+    for img in by_image:
         safe_id = img.replace(".", "_").replace(" ", "_")
         html += f'        <a href="#fig-{safe_id}">{img[:30]}</a>\n'
 

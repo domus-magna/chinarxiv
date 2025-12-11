@@ -6,7 +6,7 @@ Evaluate translation quality using multiple LLMs as judges.
 import json
 import os
 import sys
-from typing import Dict, List
+from typing import Dict
 import requests
 from dotenv import load_dotenv
 
@@ -186,7 +186,7 @@ def main():
     if has_full_text:
         print(f"Mode: FULL TEXT ({len(english_body)} paragraphs)")
     else:
-        print(f"Mode: ABSTRACT ONLY")
+        print("Mode: ABSTRACT ONLY")
     print(f"{'='*60}\n")
 
     api_key = get_openrouter_key()
@@ -237,7 +237,6 @@ def main():
 
     # Store in database if requested
     if args.store_db:
-        import sys
         sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from src import job_queue
 
