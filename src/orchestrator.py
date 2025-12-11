@@ -122,7 +122,12 @@ def get_papers_by_month(conn, month: str) -> list[str]:
     return [row['id'] for row in cursor.fetchall()]
 
 
-def get_papers_needing_work(conn, text_only: bool = False, figures_only: bool = False) -> list[str]:
+def get_papers_needing_work(
+    conn,
+    text_only: bool = False,
+    figures_only: bool = False,
+    include_failed: bool = False
+) -> list[str]:
     """
     Get paper IDs that need processing.
 
@@ -130,10 +135,13 @@ def get_papers_needing_work(conn, text_only: bool = False, figures_only: bool = 
     - Papers with processing_status = 'pending'
     - Zombie papers (processing > ZOMBIE_TIMEOUT hours ago)
     - Papers missing specific stages (text, figures, pdf)
+    - Failed papers older than 7 days (auto-retry for transient failures)
+    - Failed papers of any age (if include_failed=True)
 
     Args:
         text_only: Only find papers needing text translation
         figures_only: Only find papers needing figure translation
+        include_failed: Include all failed papers (not just old ones)
     """
     cursor = conn.cursor()
 
@@ -155,14 +163,30 @@ def get_papers_needing_work(conn, text_only: bool = False, figures_only: bool = 
             ORDER BY id
         """)
     else:
-        # Papers that need any work (pending or zombie)
-        cursor.execute("""
-            SELECT id FROM papers
-            WHERE processing_status = 'pending'
-               OR (processing_status = 'processing'
-                   AND processing_started_at < NOW() - INTERVAL '4 hours')
-            ORDER BY id
-        """)
+        # Base query: pending or zombie papers
+        # Plus: auto-retry failed papers after 7 days (transient failures like
+        # API rate limits, network issues should heal automatically)
+        if include_failed:
+            # Include ALL failed papers (for explicit retry)
+            cursor.execute("""
+                SELECT id FROM papers
+                WHERE processing_status = 'pending'
+                   OR (processing_status = 'processing'
+                       AND processing_started_at < NOW() - INTERVAL '4 hours')
+                   OR processing_status = 'failed'
+                ORDER BY id
+            """)
+        else:
+            # Auto-retry failed papers older than 7 days
+            cursor.execute("""
+                SELECT id FROM papers
+                WHERE processing_status = 'pending'
+                   OR (processing_status = 'processing'
+                       AND processing_started_at < NOW() - INTERVAL '4 hours')
+                   OR (processing_status = 'failed'
+                       AND processing_started_at < NOW() - INTERVAL '7 days')
+                ORDER BY id
+            """)
 
     return [row['id'] for row in cursor.fetchall()]
 
@@ -173,7 +197,8 @@ def get_paper_status(conn, paper_id: str) -> dict:
     cursor.execute("""
         SELECT id, processing_status, text_status, figures_status, pdf_status,
                has_chinese_pdf, has_english_pdf, processing_started_at, processing_error,
-               text_completed_at, figures_completed_at, pdf_completed_at
+               text_completed_at, figures_completed_at, pdf_completed_at,
+               pdf_url, source_url
         FROM papers
         WHERE id = %s
     """, (paper_id,))
@@ -298,44 +323,110 @@ def release_paper_lock(conn, paper_id: str) -> None:
 # Pipeline Stage Functions
 # ============================================================================
 
-def run_harvest(paper_id: str) -> bool:
+def download_pdf_from_b2(paper_id: str, local_path: str) -> bool:
+    """
+    Download a PDF from B2 storage.
+
+    Args:
+        paper_id: Paper identifier
+        local_path: Local path to save the PDF
+
+    Returns:
+        True if download succeeded, False otherwise
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+
+    bucket = os.environ.get('BACKBLAZE_BUCKET')
+    endpoint = os.environ.get('BACKBLAZE_S3_ENDPOINT')
+    key_id = os.environ.get('BACKBLAZE_KEY_ID') or os.environ.get('AWS_ACCESS_KEY_ID')
+    secret = os.environ.get('BACKBLAZE_APPLICATION_KEY') or os.environ.get('AWS_SECRET_ACCESS_KEY')
+
+    if not all([bucket, endpoint, key_id, secret]):
+        return False
+
+    try:
+        s3 = boto3.client(
+            's3',
+            endpoint_url=endpoint,
+            aws_access_key_id=key_id,
+            aws_secret_access_key=secret,
+        )
+
+        # Try to download from pdfs/ directory
+        key = f"pdfs/{paper_id}.pdf"
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        s3.download_file(bucket, key, local_path)
+        return True
+    except ClientError as e:
+        if e.response['Error']['Code'] == '404':
+            return False
+        raise
+    except Exception:
+        return False
+
+
+def run_harvest(paper_id: str, dry_run: bool = False) -> bool:
     """
     Harvest/download PDF for a paper.
+
+    Requires paper to exist in DB with pdf_url. Tries B2 first,
+    then falls back to downloading from source.
+
+    Args:
+        paper_id: Paper identifier
+        dry_run: If True, skip actual download
 
     Returns:
         True if PDF is available, False otherwise
     """
-    from .pdf_pipeline import download_pdf_if_needed
+    from .pdf_pipeline import download_pdf
 
     log(f"  Harvesting PDF for {paper_id}...")
 
-    # Check if PDF already exists locally or in B2
+    # Check if PDF already exists locally
     pdf_path = f"data/pdfs/{paper_id}.pdf"
     if os.path.exists(pdf_path):
-        log(f"    PDF already exists: {pdf_path}")
+        log("    PDF already exists locally")
         return True
 
-    # Try to download from B2 first
+    if dry_run:
+        log("    [DRY RUN] Would download PDF")
+        return True
+
+    # Try to download from B2 first (fastest, no API costs)
     try:
-        from .tools.b2_download import download_pdf_from_b2
         if download_pdf_from_b2(paper_id, pdf_path):
-            log(f"    Downloaded from B2: {pdf_path}")
+            log("    Downloaded PDF from B2")
             return True
-    except ImportError:
-        pass  # B2 download not available
     except Exception as e:
         log(f"    B2 download failed: {e}")
 
-    # Fall back to downloading from source
+    # Get pdf_url from database
+    conn = get_db_connection()
     try:
-        result = download_pdf_if_needed(paper_id)
-        if result:
-            log(f"    Downloaded PDF: {result}")
-            return True
-    except Exception as e:
-        log(f"    PDF download failed: {e}")
+        status = get_paper_status(conn, paper_id)
+        if not status:
+            log(f"    ERROR: Paper {paper_id} not in database")
+            return False
 
-    return False
+        pdf_url = status.get('pdf_url')
+        source_url = status.get('source_url')
+
+        if not pdf_url:
+            log(f"    ERROR: Paper {paper_id} has no pdf_url in database")
+            return False
+
+        # Download from source
+        os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+        if download_pdf(pdf_url, pdf_path, referer=source_url):
+            log("    Downloaded PDF from source")
+            return True
+
+        log("    PDF download failed")
+        return False
+    finally:
+        conn.close()
 
 
 def run_text_translation(paper_id: str, dry_run: bool = False) -> bool:
@@ -428,29 +519,76 @@ def run_pdf_generation(paper_id: str, dry_run: bool = False) -> bool:
 
 def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
     """
-    Run post-processing (upload to B2, update manifest, etc.).
+    Run post-processing: upload all outputs to B2.
+
+    Uploads:
+    - Translation JSON (validated or flagged)
+    - English PDF (if exists)
+    - Figures (if directory exists)
+    - Paper pointer JSON
 
     Returns:
         True if post-processing succeeded, False otherwise
     """
+    from .tools.b2_publish import (
+        upload_translation,
+        upload_english_pdf,
+        upload_figures,
+        upload_flagged,
+        create_paper_pointer,
+    )
+
     log(f"  Post-processing {paper_id}...")
 
     if dry_run:
         log("    [DRY RUN] Would upload to B2")
         return True
 
-    # Upload translation to B2
-    try:
-        from .tools.b2_publish import upload_translation
-        translation_path = f"data/translated/{paper_id}.json"
-        if os.path.exists(translation_path):
-            upload_translation(paper_id, translation_path)
-            log("    Uploaded translation to B2")
-    except Exception as e:
-        log(f"    B2 upload failed: {e}")
-        # Non-fatal - continue
+    uploaded_count = 0
 
-    return True
+    # 1. Upload translation JSON (validated or flagged)
+    translation_path = f"data/translated/{paper_id}.json"
+    flagged_path = f"data/flagged/{paper_id}.json"
+
+    if os.path.exists(translation_path):
+        if upload_translation(paper_id, translation_path):
+            log("    Uploaded translation to B2")
+            uploaded_count += 1
+        else:
+            log("    WARNING: Translation upload failed")
+    elif os.path.exists(flagged_path):
+        if upload_flagged(paper_id, flagged_path):
+            log("    Uploaded flagged translation to B2")
+            uploaded_count += 1
+        else:
+            log("    WARNING: Flagged upload failed")
+
+    # 2. Upload English PDF (if exists)
+    english_pdf_path = f"data/english_pdfs/{paper_id}.pdf"
+    if os.path.exists(english_pdf_path):
+        if upload_english_pdf(paper_id, english_pdf_path):
+            log("    Uploaded English PDF to B2")
+            uploaded_count += 1
+        else:
+            log("    WARNING: English PDF upload failed")
+
+    # 3. Upload figures (if directory exists)
+    figures_dir = f"data/figures/{paper_id}"
+    if os.path.isdir(figures_dir):
+        fig_count = upload_figures(paper_id, figures_dir)
+        if fig_count > 0:
+            log(f"    Uploaded {fig_count} figures to B2")
+            uploaded_count += fig_count
+        else:
+            log("    No figures uploaded (empty or failed)")
+
+    # 4. Create pointer JSON
+    if create_paper_pointer(paper_id):
+        log("    Created paper pointer in B2")
+    else:
+        log("    WARNING: Pointer creation failed")
+
+    return uploaded_count > 0 or True  # Success even if nothing to upload
 
 
 # ============================================================================
@@ -494,7 +632,7 @@ def process_paper(
         for stage in stages:
             try:
                 if stage == 'harvest':
-                    if not run_harvest(paper_id):
+                    if not run_harvest(paper_id, dry_run=dry_run):
                         raise RuntimeError("PDF not available")
                     result.stages_completed.append('harvest')
 
@@ -589,7 +727,8 @@ def get_work_queue(
     target: str,
     force: bool = False,
     text_only: bool = False,
-    figures_only: bool = False
+    figures_only: bool = False,
+    include_failed: bool = False
 ) -> list[str]:
     """
     Resolve scope to paper IDs and filter by what needs work.
@@ -600,6 +739,7 @@ def get_work_queue(
         force: If True, include papers even if already complete
         text_only: Only find papers needing text translation
         figures_only: Only find papers needing figure translation
+        include_failed: Include all failed papers (not just old ones)
 
     Returns:
         List of paper IDs to process
@@ -613,6 +753,21 @@ def get_work_queue(
                 raise ValueError(f"Month must be YYYYMM format, got: {target}")
             papers = get_papers_by_month(conn, target)
             log(f"Found {len(papers)} papers for month {target}")
+
+            # Helpful warning if no papers found for month
+            if not papers:
+                log("")
+                log("=" * 60)
+                log("WARNING: No papers found for this month!")
+                log("")
+                log("Papers must be imported to the database before processing.")
+                log("The database is the source of truth for the pipeline.")
+                log("")
+                log("To import papers, run one of:")
+                log(f"  python scripts/import_to_postgres.py --month {target}")
+                log("  python -m src.harvest_chinaxiv_optimized --start YYYYMM --end YYYYMM")
+                log("=" * 60)
+                log("")
 
         elif scope == 'list':
             if not target:
@@ -628,7 +783,12 @@ def get_work_queue(
             log(f"Loaded {len(papers)} papers from {target}")
 
         elif scope == 'smart-resume':
-            papers = get_papers_needing_work(conn, text_only=text_only, figures_only=figures_only)
+            papers = get_papers_needing_work(
+                conn,
+                text_only=text_only,
+                figures_only=figures_only,
+                include_failed=include_failed
+            )
             log(f"Found {len(papers)} papers needing work")
 
         else:
@@ -672,6 +832,7 @@ def run_orchestrator(
     workers: int = 10,
     text_only: bool = False,
     figures_only: bool = False,
+    include_failed: bool = False,
 ) -> OrchestratorStats:
     """
     Main orchestrator entry point.
@@ -684,6 +845,7 @@ def run_orchestrator(
         workers: Number of parallel workers
         text_only: Only run text translation stage
         figures_only: Only run figure translation stage
+        include_failed: Include all failed papers (not just old ones)
 
     Returns:
         OrchestratorStats with results
@@ -705,7 +867,9 @@ def run_orchestrator(
     try:
         work_queue = get_work_queue(
             scope, target, force,
-            text_only=text_only, figures_only=figures_only
+            text_only=text_only,
+            figures_only=figures_only,
+            include_failed=include_failed
         )
     except Exception as e:
         log(f"ERROR getting work queue: {e}")
@@ -844,6 +1008,13 @@ def main():
         dest='figures_only',
         help='[Admin] Only run figure translation (skip text)'
     )
+    parser.add_argument(
+        '--include-failed',
+        action='store_true',
+        dest='include_failed',
+        help='Include all failed papers (not just old ones). By default, only '
+             'failed papers older than 7 days are auto-retried.'
+    )
 
     args = parser.parse_args()
 
@@ -860,6 +1031,7 @@ def main():
         workers=args.workers,
         text_only=args.text_only,
         figures_only=args.figures_only,
+        include_failed=args.include_failed,
     )
 
     # Exit with error code if any failures

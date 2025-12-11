@@ -23,6 +23,7 @@ This script:
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import glob
 import json
@@ -31,7 +32,7 @@ import shlex
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -91,6 +92,170 @@ def _load_costs_for_today() -> Dict[str, Dict]:
         except Exception:
             pass
     return costs
+
+
+# ============================================================================
+# Standalone Upload Functions (for orchestrator per-paper uploads)
+# ============================================================================
+
+
+def _get_b2_config() -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """Get B2 config from environment. Returns (endpoint, bucket, prefix)."""
+    endpoint = _env("B2_S3_ENDPOINT") or _env("BACKBLAZE_S3_ENDPOINT")
+    bucket = _env("B2_BUCKET") or _env("BACKBLAZE_BUCKET")
+    prefix = _env("B2_PREFIX") or _env("BACKBLAZE_PREFIX") or ""
+    return endpoint, bucket, prefix
+
+
+def upload_translation(paper_id: str, local_path: str) -> bool:
+    """
+    Upload a single translation JSON to B2.
+
+    Args:
+        paper_id: Paper identifier
+        local_path: Local path to the translation JSON
+
+    Returns:
+        True if upload succeeded, False otherwise
+    """
+    endpoint, bucket, prefix = _get_b2_config()
+    if not endpoint or not bucket:
+        return False
+
+    dest_root = f"s3://{bucket}/{prefix}"
+    remote_key = f"validated/translations/{paper_id}.json"
+    return _aws_cp(local_path, f"{dest_root}{remote_key}", endpoint)
+
+
+def upload_english_pdf(paper_id: str, local_path: str) -> bool:
+    """
+    Upload an English PDF to B2.
+
+    Args:
+        paper_id: Paper identifier
+        local_path: Local path to the English PDF
+
+    Returns:
+        True if upload succeeded, False otherwise
+    """
+    endpoint, bucket, prefix = _get_b2_config()
+    if not endpoint or not bucket:
+        return False
+
+    dest_root = f"s3://{bucket}/{prefix}"
+    remote_key = f"english_pdfs/{paper_id}.pdf"
+    return _aws_cp(local_path, f"{dest_root}{remote_key}", endpoint)
+
+
+def upload_figures(paper_id: str, figures_dir: str) -> int:
+    """
+    Upload all figures for a paper to B2.
+
+    Args:
+        paper_id: Paper identifier
+        figures_dir: Local directory containing figures
+
+    Returns:
+        Number of figures uploaded
+    """
+    endpoint, bucket, prefix = _get_b2_config()
+    if not endpoint or not bucket:
+        return 0
+
+    dest_root = f"s3://{bucket}/{prefix}"
+    uploaded = 0
+
+    # Upload original figures
+    original_dir = Path(figures_dir) / "original"
+    if original_dir.exists():
+        for fig_path in original_dir.glob("*.png"):
+            remote_key = f"figures/{paper_id}/original/{fig_path.name}"
+            if _aws_cp(str(fig_path), f"{dest_root}{remote_key}", endpoint):
+                uploaded += 1
+
+    # Upload translated figures
+    translated_dir = Path(figures_dir) / "translated"
+    if translated_dir.exists():
+        for fig_path in translated_dir.glob("*.png"):
+            remote_key = f"figures/{paper_id}/translated/{fig_path.name}"
+            if _aws_cp(str(fig_path), f"{dest_root}{remote_key}", endpoint):
+                uploaded += 1
+
+    return uploaded
+
+
+def create_paper_pointer(
+    paper_id: str,
+    run_id: str = "",
+    git_sha: str = "",
+    **metadata
+) -> bool:
+    """
+    Create a pointer JSON for a paper in B2.
+
+    Args:
+        paper_id: Paper identifier
+        run_id: GitHub Actions run ID (optional)
+        git_sha: Git commit SHA (optional)
+        **metadata: Additional metadata to include
+
+    Returns:
+        True if pointer created successfully, False otherwise
+    """
+    endpoint, bucket, prefix = _get_b2_config()
+    if not endpoint or not bucket:
+        return False
+
+    dest_root = f"s3://{bucket}/{prefix}"
+    pointer = {
+        "paper_id": paper_id,
+        "validated_key": f"validated/translations/{paper_id}.json",
+        "run_id": run_id or _env("GITHUB_RUN_ID", ""),
+        "git_sha": git_sha or _env("GITHUB_SHA", ""),
+        "validated_at": datetime.now(timezone.utc).isoformat(),
+        **metadata,
+    }
+
+    tmp = Path("/tmp") / f"pointer-{paper_id}.json"
+    tmp.write_text(
+        json.dumps(pointer, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    success = _aws_cp(
+        str(tmp),
+        f"{dest_root}indexes/validated/by-paper/{paper_id}.json",
+        endpoint
+    )
+
+    with contextlib.suppress(Exception):
+        tmp.unlink()
+
+    return success
+
+
+def upload_flagged(paper_id: str, local_path: str) -> bool:
+    """
+    Upload a flagged (QA-failed) translation to B2.
+
+    Args:
+        paper_id: Paper identifier
+        local_path: Local path to the flagged translation JSON
+
+    Returns:
+        True if upload succeeded, False otherwise
+    """
+    endpoint, bucket, prefix = _get_b2_config()
+    if not endpoint or not bucket:
+        return False
+
+    dest_root = f"s3://{bucket}/{prefix}"
+    remote_key = f"flagged/translations/{paper_id}.json"
+    return _aws_cp(local_path, f"{dest_root}{remote_key}", endpoint)
+
+
+# ============================================================================
+# Batch Upload (legacy main function)
+# ============================================================================
 
 
 def main() -> int:

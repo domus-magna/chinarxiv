@@ -162,15 +162,30 @@ def sample_orchestrator_papers(orchestrator_test_database):
             'figures_status': 'pending',
             'pdf_status': 'pending',
         },
-        # Failed paper
+        # Failed paper (recent - should NOT auto-retry by default)
         {
             'id': 'chinaxiv-202401.00006',
-            'title_en': 'Test Paper 6 - Failed',
+            'title_en': 'Test Paper 6 - Failed Recent',
             'abstract_en': 'Abstract 6',
             'creators_en': '["Author 6"]',
             'date': '2024-01-20T10:00:00',
             'processing_status': 'failed',
+            'processing_started_at': datetime.now(timezone.utc) - timedelta(days=2),
             'processing_error': 'Previous error message',
+            'text_status': 'failed',
+            'figures_status': 'pending',
+            'pdf_status': 'pending',
+        },
+        # Failed paper (old - should auto-retry after 7 days)
+        {
+            'id': 'chinaxiv-202401.00007',
+            'title_en': 'Test Paper 7 - Failed Old',
+            'abstract_en': 'Abstract 7',
+            'creators_en': '["Author 7"]',
+            'date': '2024-01-21T10:00:00',
+            'processing_status': 'failed',
+            'processing_started_at': datetime.now(timezone.utc) - timedelta(days=10),
+            'processing_error': 'Old error message',
             'text_status': 'failed',
             'figures_status': 'pending',
             'pdf_status': 'pending',
@@ -211,7 +226,7 @@ class TestWorkQueue:
         try:
             # January 2024 should have 6 papers
             jan_papers = get_papers_by_month(conn, '202401')
-            assert len(jan_papers) == 6
+            assert len(jan_papers) == 7
             assert all(p.startswith('chinaxiv-202401') for p in jan_papers)
 
             # February 2024 should have 1 paper
@@ -304,7 +319,7 @@ class TestWorkQueue:
         queue = get_work_queue(scope='month', target='202401', force=True)
 
         # Force mode should include ALL papers in the month
-        assert len(queue) == 6
+        assert len(queue) == 7
         assert 'chinaxiv-202401.00002' in queue  # Even complete papers
 
     def test_work_queue_smart_resume(self, sample_orchestrator_papers):
@@ -843,3 +858,130 @@ class TestEdgeCases:
         finally:
             conn1.close()
             conn2.close()
+
+
+# ============================================================================
+# Test: Auto-Retry Failed Papers
+# ============================================================================
+
+class TestAutoRetryFailed:
+    """Tests for auto-retry of failed papers after 7 days."""
+
+    def test_recent_failed_not_auto_retried(self, sample_orchestrator_papers):
+        """Recent failed papers (< 7 days) should NOT be auto-retried."""
+        conn = get_db_connection()
+        try:
+            papers = get_papers_needing_work(conn)
+
+            # chinaxiv-202401.00006 failed 2 days ago - should NOT be included
+            assert 'chinaxiv-202401.00006' not in papers
+        finally:
+            conn.close()
+
+    def test_old_failed_auto_retried(self, sample_orchestrator_papers):
+        """Failed papers older than 7 days should be auto-retried."""
+        conn = get_db_connection()
+        try:
+            papers = get_papers_needing_work(conn)
+
+            # chinaxiv-202401.00007 failed 10 days ago - should be included
+            assert 'chinaxiv-202401.00007' in papers
+        finally:
+            conn.close()
+
+    def test_include_failed_flag_includes_all_failed(self, sample_orchestrator_papers):
+        """include_failed=True should include ALL failed papers."""
+        conn = get_db_connection()
+        try:
+            papers = get_papers_needing_work(conn, include_failed=True)
+
+            # Both failed papers should be included
+            assert 'chinaxiv-202401.00006' in papers  # Recent failed
+            assert 'chinaxiv-202401.00007' in papers  # Old failed
+        finally:
+            conn.close()
+
+    def test_work_queue_include_failed(self, sample_orchestrator_papers):
+        """Test work queue with include_failed flag."""
+        queue = get_work_queue(
+            scope='smart-resume',
+            target=None,
+            include_failed=True
+        )
+
+        # Both failed papers should be in queue
+        assert 'chinaxiv-202401.00006' in queue
+        assert 'chinaxiv-202401.00007' in queue
+
+
+# ============================================================================
+# Test: Run Harvest with DB pdf_url
+# ============================================================================
+
+class TestRunHarvestWithPdfUrl:
+    """Tests for run_harvest using pdf_url from database."""
+
+    def test_harvest_existing_pdf_returns_true(self, sample_orchestrator_papers, tmp_path):
+        """If PDF exists locally, harvest should succeed without download."""
+        from src.orchestrator import run_harvest
+
+        # Create a fake PDF file
+        pdf_dir = tmp_path / "data" / "pdfs"
+        pdf_dir.mkdir(parents=True)
+        pdf_file = pdf_dir / "chinaxiv-202401.00001.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake pdf content")
+
+        # Temporarily change working directory
+        import os
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = run_harvest('chinaxiv-202401.00001')
+            assert result is True
+        finally:
+            os.chdir(original_cwd)
+
+    def test_harvest_dry_run_succeeds_without_download(self, sample_orchestrator_papers):
+        """Dry run should succeed without actually downloading."""
+        from src.orchestrator import run_harvest
+
+        result = run_harvest('chinaxiv-202401.00001', dry_run=True)
+        assert result is True
+
+    def test_harvest_missing_paper_returns_false(self, sample_orchestrator_papers):
+        """Harvest for non-existent paper should fail gracefully."""
+        from src.orchestrator import run_harvest
+
+        # Paper not in DB should return False
+        result = run_harvest('chinaxiv-999999.99999')
+        assert result is False
+
+    def test_harvest_missing_pdf_url_returns_false(self, sample_orchestrator_papers):
+        """Harvest should fail if paper has no pdf_url in DB."""
+        from src.orchestrator import run_harvest
+
+        # Our test papers don't have pdf_url set, so this should fail
+        # (assuming PDF doesn't exist locally and B2 download fails)
+        with patch('src.orchestrator.download_pdf_from_b2', return_value=False):
+            result = run_harvest('chinaxiv-202401.00001')
+            # Should fail because no pdf_url in test data
+            assert result is False
+
+    def test_download_pdf_from_b2_missing_credentials(self, sample_orchestrator_papers):
+        """download_pdf_from_b2 should return False if credentials missing."""
+        from src.orchestrator import download_pdf_from_b2
+
+        # Clear B2 environment variables
+        import os
+        env_vars = ['BACKBLAZE_BUCKET', 'BACKBLAZE_S3_ENDPOINT', 'BACKBLAZE_KEY_ID',
+                    'BACKBLAZE_APPLICATION_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']
+        saved = {k: os.environ.pop(k, None) for k in env_vars}
+
+        try:
+            result = download_pdf_from_b2('chinaxiv-202401.00001', '/tmp/test.pdf')
+            assert result is False
+        finally:
+            # Restore environment
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
