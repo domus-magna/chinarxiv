@@ -45,7 +45,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from .utils import log
-from .alerts import alert_critical, pipeline_complete, pipeline_started
+from .alerts import alert_critical, pipeline_complete, pipeline_started, stage_failure
 
 
 # ============================================================================
@@ -1160,7 +1160,7 @@ def process_paper(
                 result.error = f"{stage}: {str(e)}"
                 mark_paper_failed(conn, paper_id, result.error)
                 if notify:
-                    notify(f"Stage '{stage}' failed for {paper_id}: {e}")
+                    notify(str(e), stage=stage, paper_id=paper_id)
                 return result
 
         # All stages completed
@@ -1178,6 +1178,7 @@ def process_paper(
             mark_paper_failed(conn, paper_id, str(e))
 
         if notify:
+            # General processing error (not stage-specific) - uses critical alert
             notify(f"Processing failed for {paper_id}: {e}")
 
         return result
@@ -1397,10 +1398,15 @@ def run_orchestrator(
         with_figures='figures' in stages,
     )
 
-    # Discord notification callback
-    def notify(message: str):
+    # Discord notification callback - uses batched alerts for stage failures
+    def notify(message: str, stage: str = None, paper_id: str = None):
         with contextlib.suppress(Exception):
-            alert_critical("Pipeline Error", message, source="orchestrator")
+            if stage and paper_id:
+                # Batched alert - groups similar failures within 60s window
+                stage_failure(stage, paper_id, message)
+            else:
+                # Fallback for unexpected errors
+                alert_critical("Pipeline Error", message, source="orchestrator")
 
     # Process papers
     log(f"Processing {len(work_queue)} papers with {workers} workers...")
