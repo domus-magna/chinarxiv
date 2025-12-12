@@ -141,7 +141,8 @@ def build_pdf_markdown(
 
     yaml_header = "---\nheader-includes:\n" + "\n".join(header_includes) + "\n---\n\n"
 
-    # Body-level header/footer configuration must come after \\begin{{document}}.
+    # Fancyhdr configuration. Keeping this in the body ensures it runs right
+    # after \\begin{{document}} across engines.
     latex_preamble = f"""\\pagestyle{{fancy}}
 \\fancyhead{{}}
 \\fancyhead[R]{{\\includegraphics[height=0.6cm]{{assets/logo-wordmark.png}}}}

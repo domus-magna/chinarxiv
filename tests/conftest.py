@@ -97,6 +97,8 @@ def test_database(test_database_schema):
     cursor.execute("DELETE FROM papers;")
     # Clear translation requests for isolation
     cursor.execute("DELETE FROM translation_requests;")
+    # Clear user reports for isolation (new in v1 polish)
+    cursor.execute("DELETE FROM user_reports;")
 
     conn.commit()
     conn.close()

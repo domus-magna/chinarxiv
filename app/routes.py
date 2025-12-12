@@ -25,6 +25,13 @@ logger = logging.getLogger(__name__)
 # Create blueprint for main routes
 bp = Blueprint('main', __name__)
 
+# ---------------------------------------------------------------------------
+# User report API constraints
+# ---------------------------------------------------------------------------
+VALID_REPORT_TYPES = {"translation", "figure", "site-bug", "feature", "other"}
+MAX_REPORT_DESCRIPTION_LENGTH = 5000
+MAX_REPORT_CONTEXT_SIZE = 10_000  # bytes
+
 
 @bp.route('/health')
 def health():
@@ -63,8 +70,12 @@ def _inject_figures_into_body_md(body_md: str, figures: list[dict]) -> str:
     figure_urls: dict[str, list[str]] = {}
     for fig in figures:
         num = str(fig.get("number", "")).strip()
-        url = fig.get("url") or fig.get("translated_url")
-        if not num or not url:
+        url = fig.get("translated_url") or fig.get("url")
+        if not num or not isinstance(url, str):
+            continue
+        url = url.strip()
+        # Safety: only allow http(s) figure URLs to avoid XSS via crafted schemes.
+        if not url.startswith(("http://", "https://")):
             continue
         figure_urls.setdefault(num, []).append(url)
 
@@ -650,12 +661,28 @@ def report_problem():
 
     if not issue_type or not isinstance(issue_type, str):
         return jsonify({"success": False, "message": "Invalid type"}), 400
-    if not description or not isinstance(description, str) or len(description.strip()) < 10:
+    issue_type_norm = issue_type.strip().lower()
+    if issue_type_norm not in VALID_REPORT_TYPES:
+        return jsonify({"success": False, "message": "Invalid type"}), 400
+
+    if not description or not isinstance(description, str):
         return jsonify({"success": False, "message": "Invalid description"}), 400
+    description_stripped = description.strip()
+    if len(description_stripped) < 10:
+        return jsonify({"success": False, "message": "Invalid description"}), 400
+    if len(description_stripped) > MAX_REPORT_DESCRIPTION_LENGTH:
+        return jsonify({"success": False, "message": "Description too long"}), 400
 
     paper_id = None
+    context_json = None
     if isinstance(context, dict):
         paper_id = context.get("paperId") or context.get("paper_id")
+        try:
+            context_json = json.dumps(context, ensure_ascii=False)
+        except (TypeError, ValueError):
+            context_json = None
+        if context_json is not None and len(context_json.encode("utf-8")) > MAX_REPORT_CONTEXT_SIZE:
+            return jsonify({"success": False, "message": "Context too large"}), 400
 
     # Privacy-preserving IP hash (optional)
     client_ip = _get_client_ip()
@@ -672,9 +699,9 @@ def report_problem():
             """,
             (
                 paper_id,
-                issue_type[:32],
-                description.strip(),
-                json.dumps(context) if isinstance(context, dict) else None,
+                issue_type_norm[:32],
+                description_stripped,
+                context_json,
                 ip_hash,
             ),
         )
