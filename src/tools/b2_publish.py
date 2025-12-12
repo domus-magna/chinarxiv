@@ -147,6 +147,54 @@ def upload_english_pdf(paper_id: str, local_path: str) -> bool:
     return _aws_cp(local_path, f"{dest_root}{remote_key}", endpoint)
 
 
+def _qa_report_remote_key(paper_id: str, generated_at: Optional[str]) -> str:
+    """
+    Build a dated QA report key.
+
+    We store per-paper QA summaries under reports/qa/YYYYMMDD/ so they're easy to
+    browse and audit over time.
+    """
+    dt: datetime
+    if generated_at:
+        try:
+            dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+        except Exception:
+            dt = datetime.now(timezone.utc)
+    else:
+        dt = datetime.now(timezone.utc)
+
+    day = dt.strftime("%Y%m%d")
+    stamp = dt.strftime("%Y%m%dT%H%M%SZ")
+    return f"reports/qa/{day}/{paper_id}_{stamp}.json"
+
+
+def upload_qa_report(paper_id: str, local_path: str) -> Optional[str]:
+    """
+    Upload a per-paper QA report JSON to B2.
+
+    Returns:
+        Remote key if upload succeeded, otherwise None.
+    """
+    endpoint, bucket, prefix = _get_b2_config()
+    if not endpoint or not bucket:
+        return None
+
+    generated_at: Optional[str] = None
+    try:
+        with open(local_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload, dict):
+            generated_at = payload.get("generated_at")
+    except Exception:
+        generated_at = None
+
+    remote_key = _qa_report_remote_key(paper_id, generated_at)
+    dest_root = f"s3://{bucket}/{prefix}"
+    if _aws_cp(local_path, f"{dest_root}{remote_key}", endpoint):
+        return remote_key
+    return None
+
+
 def upload_figures(paper_id: str, figures_dir: str) -> int:
     """
     Upload all figures for a paper to B2.

@@ -881,6 +881,7 @@ def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
         upload_english_pdf,
         upload_figures,
         upload_flagged,
+        upload_qa_report,
         create_paper_pointer,
     )
 
@@ -933,6 +934,16 @@ def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
         log("    Created paper pointer in B2")
     else:
         log("    WARNING: Pointer creation failed")
+
+    # 5. Upload QA report (if present)
+    qa_report_path = f"reports/qa_results/{paper_id}.json"
+    if os.path.exists(qa_report_path):
+        remote_key = upload_qa_report(paper_id, qa_report_path)
+        if remote_key:
+            log(f"    Uploaded QA report to B2: {remote_key}")
+            uploaded_count += 1
+        else:
+            log("    WARNING: QA report upload failed")
 
     # POST stage succeeds if we uploaded something OR there was nothing to upload
     # (empty uploaded_count with no files is fine - translation may be DB-only)
