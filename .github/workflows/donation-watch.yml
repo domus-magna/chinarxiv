@@ -47,13 +47,13 @@ jobs:
 
       - name: Commit donation state
         run: |
-          if git diff --quiet; then
+          # Stage first so we catch initial untracked state file.
+          git add data/donations_state.json || true
+          if git diff --cached --quiet; then
             echo "No donation state changes to commit."
             exit 0
           fi
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/donations_state.json || true
           git commit -m "chore(donations): update donation state [skip ci]" || exit 0
           git push || echo "⚠️ Push failed (non-fatal)"
-
