@@ -351,3 +351,46 @@ def test_save_translation_strips_para_wrappers(test_database) -> None:
 
     assert title_en == "Clean Title"
     assert abstract_en == "Clean Abstract"
+
+
+def test_save_translation_clamps_or_falls_back_for_bad_title(test_database) -> None:
+    import os
+    import psycopg2
+
+    from src.db_utils import save_translation_result
+
+    os.environ["DATABASE_URL"] = test_database
+
+    conn = psycopg2.connect(test_database)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO papers (id, title_cn, abstract_cn, text_status, qa_status)
+        VALUES ('chinaxiv-202507.00007', 'DAYU3D: A modern code for HTGR thermal-hydraulic design and accident analysis', '中文摘要', 'pending', 'pending')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    bad_title = '<PARA id="1">' + ("This is clearly not a real title. " * 200) + "</PARA>"
+
+    save_translation_result(
+        "chinaxiv-202507.00007",
+        {
+            "title_en": bad_title,
+            "abstract_en": "Abstract ok",
+            "creators_en": ["A"],
+            "body_md": "",
+            "_qa_status": "pass",
+        },
+    )
+
+    conn = psycopg2.connect(test_database)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT title_en FROM papers WHERE id = 'chinaxiv-202507.00007'"
+    )
+    (title_en,) = cur.fetchone()
+    conn.close()
+
+    assert title_en == "DAYU3D: A modern code for HTGR thermal-hydraulic design and accident analysis"

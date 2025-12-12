@@ -41,6 +41,10 @@ def _strip_nul(value: Any) -> Any:
 
 
 _PARA_TAG_RE = re.compile(r"</?\s*para\b[^>]*>", re.IGNORECASE)
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+# Titles should be short. If we store a whole-paper blob here, it breaks UI and search.
+_MAX_TITLE_LEN = 300
 
 
 def _strip_para_tags(text: Any) -> Any:
@@ -54,6 +58,64 @@ def _strip_para_tags(text: Any) -> Any:
         return text
     cleaned = _PARA_TAG_RE.sub("", text)
     return cleaned.strip()
+
+
+def _is_likely_english_title(text: str) -> bool:
+    """
+    Heuristic: treat ASCII-ish titles as safe English fallbacks.
+
+    Some ChinaXiv records already have English titles in `title_cn`.
+    If the translated `title_en` is clearly corrupted (e.g., pasted body),
+    using the short ASCII `title_cn` is better than showing garbage.
+    """
+    if not text:
+        return False
+    if len(text) > _MAX_TITLE_LEN:
+        return False
+    if _CJK_RE.search(text):
+        return False
+    # Require at least a couple letters so we don't accept pure punctuation/IDs.
+    return sum(ch.isalpha() for ch in text) >= 3
+
+
+def _normalize_title_for_db(
+    conn: psycopg2.extensions.connection, paper_id: str, title_en_raw: Any
+) -> str:
+    """
+    Normalize a title for DB storage.
+
+    Strategy (simplicity-first):
+    1) Strip <PARA ...> wrappers and whitespace noise.
+    2) If title is too long, try falling back to existing `title_cn` if it looks
+       like a reasonable short English title.
+    3) Otherwise clamp to a max length so the UI can't be broken by a bad title.
+    """
+    title = _strip_para_tags(title_en_raw) or ""
+    title = " ".join(title.split())
+
+    if len(title) <= _MAX_TITLE_LEN:
+        return title
+
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT title_cn FROM papers WHERE id = %s", (paper_id,))
+        row = cur.fetchone()
+        fallback = ""
+        if row:
+            if isinstance(row, dict):
+                fallback = (row.get("title_cn") or "").strip()
+            else:
+                fallback = (row[0] or "").strip()
+        if isinstance(fallback, str):
+            fallback = " ".join(fallback.split())
+        if isinstance(fallback, str) and _is_likely_english_title(fallback):
+            return fallback
+    except Exception:
+        # If fallback lookup fails, we still clamp the title.
+        pass
+
+    # Clamp with a plain ellipsis marker.
+    return title[: _MAX_TITLE_LEN - 3].rstrip() + "..."
 
 
 def _strip_nul_in_list(values: Any) -> Any:
@@ -274,7 +336,9 @@ def save_translation_result(
                 creators_en = []
         creators_en = _strip_nul_in_list(creators_en)
 
-        title_en = _strip_para_tags(_strip_nul(translation.get("title_en", "") or ""))
+        title_en = _normalize_title_for_db(
+            conn, paper_id, _strip_nul(translation.get("title_en", "") or "")
+        )
         abstract_en = _strip_para_tags(_strip_nul(translation.get("abstract_en", "") or ""))
         body_md = _strip_nul(translation.get("body_md", "") or "")
         has_full_text = bool(body_md and len(body_md) > 100)
