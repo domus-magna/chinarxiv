@@ -23,6 +23,10 @@ data/
 site/
 reports/
 
+# Small persisted state (tracked)
+!data/seen.json
+!data/donations_state.json
+
 smoke_local.log
 
 # Unused branding assets (kept locally for reference)

@@ -56,14 +56,29 @@ Help us continue translating Chinese academic papers to English! Your donations 
 
 We accept donations in multiple cryptocurrencies:
 
-- **Bitcoin (BTC)**: `bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh`
-- **Ethereum (ETH)**: `0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6`
+- **Bitcoin (BTC)**: `bc1qcxzuuykxx46g6u70fa9sytty53vv74eakch5hk`
+- **Ethereum (ETH)**: `0x107F501699EFb65562bf97FBE06144Cd431ECc9D`
 - **Solana (SOL)**: `9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM`
-- **USD Coin (USDC)**: `0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6`
-- **Tether (USDT)**: `0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6`
+- **USD Coin (USDC)**: `0x107F501699EFb65562bf97FBE06144Cd431ECc9D` (ERC-20 on Ethereum)
+- **Tether (USDT)**: `0x107F501699EFb65562bf97FBE06144Cd431ECc9D` (ERC-20 on Ethereum)
 - **Stacks (STX)**: `SP2J6ZY48GV1EZ5V2V5RB9MP66SW86PYKKNRV9EJ7`
 
 Visit our [donation page](https://chinarxiv.org/donation.html) for QR codes and detailed instructions.
+
+### Donation Alerts
+
+- **Ko‑fi**: Enable Ko‑fi’s built‑in Discord notifications in the Ko‑fi dashboard to get real‑time alerts for one‑click donations.
+- **Crypto wallets (BTC/ETH/ERC‑20)**: The scheduled GitHub Action `Donation Watch` polls our donation addresses and posts a Discord alert on any new confirmed deposit, including an approximate USD value at the donation date for BTC/ETH and stablecoins. It also emits an optional Umami custom event `donation-received` with `{chain, symbol, amount, txid, usd?}`.
+
+**Config (GitHub Secrets, optional unless noted):**
+- `DISCORD_WEBHOOK_URL` (required for Discord alerts)
+- `ETHERSCAN_API_KEY` (recommended for reliable ETH/ERC20 metadata)
+- `BTC_DONATION_ADDRESS`, `ETH_DONATION_ADDRESS` (override defaults in `scripts/check_donations.py`)
+- `ETH_DONATION_TOKENS` (comma‑separated ERC‑20 symbols; leave empty to ignore tokens, or set `ALL` to accept any)
+- `UMAMI_WEBSITE_ID`, `UMAMI_SCRIPT_URL` (enable server‑side Umami events)
+- `UMAMI_HOST_URL`, `UMAMI_COLLECT_ENDPOINT` (only if your Umami endpoint differs from the default `/api/send`)
+
+To change poll frequency, edit the cron in `.github/workflows/donation-watch.yml`.
 
 ## Configuration
 
