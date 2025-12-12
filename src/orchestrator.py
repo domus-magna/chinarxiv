@@ -850,6 +850,16 @@ def run_pdf_generation(paper_id: str, dry_run: bool = False) -> bool:
         )
 
         if not endpoint or not bucket or not key_id or not secret:
+            missing = []
+            if not endpoint:
+                missing.append("BACKBLAZE_S3_ENDPOINT")
+            if not bucket:
+                missing.append("BACKBLAZE_BUCKET")
+            if not key_id:
+                missing.append("BACKBLAZE_KEY_ID/AWS_ACCESS_KEY_ID")
+            if not secret:
+                missing.append("BACKBLAZE_APPLICATION_KEY/AWS_SECRET_ACCESS_KEY")
+            log(f"    B2 download skipped: missing env vars: {', '.join(missing)}")
             return False
 
         s3 = boto3.client(
@@ -870,6 +880,7 @@ def run_pdf_generation(paper_id: str, dry_run: bool = False) -> bool:
         except ClientError as e:
             code = e.response.get("Error", {}).get("Code")
             if code in ("NoSuchKey", "404"):
+                log(f"    Translation not in B2: {remote_key}")
                 return False
             log(f"    Warning: B2 download failed: {e}")
             return False
