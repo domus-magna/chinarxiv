@@ -27,6 +27,32 @@ from .utils import log
 _papers_has_license_column: Optional[bool] = None
 
 
+def _strip_nul(value: Any) -> Any:
+    """
+    PostgreSQL rejects NUL (0x00) characters in text fields.
+
+    We strip them proactively so a single bad character doesn't drop an entire
+    (potentially expensive) translation on the floor.
+    """
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    return value
+
+
+def _normalize_qa_status_for_db(raw_status: Any) -> str:
+    """
+    The database schema currently constrains qa_status to: pass, pending, fail.
+
+    The QA filter can emit more granular statuses (e.g., flag_chinese). We map
+    those into the DB's allowed set.
+    """
+    status = str(raw_status or "pass").strip().lower()
+    if status in {"pass", "pending", "fail"}:
+        return status
+    # Any flagged/unknown QA state is stored as pending (needs review).
+    return "pending"
+
+
 def get_db_connection():
     """
     Get PostgreSQL connection from DATABASE_URL environment variable.
@@ -218,9 +244,11 @@ def save_translation_result(
             except json.JSONDecodeError:
                 creators_en = []
 
-        body_md = translation.get('body_md', '')
+        title_en = _strip_nul(translation.get("title_en", "") or "")
+        abstract_en = _strip_nul(translation.get("abstract_en", "") or "")
+        body_md = _strip_nul(translation.get("body_md", "") or "")
         has_full_text = bool(body_md and len(body_md) > 100)
-        qa_status = translation.get('_qa_status', 'pass')
+        qa_status = _normalize_qa_status_for_db(translation.get("_qa_status", "pass"))
 
         # Update English columns and mark as complete
         cursor.execute("""
@@ -235,9 +263,9 @@ def save_translation_result(
                 text_completed_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """, (
-            translation.get('title_en', ''),
-            translation.get('abstract_en', ''),
-            json.dumps(creators_en),
+            title_en,
+            abstract_en,
+            _strip_nul(json.dumps(creators_en)),
             body_md,
             has_full_text,
             qa_status,
@@ -257,6 +285,12 @@ def save_translation_result(
                 subjects_en = []
 
         if subjects_en:
+            # De-duplicate to avoid unique constraint violations.
+            seen = set()
+            subjects_en = [
+                s for s in subjects_en
+                if s and not (s in seen or seen.add(s))
+            ]
             # Replace existing subjects with translated ones
             cursor.execute(
                 "DELETE FROM paper_subjects WHERE paper_id = %s",
@@ -265,7 +299,8 @@ def save_translation_result(
             for subject in subjects_en:
                 if subject:  # Skip empty subjects
                     cursor.execute(
-                        "INSERT INTO paper_subjects (paper_id, subject) VALUES (%s, %s)",
+                        "INSERT INTO paper_subjects (paper_id, subject) VALUES (%s, %s) "
+                        "ON CONFLICT DO NOTHING",
                         (paper_id, subject)
                     )
 

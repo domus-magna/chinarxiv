@@ -144,18 +144,24 @@ def translate_paper_synthesis(
 
     # Save to database (primary) and local file (backup)
     if not dry_run:
-        # Primary: Save to database
-        try:
-            save_translation_result(paper_id, translation, conn=db_conn)
-            print(f"Saved translation to database for {paper_id}")
-        except Exception as e:
-            print(f"Warning: Database save failed: {e}")
-
-        # Backup: Save to local file
+        # Backup: Save to local file first (useful for debugging even if DB save fails).
         out_dir = "data/translated"
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, f"{paper_id}.json")
         write_json(out_path, translation)
+
+        # Primary: Save to database when available.
+        # In CI/orchestrator runs, the database is the source of truth; if DB
+        # save fails we want the stage to fail (so we don't spend money and
+        # then mark text complete without persisting).
+        database_url_set = bool(os.environ.get("DATABASE_URL"))
+        if database_url_set or db_conn is not None:
+            save_translation_result(paper_id, translation, conn=db_conn)
+            print(f"Saved translation to database for {paper_id}")
+        else:
+            # Allow local-only translation flows (e.g., smoke runs) to proceed.
+            # These rely on the JSON files under data/translated/.
+            print("DATABASE_URL not set; skipping database save.")
 
     print(
         f"Synthesis translation complete: QA={qa_result.status.value}, score={qa_result.score:.2f}"
