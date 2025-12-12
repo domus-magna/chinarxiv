@@ -370,6 +370,34 @@ class TestPaperLocking:
         finally:
             conn.close()
 
+    def test_acquire_lock_allows_complete_with_pdf_pending(self, sample_orchestrator_papers):
+        """
+        Regression: processing_status='complete' may coexist with incomplete stages.
+
+        We must still be able to acquire a lock in order to backfill English PDFs.
+        """
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO papers (
+                    id, title_en, abstract_en, creators_en, date,
+                    processing_status, text_status, figures_status, pdf_status
+                )
+                VALUES (
+                    'chinaxiv-202401.99999', 'T', 'A', '[]', NOW(),
+                    'complete', 'complete', 'skipped', 'pending'
+                )
+                """
+            )
+            conn.commit()
+
+            success = acquire_paper_lock(conn, 'chinaxiv-202401.99999')
+            assert success is True
+        finally:
+            conn.close()
+
     def test_acquire_lock_already_processing(self, sample_orchestrator_papers):
         """Test lock acquisition fails on paper being processed."""
         conn = get_db_connection()

@@ -219,7 +219,11 @@ def acquire_paper_lock(conn, paper_id: str) -> bool:
     Try to acquire exclusive lock on a paper for processing.
 
     Uses UPDATE with RETURNING to atomically claim the paper.
-    Only succeeds if paper is pending or is a zombie.
+    Succeeds if the paper is pending OR is a zombie OR has incomplete stages.
+
+    Note: processing_status='complete' is not a reliable indicator that all
+    stages are complete (e.g., text done but English PDF still pending). We use
+    per-stage statuses as the source of truth for whether work remains.
 
     Returns:
         True if lock acquired, False if paper is already being processed
@@ -231,9 +235,25 @@ def acquire_paper_lock(conn, paper_id: str) -> bool:
             processing_started_at = NOW(),
             processing_error = NULL
         WHERE id = %s
-          AND (processing_status = 'pending'
-               OR (processing_status = 'processing'
-                   AND processing_started_at < NOW() - INTERVAL '4 hours'))
+          AND (
+            -- If currently processing, only allow zombie recovery.
+            (
+              processing_status = 'processing'
+              AND processing_started_at < NOW() - INTERVAL '4 hours'
+            )
+            OR
+            -- Otherwise, allow claiming if the paper is pending/failed OR has incomplete stages.
+            (
+              processing_status != 'processing'
+              AND (
+                processing_status = 'pending'
+                OR processing_status = 'failed'
+                OR (text_status != 'complete' AND text_status != 'skipped')
+                OR (pdf_status != 'complete' AND pdf_status != 'skipped')
+                OR (figures_status != 'complete' AND figures_status != 'skipped')
+              )
+            )
+          )
         RETURNING id
     """, (paper_id,))
     conn.commit()
@@ -804,6 +824,59 @@ def run_pdf_generation(paper_id: str, dry_run: bool = False) -> bool:
         log("    [DRY RUN] Would generate English PDF")
         return True
 
+    # Helper: download translation JSON from B2 if not present locally.
+    # We keep this local to avoid introducing a new module.
+    def _download_translation_json_from_b2(paper_id: str, dest: Path) -> bool:
+        try:
+            import boto3
+            from botocore.exceptions import ClientError
+        except Exception as e:
+            log(f"    B2 download unavailable (missing deps): {e}")
+            return False
+
+        endpoint = os.environ.get("BACKBLAZE_S3_ENDPOINT") or os.environ.get("B2_S3_ENDPOINT")
+        bucket = os.environ.get("BACKBLAZE_BUCKET") or os.environ.get("B2_BUCKET")
+        prefix = os.environ.get("BACKBLAZE_PREFIX") or os.environ.get("B2_PREFIX") or ""
+
+        key_id = (
+            os.environ.get("BACKBLAZE_KEY_ID")
+            or os.environ.get("B2_KEY_ID")
+            or os.environ.get("AWS_ACCESS_KEY_ID")
+        )
+        secret = (
+            os.environ.get("BACKBLAZE_APPLICATION_KEY")
+            or os.environ.get("B2_APPLICATION_KEY")
+            or os.environ.get("AWS_SECRET_ACCESS_KEY")
+        )
+
+        if not endpoint or not bucket or not key_id or not secret:
+            return False
+
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=key_id,
+            aws_secret_access_key=secret,
+        )
+
+        remote_key = f"{prefix}validated/translations/{paper_id}.json"
+        try:
+            obj = s3.get_object(Bucket=bucket, Key=remote_key)
+            raw = obj["Body"].read()
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(raw)
+            log(f"    Downloaded translation JSON from B2: {remote_key}")
+            return True
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("NoSuchKey", "404"):
+                return False
+            log(f"    Warning: B2 download failed: {e}")
+            return False
+        except Exception as e:
+            log(f"    Warning: B2 download failed: {e}")
+            return False
+
     # Import the actual function
     try:
         from scripts.generate_english_pdfs import (
@@ -825,8 +898,12 @@ def run_pdf_generation(paper_id: str, dry_run: bool = False) -> bool:
     # Load the translation JSON
     translation_path = Path(f"data/translated/{paper_id}.json")
     if not translation_path.exists():
-        log(f"    Translation not found: {translation_path}")
-        return False
+        # Many papers already have text complete in Postgres/B2 but no local JSON.
+        # For PDF generation we need the per-paper translation JSON; fetch it from
+        # B2 validated translations when possible.
+        if not _download_translation_json_from_b2(paper_id, translation_path):
+            log(f"    Translation not found: {translation_path}")
+            return False
 
     try:
         with open(translation_path, 'r', encoding='utf-8') as f:
@@ -1055,9 +1132,9 @@ def process_paper(
                         update_stage_status(conn, paper_id, 'pdf', 'complete')
                         result.stages_completed.append('pdf')
                     else:
-                        # PDF generation is optional - don't fail
-                        update_stage_status(conn, paper_id, 'pdf', 'skipped')
-                        log(f"    PDF generation skipped for {paper_id}")
+                        # PDF generation should be retryable; do not mark as skipped.
+                        update_stage_status(conn, paper_id, 'pdf', 'failed')
+                        log(f"    PDF generation failed for {paper_id} (will retry)")
 
                 elif stage == 'post':
                     run_post_processing(paper_id, dry_run=dry_run)
