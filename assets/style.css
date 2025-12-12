@@ -800,8 +800,8 @@ main {
   display: none;
 }
 
-/* Touch device overrides */
-@media (hover: none) {
+/* Touch / coarse-pointer device overrides */
+@media (hover: none), (pointer: coarse) {
   .full-text-preview {
     position: relative;
     overflow: hidden;  /* Not clip - allows fade overlay */
