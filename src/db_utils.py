@@ -16,6 +16,7 @@ Usage:
 
 import json
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 import psycopg2
@@ -37,6 +38,22 @@ def _strip_nul(value: Any) -> Any:
     if isinstance(value, str):
         return value.replace("\x00", "")
     return value
+
+
+_PARA_TAG_RE = re.compile(r"</?\s*para\b[^>]*>", re.IGNORECASE)
+
+
+def _strip_para_tags(text: Any) -> Any:
+    """
+    Strip XML-ish <PARA ...> wrappers that sometimes leak into translations.
+
+    We only apply this to a small set of DB fields (e.g., title/abstract) where
+    these tags are always accidental noise and cause UI artifacts.
+    """
+    if not isinstance(text, str):
+        return text
+    cleaned = _PARA_TAG_RE.sub("", text)
+    return cleaned.strip()
 
 
 def _strip_nul_in_list(values: Any) -> Any:
@@ -257,8 +274,8 @@ def save_translation_result(
                 creators_en = []
         creators_en = _strip_nul_in_list(creators_en)
 
-        title_en = _strip_nul(translation.get("title_en", "") or "")
-        abstract_en = _strip_nul(translation.get("abstract_en", "") or "")
+        title_en = _strip_para_tags(_strip_nul(translation.get("title_en", "") or ""))
+        abstract_en = _strip_para_tags(_strip_nul(translation.get("abstract_en", "") or ""))
         body_md = _strip_nul(translation.get("body_md", "") or "")
         has_full_text = bool(body_md and len(body_md) > 100)
         qa_status = _normalize_qa_status_for_db(translation.get("_qa_status", "pass"))
