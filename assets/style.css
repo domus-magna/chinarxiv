@@ -800,7 +800,11 @@ main {
   display: none;
 }
 
-/* Touch / coarse-pointer device overrides */
+/* Touch / coarse-pointer device overrides
+   - (hover: none): devices without hover capability (most phones/tablets)
+   - (pointer: coarse): devices with imprecise pointer (touch, stylus)
+   - Comma = OR logic for maximum touch device coverage
+*/
 @media (hover: none), (pointer: coarse) {
   .full-text-preview {
     position: relative;
