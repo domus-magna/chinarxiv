@@ -35,7 +35,7 @@ import re
 import sys
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 
 import boto3
 
@@ -243,9 +243,7 @@ def main() -> int:
         if title is None:
             needs_full = True
         else:
-            if "<PARA" in title.upper() or "</PARA" in title.upper():
-                needs_full = True
-            elif len(title) > _MAX_TITLE_LEN:
+            if "<PARA" in title.upper() or "</PARA" in title.upper() or len(title) > _MAX_TITLE_LEN:
                 needs_full = True
 
         if not needs_full:
