@@ -278,3 +278,34 @@ class TestGetPapersNeedingTranslation:
         papers = get_papers_needing_translation(limit=5)
 
         assert len(papers) <= 5
+
+
+def test_strip_nul_removes_nul_bytes() -> None:
+    from src.db_utils import _strip_nul
+
+    assert _strip_nul("hello\x00world") == "helloworld"
+    assert _strip_nul("clean text") == "clean text"
+    assert _strip_nul(123) == 123
+    assert _strip_nul(None) is None
+
+
+def test_strip_nul_in_list_sanitizes_elements() -> None:
+    from src.db_utils import _strip_nul_in_list
+
+    assert _strip_nul_in_list(["a\x00b", "c"]) == ["ab", "c"]
+    assert _strip_nul_in_list(["a", None, 123]) == ["a", None, 123]
+    assert _strip_nul_in_list("not-a-list") == "not-a-list"
+
+
+def test_normalize_qa_status_for_db() -> None:
+    from src.db_utils import _normalize_qa_status_for_db
+
+    assert _normalize_qa_status_for_db("pass") == "pass"
+    assert _normalize_qa_status_for_db("PASS") == "pass"
+    assert _normalize_qa_status_for_db("  pending  ") == "pending"
+    assert _normalize_qa_status_for_db("fail") == "fail"
+
+    # QA filter emits more granular statuses; DB only allows pass/pending/fail.
+    assert _normalize_qa_status_for_db("flag_chinese") == "pending"
+    assert _normalize_qa_status_for_db("flag_content") == "pending"
+    assert _normalize_qa_status_for_db(None) == "pass"

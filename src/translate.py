@@ -156,7 +156,9 @@ def translate_paper_synthesis(
         # then mark text complete without persisting).
         database_url_set = bool(os.environ.get("DATABASE_URL"))
         if database_url_set or db_conn is not None:
-            save_translation_result(paper_id, translation, conn=db_conn)
+            saved = save_translation_result(paper_id, translation, conn=db_conn)
+            if not saved:
+                raise RuntimeError("Database save returned False (paper not found?)")
             print(f"Saved translation to database for {paper_id}")
         else:
             # Allow local-only translation flows (e.g., smoke runs) to proceed.

@@ -39,6 +39,18 @@ def _strip_nul(value: Any) -> Any:
     return value
 
 
+def _strip_nul_in_list(values: Any) -> Any:
+    """
+    Strip NULs from string elements in a list.
+
+    This is primarily used for JSON-serialized fields like creators/subjects,
+    where a single NUL in one element would otherwise break the DB write.
+    """
+    if not isinstance(values, list):
+        return values
+    return [_strip_nul(v) if isinstance(v, str) else v for v in values]
+
+
 def _normalize_qa_status_for_db(raw_status: Any) -> str:
     """
     The database schema currently constrains qa_status to: pass, pending, fail.
@@ -243,6 +255,7 @@ def save_translation_result(
                 creators_en = json.loads(creators_en)
             except json.JSONDecodeError:
                 creators_en = []
+        creators_en = _strip_nul_in_list(creators_en)
 
         title_en = _strip_nul(translation.get("title_en", "") or "")
         abstract_en = _strip_nul(translation.get("abstract_en", "") or "")
@@ -265,7 +278,7 @@ def save_translation_result(
         """, (
             title_en,
             abstract_en,
-            _strip_nul(json.dumps(creators_en)),
+            json.dumps(creators_en),
             body_md,
             has_full_text,
             qa_status,
@@ -285,24 +298,34 @@ def save_translation_result(
                 subjects_en = []
 
         if subjects_en:
-            # De-duplicate to avoid unique constraint violations.
-            seen = set()
-            subjects_en = [
-                s for s in subjects_en
-                if s and not (s in seen or seen.add(s))
-            ]
+            # Sanitize and de-duplicate to avoid unique constraint violations.
+            seen: set[str] = set()
+            deduped: list[str] = []
+            for subject in subjects_en:
+                if not subject:
+                    continue
+                if not isinstance(subject, str):
+                    continue
+                subject = _strip_nul(subject)
+                if not subject:
+                    continue
+                if subject in seen:
+                    continue
+                seen.add(subject)
+                deduped.append(subject)
+            subjects_en = deduped
+
             # Replace existing subjects with translated ones
             cursor.execute(
                 "DELETE FROM paper_subjects WHERE paper_id = %s",
                 (paper_id,)
             )
             for subject in subjects_en:
-                if subject:  # Skip empty subjects
-                    cursor.execute(
-                        "INSERT INTO paper_subjects (paper_id, subject) VALUES (%s, %s) "
-                        "ON CONFLICT DO NOTHING",
-                        (paper_id, subject)
-                    )
+                cursor.execute(
+                    "INSERT INTO paper_subjects (paper_id, subject) VALUES (%s, %s) "
+                    "ON CONFLICT DO NOTHING",
+                    (paper_id, subject),
+                )
 
         conn.commit()
         log(f"Saved translation for {paper_id} to database")
