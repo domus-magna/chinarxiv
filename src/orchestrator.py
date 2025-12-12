@@ -149,11 +149,16 @@ def get_papers_needing_work(
     cursor = conn.cursor()
 
     if text_only:
-        # Papers that have no text translation
+        # Papers that have no text translation OR no English PDF.
+        #
+        # "text_only" is used operationally as "skip figures" to conserve spend,
+        # but we still want English PDFs for papers whose text is already done.
         cursor.execute("""
             SELECT id FROM papers
-            WHERE text_status != 'complete'
-              AND text_status != 'skipped'
+            WHERE (
+                (text_status != 'complete' AND text_status != 'skipped')
+                OR (pdf_status != 'complete' AND pdf_status != 'skipped')
+            )
             ORDER BY id
         """)
     elif figures_only:
@@ -1204,7 +1209,7 @@ def run_orchestrator(
         force: Force reprocessing of complete papers
         dry_run: Skip actual processing
         workers: Number of parallel workers
-        text_only: Only run text translation stage
+        text_only: Skip figure translation (runs text + English PDF)
         figures_only: Only run figure translation stage
         include_failed: Include all failed papers (not just old ones)
 
@@ -1243,8 +1248,9 @@ def run_orchestrator(
 
     # Determine stages based on flags
     if text_only:
-        stages = ['harvest', 'text', 'post']
-        log("Running TEXT ONLY mode")
+        # Skip figure translation to conserve spend, but still generate English PDFs.
+        stages = ['harvest', 'text', 'pdf', 'post']
+        log("Running TEXT+PDF mode (skip figures)")
     elif figures_only:
         stages = ['figures', 'post']
         log("Running FIGURES ONLY mode")
@@ -1400,7 +1406,7 @@ def main():
         '--text-only',
         action='store_true',
         dest='text_only',
-        help='[Admin] Only run text translation (skip figures)'
+        help='[Admin] Skip figure translation (run text + English PDF)'
     )
     parser.add_argument(
         '--figures-only',

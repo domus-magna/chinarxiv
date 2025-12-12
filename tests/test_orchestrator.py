@@ -279,12 +279,12 @@ class TestWorkQueue:
         try:
             papers = get_papers_needing_work(conn, text_only=True)
 
-            # Should include papers where text_status != 'complete'
+            # Should include papers where text_status != 'complete' OR pdf_status != 'complete'
             # 00001, 00003, 00004, 202402.00001, 00006
-            # NOT: 00002 (all complete), 00005 (text complete)
+            # NOT: 00002 (all complete)
 
             assert 'chinaxiv-202401.00001' in papers
-            assert 'chinaxiv-202401.00005' not in papers  # Text already complete
+            assert 'chinaxiv-202401.00005' in papers  # PDF pending
             assert 'chinaxiv-202401.00002' not in papers  # All complete
         finally:
             conn.close()
@@ -665,19 +665,25 @@ class TestProcessPaper:
 
     @patch('src.orchestrator.run_harvest')
     @patch('src.orchestrator.run_text_translation')
+    @patch('src.orchestrator.run_pdf_generation')
+    @patch('src.orchestrator.run_post_processing')
     def test_process_paper_text_only(
         self,
+        mock_post,
+        mock_pdf,
         mock_text,
         mock_harvest,
         sample_orchestrator_papers
     ):
-        """Test text-only processing mode."""
+        """Test no-figures processing mode (text + English PDF)."""
         mock_harvest.return_value = True
         mock_text.return_value = True
+        mock_pdf.return_value = True
+        mock_post.return_value = True
 
         result = process_paper(
             'chinaxiv-202401.00001',
-            stages=['harvest', 'text', 'post']
+            stages=['harvest', 'text', 'pdf', 'post']
         )
 
         assert result.status == 'success'
