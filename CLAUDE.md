@@ -809,6 +809,7 @@ UMAMI_SCRIPT_URL=<your-umami-domain>/script.js
 | `request-text` | `{ paper_id }` | Paper detail |
 | `report-submit` | `{ paper_id, issue_type }` | Paper detail |
 | `sponsor-cta` | `{ target, crypto? }` | Sponsors page |
+| `donation-received` | `{ chain, symbol, amount, txid, usd? }` | GitHub Action (server-side) |
 
 ### Adding New Events
 

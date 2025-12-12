@@ -65,6 +65,21 @@ We accept donations in multiple cryptocurrencies:
 
 Visit our [donation page](https://chinarxiv.org/donation.html) for QR codes and detailed instructions.
 
+### Donation Alerts
+
+- **Ko‑fi**: Enable Ko‑fi’s built‑in Discord notifications in the Ko‑fi dashboard to get real‑time alerts for one‑click donations.
+- **Crypto wallets (BTC/ETH/ERC‑20)**: The scheduled GitHub Action `Donation Watch` polls our donation addresses and posts a Discord alert on any new confirmed deposit, including an approximate USD value at the donation date for BTC/ETH and stablecoins. It also emits an optional Umami custom event `donation-received` with `{chain, symbol, amount, txid, usd?}`.
+
+**Config (GitHub Secrets, optional unless noted):**
+- `DISCORD_WEBHOOK_URL` (required for Discord alerts)
+- `ETHERSCAN_API_KEY` (recommended for reliable ETH/ERC20 metadata)
+- `BTC_DONATION_ADDRESS`, `ETH_DONATION_ADDRESS` (override defaults in `scripts/check_donations.py`)
+- `ETH_DONATION_TOKENS` (comma‑separated ERC‑20 symbols; leave empty to ignore tokens, or set `ALL` to accept any)
+- `UMAMI_WEBSITE_ID`, `UMAMI_SCRIPT_URL` (enable server‑side Umami events)
+- `UMAMI_HOST_URL`, `UMAMI_COLLECT_ENDPOINT` (only if your Umami endpoint differs from the default `/api/send`)
+
+To change poll frequency, edit the cron in `.github/workflows/donation-watch.yml`.
+
 ## Configuration
 
 - `OPENROUTER_API_KEY` must be set in CI secrets for translation
