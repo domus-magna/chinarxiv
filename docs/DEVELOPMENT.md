@@ -163,6 +163,8 @@ Push to `main` triggers auto-deploy:
 git push origin main
 ```
 
+Note: We use Railway’s native GitHub integration for deploys (not a GitHub Actions deploy job).
+
 ## Project Structure
 
 ```

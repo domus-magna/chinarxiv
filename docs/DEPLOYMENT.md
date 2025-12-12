@@ -80,7 +80,7 @@ python-dotenv==1.0.1
 # Upload and build (interactive)
 railway up --service chinaxiv-web
 
-# Or just push to main (auto-deploys)
+# Or just push to main (auto-deploys via Railway’s native GitHub integration)
 git push origin main
 ```
 

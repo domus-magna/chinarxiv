@@ -148,7 +148,7 @@ The script copies small sample JSON/PDF files into `data/` only when real artifa
 
 ## Production Deploy (Railway)
 
-- Pushes to `main` that touch `app/`, templates, or `requirements-web.txt` auto‑deploy the Flask app to Railway via `deploy-railway.yml`.  
+- The Flask app is deployed to Railway via Railway’s native GitHub integration (push to `main` triggers deploy).  
 - The translation pipeline still runs in GitHub Actions (`pipeline.yml` / `backfill-*.yml`) and publishes to PostgreSQL + B2; the Railway app reads from PostgreSQL at request time.
 - The previous Cloudflare Pages static‑site deploy is legacy and no longer used in production.
 
