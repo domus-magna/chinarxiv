@@ -130,6 +130,24 @@ def _strip_nul_in_list(values: Any) -> Any:
     return [_strip_nul(v) if isinstance(v, str) else v for v in values]
 
 
+def _strip_para_tags_in_list(values: Any) -> Any:
+    """
+    Strip accidental <PARA ...> wrappers from each string element in a list.
+
+    This protects creators/subjects fields from model output glitches that can
+    break UI rendering and search.
+    """
+    if not isinstance(values, list):
+        return values
+    cleaned: list[Any] = []
+    for item in values:
+        if isinstance(item, str):
+            cleaned.append(_strip_para_tags(item))
+        else:
+            cleaned.append(item)
+    return cleaned
+
+
 def _normalize_qa_status_for_db(raw_status: Any) -> str:
     """
     The database schema currently constrains qa_status to: pass, pending, fail.
@@ -335,6 +353,7 @@ def save_translation_result(
             except json.JSONDecodeError:
                 creators_en = []
         creators_en = _strip_nul_in_list(creators_en)
+        creators_en = _strip_para_tags_in_list(creators_en)
 
         title_en = _normalize_title_for_db(
             conn, paper_id, _strip_nul(translation.get("title_en", "") or "")

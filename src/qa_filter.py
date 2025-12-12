@@ -205,9 +205,15 @@ class SynthesisQAFilter:
         body_md = translation.get("body_md", "") or ""
         title_en = translation.get("title_en", "") or ""
         abstract_en = translation.get("abstract_en", "") or ""
+        creators_en = translation.get("creators_en", []) or []
+
+        if isinstance(creators_en, list):
+            creators_text = "\n".join(str(c or "") for c in creators_en)
+        else:
+            creators_text = str(creators_en)
 
         # Combine all text for overall checks
-        all_text = f"{title_en}\n{abstract_en}\n{body_md}"
+        all_text = f"{title_en}\n{abstract_en}\n{creators_text}\n{body_md}"
 
         # 1. Content length check
         if len(body_md) < self.MIN_BODY_LENGTH:
@@ -275,6 +281,11 @@ class SynthesisQAFilter:
         if len(abstract_en) < 20:
             issues.append("Abstract too short or missing")
             flagged_fields.append("abstract_en")
+
+        # 8. Author field sanity checks
+        if "<para" in creators_text.lower():
+            issues.append("Authors contain PARA wrapper tags")
+            flagged_fields.append("creators_en")
 
         # Determine status
         if chinese_ratio > self.MAX_CHINESE_RATIO:

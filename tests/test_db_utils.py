@@ -394,3 +394,44 @@ def test_save_translation_clamps_or_falls_back_for_bad_title(test_database) -> N
     conn.close()
 
     assert title_en == "DAYU3D: A modern code for HTGR thermal-hydraulic design and accident analysis"
+
+
+def test_save_translation_strips_para_wrappers_in_creators(test_database) -> None:
+    import os
+    import psycopg2
+
+    from src.db_utils import save_translation_result
+
+    os.environ["DATABASE_URL"] = test_database
+
+    conn = psycopg2.connect(test_database)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO papers (id, title_cn, abstract_cn, text_status, qa_status)
+        VALUES ('chinaxiv-202507.00011', 'T', 'A', 'pending', 'pending')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    save_translation_result(
+        "chinaxiv-202507.00011",
+        {
+            "title_en": "Ok",
+            "abstract_en": "Abstract ok",
+            "creators_en": ['<PARA id=\"1\">Miao, Longxin</PARA>', 'Yang, Dr. Zhen'],
+            "body_md": "",
+            "_qa_status": "pass",
+        },
+    )
+
+    conn = psycopg2.connect(test_database)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT creators_en FROM papers WHERE id = 'chinaxiv-202507.00011'"
+    )
+    (creators_en,) = cur.fetchone()
+    conn.close()
+
+    assert creators_en[0] == "Miao, Longxin"
