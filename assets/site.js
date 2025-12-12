@@ -158,6 +158,7 @@ function toggleFullText(btn) {
   const preview = container.querySelector('.full-text-preview');
   if (preview) {
     preview.classList.add('expanded');
+    btn.setAttribute('aria-expanded', 'true');
     trackEvent('expand-full-text', { paper_id: btn.dataset.paperId });
   }
 }
