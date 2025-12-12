@@ -309,3 +309,45 @@ def test_normalize_qa_status_for_db() -> None:
     assert _normalize_qa_status_for_db("flag_chinese") == "pending"
     assert _normalize_qa_status_for_db("flag_content") == "pending"
     assert _normalize_qa_status_for_db(None) == "pass"
+
+
+def test_save_translation_strips_para_wrappers(test_database) -> None:
+    import os
+    import psycopg2
+
+    from src.db_utils import save_translation_result
+
+    os.environ["DATABASE_URL"] = test_database
+
+    conn = psycopg2.connect(test_database)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO papers (id, title_cn, abstract_cn, text_status, qa_status)
+        VALUES ('chinaxiv-202506.99999', '中文标题', '中文摘要', 'pending', 'pending')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    save_translation_result(
+        "chinaxiv-202506.99999",
+        {
+            "title_en": '<PARA id="1">Clean Title</PARA>',
+            "abstract_en": '<PARA id="1">Clean Abstract</PARA>',
+            "creators_en": ["A"],
+            "body_md": "",
+            "_qa_status": "pass",
+        },
+    )
+
+    conn = psycopg2.connect(test_database)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT title_en, abstract_en FROM papers WHERE id = 'chinaxiv-202506.99999'"
+    )
+    title_en, abstract_en = cur.fetchone()
+    conn.close()
+
+    assert title_en == "Clean Title"
+    assert abstract_en == "Clean Abstract"
