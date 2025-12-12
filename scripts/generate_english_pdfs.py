@@ -105,7 +105,11 @@ def check_pdf_tools() -> Optional[str]:
         return None
 
 
-def build_pdf_markdown(item: Dict[str, Any], body_md: str) -> str:
+def build_pdf_markdown(
+    item: Dict[str, Any],
+    body_md: str,
+    pdf_engine: Optional[str] = None,
+) -> str:
     """
     Build markdown with PDF-specific header and footer branding.
 
@@ -116,23 +120,37 @@ def build_pdf_markdown(item: Dict[str, Any], body_md: str) -> str:
     chinarxiv_url = f"https://chinarxiv.org/items/{paper_id}"
     display_url = f"chinarxiv.org/items/{paper_id}"
 
-    yaml_header = f"""---
-header-includes:
-  - \\usepackage{{fontspec}}
-  - \\usepackage{{xeCJK}}
-  - \\setCJKmainfont{{Noto Sans CJK SC}}
-  - \\usepackage{{fancyhdr}}
-  - \\usepackage{{hyperref}}
-  - \\usepackage{{graphicx}}
-  - \\pagestyle{{fancy}}
-  - \\fancyhead{{}}
-  - \\fancyhead[R]{{\\includegraphics[height=0.6cm]{{assets/logo-wordmark.png}}}}
-  - \\fancyfoot{{}}
-  - \\fancyfoot[L]{{\\small \\href{{{chinarxiv_url}}}{{{display_url}}}}}
-  - \\fancyfoot[R]{{\\small Machine Translation}}
-  - \\renewcommand{{\\headrulewidth}}{{0pt}}
-  - \\renewcommand{{\\footrulewidth}}{{0.4pt}}
----
+    # When using tectonic, avoid explicit system CJK fonts, which may be missing
+    # on local machines/CI runners. We still compile successfully even if a
+    # small amount of Chinese slips through QA.
+    if pdf_engine == "xelatex":
+        header_includes = [
+            "  - \\usepackage{fontspec}",
+            "  - \\usepackage{xeCJK}",
+            "  - \\setCJKmainfont{Noto Sans CJK SC}",
+        ]
+    else:
+        header_includes = []
+
+    # Package imports belong in the LaTeX preamble (header-includes).
+    header_includes += [
+        "  - \\usepackage{fancyhdr}",
+        "  - \\usepackage{hyperref}",
+        "  - \\usepackage{graphicx}",
+    ]
+
+    yaml_header = "---\nheader-includes:\n" + "\n".join(header_includes) + "\n---\n\n"
+
+    # Fancyhdr configuration. Keeping this in the body ensures it runs right
+    # after \\begin{{document}} across engines.
+    latex_preamble = f"""\\pagestyle{{fancy}}
+\\fancyhead{{}}
+\\fancyhead[R]{{\\includegraphics[height=0.6cm]{{assets/logo-wordmark.png}}}}
+\\fancyfoot{{}}
+\\fancyfoot[L]{{\\small \\href{{{chinarxiv_url}}}{{{display_url}}}}}
+\\fancyfoot[R]{{\\small Machine Translation}}
+\\renewcommand{{\\headrulewidth}}{{0pt}}
+\\renewcommand{{\\footrulewidth}}{{0.4pt}}
 
 \\begin{{center}}
 \\rule{{\\textwidth}}{{0.5pt}}
@@ -145,7 +163,7 @@ header-includes:
 \\vspace{{1em}}
 
 """
-    return yaml_header + body_md
+    return yaml_header + latex_preamble + body_md
 
 
 def inject_figures_into_markdown(
@@ -302,10 +320,11 @@ def generate_pdf_for_paper(
     paper_figures = figure_manifest.get("papers", {}).get(paper_id, {})
     if paper_figures:
         for fig in paper_figures.get("figures", []):
-            if fig.get("translated_url"):
+            url = fig.get("translated_url") or fig.get("url")
+            if url:
                 figures.append({
                     "number": fig.get("number", ""),
-                    "url": fig.get("translated_url"),
+                    "url": url,
                 })
 
     # Inject figures into body (with cap for PDF), or replace markers with placeholders
@@ -332,7 +351,7 @@ def generate_pdf_for_paper(
     pdf_parts.append("\n_Source: ChinaXiv — Machine translation. Verify with original._")
 
     pdf_content = "\n\n".join(pdf_parts) + "\n"
-    pdf_md = build_pdf_markdown(paper, pdf_content)
+    pdf_md = build_pdf_markdown(paper, pdf_content, pdf_engine=pdf_engine)
 
     # Write temp markdown and generate PDF
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -371,7 +390,9 @@ def generate_pdf_for_paper(
             pdf_parts_fallback.append("\n_Source: ChinaXiv — Machine translation. Verify with original._")
 
             pdf_content_fallback = "\n\n".join(pdf_parts_fallback) + "\n"
-            pdf_md_fallback = build_pdf_markdown(paper, pdf_content_fallback)
+            pdf_md_fallback = build_pdf_markdown(
+                paper, pdf_content_fallback, pdf_engine=pdf_engine
+            )
 
             with open(md_path, "w") as f:
                 f.write(pdf_md_fallback)

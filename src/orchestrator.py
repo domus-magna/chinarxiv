@@ -57,6 +57,9 @@ ZOMBIE_TIMEOUT = timedelta(hours=4)  # Papers processing > 4 hours are zombies
 # Default stages (full pipeline)
 DEFAULT_STAGES = ['harvest', 'text', 'figures', 'pdf', 'post']
 
+# Cached schema feature flags (set on first use)
+_papers_has_license_column: Optional[bool] = None
+
 
 # ============================================================================
 # Data Classes
@@ -442,27 +445,68 @@ def insert_paper_if_new(conn, record: dict) -> bool:
     else:
         subjects_json = json.dumps([])
 
-    # Insert new paper with Chinese metadata in _cn columns
-    # _en columns are left NULL - populated by translation
-    cursor.execute("""
-        INSERT INTO papers (
-            id,
-            title_cn, abstract_cn, creators_cn, subjects_cn,
-            title_en, abstract_en, creators_en,
-            date, source_url, pdf_url, processing_status,
-            text_status, figures_status, pdf_status
+    # Compute license metadata (may scrape landing page if raw not present).
+    # Unknown licenses are treated as allowed downstream.
+    try:
+        from .licenses import decide_derivatives_allowed
+
+        record = decide_derivatives_allowed(record)
+    except Exception as e:
+        log(f"    WARNING: License detection failed for {record.get('id')}: {e}")
+        record["license"] = {"raw": "", "label": None, "derivatives_allowed": None, "badge": None}
+
+    license_json = json.dumps(record.get("license")) if record.get("license") else None
+
+    # Detect license column once per process to avoid per-insert exceptions.
+    global _papers_has_license_column
+    if _papers_has_license_column is None:
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'papers' AND column_name = 'license'
+            """
         )
-        VALUES (%s, %s, %s, %s, %s, NULL, NULL, NULL, %s, %s, %s, 'pending', 'pending', 'pending', 'pending')
-    """, (
-        record['id'],
-        record.get('title', ''),
-        record.get('abstract', ''),
+        _papers_has_license_column = cursor.fetchone() is not None
+
+    # Insert new paper with Chinese metadata in _cn columns.
+    # _en columns are left NULL - populated by translation.
+    cols = [
+        "id",
+        "title_cn",
+        "abstract_cn",
+        "creators_cn",
+        "subjects_cn",
+        "title_en",
+        "abstract_en",
+        "creators_en",
+        "date",
+        "source_url",
+        "pdf_url",
+    ]
+    vals = [
+        record["id"],
+        record.get("title", ""),
+        record.get("abstract", ""),
         creators_json,
         subjects_json,
-        record.get('date'),
-        record.get('source_url'),
-        record.get('pdf_url'),
-    ))
+        None,
+        None,
+        None,
+        record.get("date"),
+        record.get("source_url"),
+        record.get("pdf_url"),
+    ]
+
+    if _papers_has_license_column:
+        cols.append("license")
+        vals.append(license_json)
+
+    cols.extend(["processing_status", "text_status", "figures_status", "pdf_status"])
+    vals.extend(["pending", "pending", "pending", "pending"])
+
+    placeholders = ", ".join(["%s"] * len(cols))
+    insert_sql = f"INSERT INTO papers ({', '.join(cols)}) VALUES ({placeholders})"
+    cursor.execute(insert_sql, vals)
 
     # Also insert subjects into paper_subjects table (for queries)
     if subjects:

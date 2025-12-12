@@ -96,28 +96,39 @@ def translate_paper_synthesis(
     if not rec:
         raise ValueError(f"Paper {paper_id} not found")
 
-    # Check for existing PDF in site directory first
-    site_pdf_path = f"site/items/{paper_id}/{paper_id}.pdf"
-    data_pdf_path = f"data/pdfs/{paper_id}.pdf"
+    # License gate (V1): if derivatives are disallowed, translate title+abstract only.
+    skip_full_text = False
+    license_meta = rec.get("license") or {}
+    if license_meta.get("derivatives_allowed") is False:
+        skip_full_text = True
+        print(
+            f"License blocks derivatives for {paper_id}; "
+            "translating title/abstract only."
+        )
 
-    pdf_path = None
-    if os.path.exists(site_pdf_path):
-        pdf_path = site_pdf_path
-        print(f"Using existing PDF: {site_pdf_path}")
-    elif os.path.exists(data_pdf_path):
-        pdf_path = data_pdf_path
-        print(f"Using existing PDF: {data_pdf_path}")
-    elif rec.get("pdf_url"):
-        # Download PDF
-        try:
-            process_result = process_paper(paper_id, rec["pdf_url"])
-            if process_result:
-                pdf_path = process_result.get("pdf_path")
-        except Exception as e:
-            print(f"Warning: PDF processing failed: {e}")
+    if not skip_full_text:
+        # Check for existing PDF in site directory first
+        site_pdf_path = f"site/items/{paper_id}/{paper_id}.pdf"
+        data_pdf_path = f"data/pdfs/{paper_id}.pdf"
 
-    if pdf_path:
-        rec["files"] = {"pdf_path": pdf_path}
+        pdf_path = None
+        if os.path.exists(site_pdf_path):
+            pdf_path = site_pdf_path
+            print(f"Using existing PDF: {site_pdf_path}")
+        elif os.path.exists(data_pdf_path):
+            pdf_path = data_pdf_path
+            print(f"Using existing PDF: {data_pdf_path}")
+        elif rec.get("pdf_url"):
+            # Download PDF
+            try:
+                process_result = process_paper(paper_id, rec["pdf_url"])
+                if process_result:
+                    pdf_path = process_result.get("pdf_path")
+            except Exception as e:
+                print(f"Warning: PDF processing failed: {e}")
+
+        if pdf_path:
+            rec["files"] = {"pdf_path": pdf_path}
 
     # Translate using synthesis mode
     translation = service.translate_record_synthesis(rec, dry_run=dry_run)

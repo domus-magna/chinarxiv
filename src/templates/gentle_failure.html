@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block header_breadcrumbs %}
+  <div class="header-breadcrumbs">
+    <a href="{{ root }}/">Home</a> <span class="sep">&gt;</span> Unavailable
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>{{ title or "Temporarily unavailable" }}</h1>
+    <p class="page-description">
+      {{ message or "We’re having trouble loading papers right now. Please try again soon." }}
+    </p>
+  </div>
+
+  <div class="banner" role="status" style="margin-top: 1rem;">
+    The translation pipeline continues to run in the background. Once the database is reachable,
+    this page will load normally.
+  </div>
+
+  <p style="margin-top: 1.5rem; color: var(--text-muted);">
+    If this keeps happening, please check back later.
+  </p>
+{% endblock %}
+

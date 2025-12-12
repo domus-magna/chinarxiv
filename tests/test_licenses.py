@@ -16,7 +16,7 @@ def test_decide_derivatives_from_config(tmp_path):
     cfg = load_yaml("src/config.yaml")
     rec = {"id": "x", "license": {"raw": "CC BY"}}
     out = decide_derivatives_allowed(rec, cfg)
-    assert out["license"]["derivatives_allowed"] is False
+    assert out["license"]["derivatives_allowed"] is True
     rec2 = {"id": "y", "license": {"raw": "CC-BY-ND"}}
     out2 = decide_derivatives_allowed(rec2, cfg)
     assert out2["license"]["derivatives_allowed"] is False

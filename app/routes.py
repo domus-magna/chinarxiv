@@ -7,7 +7,7 @@ This module contains all route handlers for the application:
 - JSON API for AJAX (optional)
 """
 
-from flask import Blueprint, render_template, request, jsonify, abort, current_app
+from flask import Blueprint, render_template, request, jsonify, abort, current_app, send_from_directory
 from datetime import datetime, timedelta, timezone
 from calendar import monthrange
 import hashlib
@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import uuid
+import psycopg2
 from .database import query_papers, get_db
 from .db_adapter import get_adapter
 from .filters import build_categories, get_available_filters
@@ -23,6 +24,13 @@ logger = logging.getLogger(__name__)
 
 # Create blueprint for main routes
 bp = Blueprint('main', __name__)
+
+# ---------------------------------------------------------------------------
+# User report API constraints
+# ---------------------------------------------------------------------------
+VALID_REPORT_TYPES = {"translation", "figure", "site-bug", "feature", "other"}
+MAX_REPORT_DESCRIPTION_LENGTH = 5000
+MAX_REPORT_CONTEXT_SIZE = 10_000  # bytes
 
 
 @bp.route('/health')
@@ -33,6 +41,53 @@ def health():
     Returns 200 OK without requiring database access.
     """
     return jsonify({'status': 'ok'})
+
+
+@bp.route('/favicon.ico')
+def favicon():
+    """
+    Serve favicon without 404 noise.
+
+    Browsers default to requesting /favicon.ico. Our static assets live under
+    /assets, so we proxy the request here.
+    """
+    return send_from_directory(current_app.static_folder, 'favicon.ico')
+
+
+def _inject_figures_into_body_md(body_md: str, figures: list[dict]) -> str:
+    """
+    Replace [FIGURE:N] markers in body markdown with inline images.
+
+    This is a lightweight, server-side equivalent of the PDF injector.
+    It keeps the DB unchanged and only affects rendering.
+    """
+    if not body_md or not figures:
+        return body_md
+
+    # Strip table markers (tables aren't translated yet)
+    body_md = re.sub(r"\[TABLE:\d+[A-Za-z]?\]", "", body_md)
+
+    figure_urls: dict[str, list[str]] = {}
+    for fig in figures:
+        num = str(fig.get("number", "")).strip()
+        url = fig.get("translated_url") or fig.get("url")
+        if not num or not isinstance(url, str):
+            continue
+        url = url.strip()
+        # Safety: only allow http(s) figure URLs to avoid XSS via crafted schemes.
+        if not url.startswith(("http://", "https://")):
+            continue
+        figure_urls.setdefault(num, []).append(url)
+
+    def replace_marker(match: re.Match) -> str:
+        num = match.group(1)
+        urls = figure_urls.get(num)
+        if not urls:
+            return match.group(0)
+        imgs = "\n\n".join(f"![Figure {num}]({u})" for u in urls)
+        return f"\n\n{imgs}\n\n"
+
+    return re.sub(r"\[FIGURE:(\d+[A-Za-z]?)\]", replace_marker, body_md)
 
 
 def _prepare_paper_for_template(paper):
@@ -54,7 +109,7 @@ def _prepare_paper_for_template(paper):
     paper['_has_english_pdf'] = bool(paper.get('english_pdf_url'))
     paper['_english_pdf_url'] = paper.get('english_pdf_url', '')
 
-    # Parse figure_urls JSON column into _translated_figures list
+    # Parse figure_urls JSON column into _translated_figures list.
     # Expected format: [{"number": N, "url": "..."}, ...]
     figure_urls = paper.get('figure_urls')
     if figure_urls:
@@ -70,8 +125,19 @@ def _prepare_paper_for_template(paper):
     # This ensures gallery displays when figure_urls is populated, regardless of has_figures
     paper['_has_translated_figures'] = bool(paper['_translated_figures'])
 
-    # Map body_md to formatted_body_md for template
-    paper['formatted_body_md'] = paper.get('body_md', '')
+    # Map body_md to formatted_body_md for template, injecting inline figures
+    raw_body_md = paper.get('body_md', '') or ''
+    paper['formatted_body_md'] = _inject_figures_into_body_md(
+        raw_body_md, paper['_translated_figures']
+    )
+
+    # Ensure license is dict-like if present
+    lic = paper.get("license")
+    if isinstance(lic, str):
+        try:
+            paper["license"] = json.loads(lic)
+        except json.JSONDecodeError:
+            paper["license"] = None
 
     # Ensure creators fields are lists (JSONB should already parse, but be safe)
     # This prevents join() from joining characters if field is a string
@@ -515,6 +581,20 @@ def _handle_translation_request(request_type):
             'message': 'Request logged successfully'
         }), 200
 
+    except psycopg2.errors.UndefinedTable:
+        # Schema not migrated yet (translation_requests missing)
+        db.rollback()
+        return jsonify({
+            'success': False,
+            'message': 'Requests are temporarily unavailable. Please try again later.'
+        }), 503
+    except psycopg2.Error as e:
+        logger.error(f"Database error processing translation request: {e}")
+        db.rollback()
+        return jsonify({
+            'success': False,
+            'message': 'Database unavailable. Please try again later.'
+        }), 503
     except Exception as e:
         logger.error(f"Failed to process translation request: {e}")
         db.rollback()
@@ -557,3 +637,92 @@ def request_text_translation():
         500: Internal server error
     """
     return _handle_translation_request('text')
+
+
+@bp.route('/api/report', methods=['POST'])
+def report_problem():
+    """
+    API endpoint for users to report translation/site issues.
+
+    Body:
+        {
+            "type": "translation" | "figure" | "site-bug" | "feature" | "other",
+            "description": "...",
+            "context": { "paperId": "...", "url": "...", ... }
+        }
+    """
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict):
+        return jsonify({"success": False, "message": "Invalid JSON"}), 400
+
+    issue_type = data.get("type")
+    description = data.get("description")
+    context = data.get("context") or {}
+
+    if not issue_type or not isinstance(issue_type, str):
+        return jsonify({"success": False, "message": "Invalid type"}), 400
+    issue_type_norm = issue_type.strip().lower()
+    if issue_type_norm not in VALID_REPORT_TYPES:
+        return jsonify({"success": False, "message": "Invalid type"}), 400
+
+    if not description or not isinstance(description, str):
+        return jsonify({"success": False, "message": "Invalid description"}), 400
+    description_stripped = description.strip()
+    if len(description_stripped) < 10:
+        return jsonify({"success": False, "message": "Invalid description"}), 400
+    if len(description_stripped) > MAX_REPORT_DESCRIPTION_LENGTH:
+        return jsonify({"success": False, "message": "Description too long"}), 400
+
+    paper_id = None
+    context_json = None
+    if isinstance(context, dict):
+        paper_id = context.get("paperId") or context.get("paper_id")
+        try:
+            context_json = json.dumps(context, ensure_ascii=False)
+        except (TypeError, ValueError):
+            context_json = None
+        if context_json is not None and len(context_json.encode("utf-8")) > MAX_REPORT_CONTEXT_SIZE:
+            return jsonify({"success": False, "message": "Context too large"}), 400
+
+    # Privacy-preserving IP hash (optional)
+    client_ip = _get_client_ip()
+    ip_hash = _hash_ip(client_ip)
+
+    db = get_db()
+    adapter = get_adapter()
+    cursor = adapter.get_cursor(db)
+    try:
+        cursor.execute(
+            """
+            INSERT INTO user_reports (paper_id, issue_type, description, context, ip_hash)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (
+                paper_id,
+                issue_type_norm[:32],
+                description_stripped,
+                context_json,
+                ip_hash,
+            ),
+        )
+        db.commit()
+        return jsonify({"success": True, "message": "Report received"}), 200
+    except psycopg2.errors.UndefinedTable:
+        db.rollback()
+        return jsonify({
+            "success": False,
+            "message": "Reporting is temporarily unavailable. Please try again later."
+        }), 503
+    except psycopg2.Error as e:
+        logger.error(f"Database error logging user report: {e}")
+        db.rollback()
+        return jsonify({
+            "success": False,
+            "message": "Database unavailable. Please try again later."
+        }), 503
+    except Exception as e:
+        logger.error(f"Failed to log user report: {e}")
+        db.rollback()
+        return jsonify({"success": False, "message": "Internal server error"}), 500
+    finally:
+        cursor.close()

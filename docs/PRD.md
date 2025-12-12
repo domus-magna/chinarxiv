@@ -1,7 +1,9 @@
-## ChinaXiv → English Translation Static Site (V1) — PRD
+## ChinaXiv → English Translation (V1) — PRD
+
+**Status note (Dec 2025):** Production now runs a DB‑first pipeline (`src/orchestrator.py`) that writes state to PostgreSQL and durable artifacts to Backblaze B2, and serves the site via a Railway‑hosted Flask app. Static‑site specifics below are historical context; the functional goals remain accurate.
 
 ### Summary
-Translate ChinaXiv preprints to English with high math/LaTeX fidelity and publish as a static site. Integrate once via OpenRouter (default: DeepSeek; optional: Z.AI GLM) to keep costs and complexity low. Harvest via OAI-PMH within license constraints, render HTML with MathJax, and offer Markdown/PDF downloads. A nightly job ingests new records, translates, renders, indexes, and deploys.
+Translate ChinaXiv preprints to English with high math/LaTeX fidelity and publish them on a low‑ops web mirror. Integrate once via OpenRouter (current default Kimi K2 with GLM fallback) to keep costs and complexity low. Harvest via BrightData, render HTML with MathJax, and offer PDF downloads. A nightly job ingests new records, translates, QA‑checks, persists to PostgreSQL/B2, and the Railway app serves the results.
 
 ### Goals
 - High-fidelity English translations of ChinaXiv preprints with exact math preservation
@@ -25,7 +27,7 @@ Translate ChinaXiv preprints to English with high math/LaTeX fidelity and publis
   - Identify/ListRecords with `metadataPrefix=oai_eprint` (fallback `oai_dc`)
   - Selective harvest by date using `from`/`until` (UTC)
 - Attribution: Prominent "Source: ChinaXiv" with link on every page.
-- **LICENSE POLICY: We do not care about licenses.** All papers will be translated in full regardless of license restrictions. License-related code has been commented out.
+- **LICENSE POLICY (V1):** Honor “no derivatives” licenses (e.g., CC BY‑ND) by publishing title + abstract only. Unknown licenses default to full translation. License parsing is lightweight and cached.
 - Show "Machine translation. Verify with original." banner on item pages.
 
 References:
@@ -47,8 +49,8 @@ References:
    - Normalize to JSON with fields: `id`, `oai_identifier`, `title`, `creators`, `subjects`, `abstract`, `date`, `pdf_url`, `source_url`, `license`, `setSpec` (if any)
 
 2) License Gate
-   - **DISABLED: We do not care about licenses.** All papers translated in full.
-   - License-related code commented out in the codebase.
+   - If derivatives are disallowed, translate and publish title + abstract only (no body/PDF).
+   - For all other or unknown licenses, translate in full.
 
 3) Fetch
    - Download original PDF for every item (for user download + fallback reference)
@@ -71,7 +73,7 @@ References:
    - MiniSearch/Lunr loaded as single JS file; instant results
 
 7) Automation & Deploy
-   - GitHub Actions nightly (03:00 UTC): harvest → QA gates → fetch → translate → render → index → deploy to Cloudflare Pages
+   - GitHub Actions nightly (03:00 UTC): discover/harvest → QA gates → fetch → translate → figures → PDF → persist to PostgreSQL/B2
    - Idempotent via `seen.json` cache (committed back to repo to persist dedupe state)
    - Persist pipeline outputs to Backblaze B2 (S3 API) to prevent loss on ephemeral runners
    - Log per-item model slug and token counts for cost tracking

@@ -23,6 +23,9 @@ from psycopg2.extras import RealDictCursor
 
 from .utils import log
 
+# Cached schema feature flags (set on first use)
+_papers_has_license_column: Optional[bool] = None
+
 
 def get_db_connection():
     """
@@ -74,16 +77,38 @@ def get_paper_for_translation(paper_id: str, conn=None) -> Optional[Dict[str, An
 
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT
-                id,
-                title_cn, abstract_cn, creators_cn, subjects_cn,
-                title_en, abstract_en, creators_en,
-                text_status,
-                date, pdf_url, source_url
-            FROM papers
-            WHERE id = %s
-        """, (paper_id,))
+
+        global _papers_has_license_column
+        if _papers_has_license_column is None:
+            cursor.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'papers' AND column_name = 'license'
+            """)
+            _papers_has_license_column = cursor.fetchone() is not None
+
+        if _papers_has_license_column:
+            cursor.execute("""
+                SELECT
+                    id,
+                    title_cn, abstract_cn, creators_cn, subjects_cn,
+                    title_en, abstract_en, creators_en,
+                    text_status,
+                    date, pdf_url, source_url,
+                    license
+                FROM papers
+                WHERE id = %s
+            """, (paper_id,))
+        else:
+            cursor.execute("""
+                SELECT
+                    id,
+                    title_cn, abstract_cn, creators_cn, subjects_cn,
+                    title_en, abstract_en, creators_en,
+                    text_status,
+                    date, pdf_url, source_url
+                FROM papers
+                WHERE id = %s
+            """, (paper_id,))
 
         row = cursor.fetchone()
         if not row:
@@ -142,6 +167,8 @@ def get_paper_for_translation(paper_id: str, conn=None) -> Optional[Dict[str, An
             "pdf_url": row.get('pdf_url'),
             "source_url": row.get('source_url'),
         }
+        if row.get("license"):
+            record["license"] = row.get("license")
 
         return record
 

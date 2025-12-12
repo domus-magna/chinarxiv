@@ -75,6 +75,7 @@ def create_postgres_schema(pg_conn):
     logger.info("  Ensuring optional columns exist...")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS english_pdf_url TEXT;")
     cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS figure_urls TEXT;")
+    cursor.execute("ALTER TABLE papers ADD COLUMN IF NOT EXISTS license JSONB;")
 
     # Chinese source columns for database-as-source-of-truth
     # These store the original Chinese metadata (before translation)
@@ -206,6 +207,30 @@ def create_postgres_schema(pg_conn):
     cursor.execute("""
     CREATE INDEX IF NOT EXISTS idx_translation_requests_paper
         ON translation_requests(paper_id);
+    """)
+
+    # User reports table (for problem reports from readers)
+    logger.info("  Creating user_reports table...")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_reports (
+        id SERIAL PRIMARY KEY,
+        paper_id VARCHAR(30),
+        issue_type VARCHAR(32) NOT NULL,
+        description TEXT NOT NULL,
+        context JSONB,
+        ip_hash VARCHAR(16),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    logger.info("  Creating user_reports indexes...")
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_user_reports_paper
+        ON user_reports(paper_id);
+    """)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_user_reports_created
+        ON user_reports(created_at DESC);
     """)
 
     pg_conn.commit()
