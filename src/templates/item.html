@@ -56,17 +56,23 @@
           {{ (item.abstract_md or item.abstract_en) | markdown | safe }}
         </div>
 
-        {% if item._has_full_text and item.formatted_body_md %}
+        {% if item._has_full_text and (item.formatted_body_md or item.body_en) %}
           <h2>Full Text</h2>
-          <div class="full-text-preview">
-            {{ item.formatted_body_md | markdown | safe }}
-          </div>
-        {% elif item._has_full_text and item.body_en %}
-          <h2>Full Text</h2>
-          <div class="full-text-preview">
-            {% for p in item.body_en %}
-              <p>{{ p }}</p>
-            {% endfor %}
+          <div class="full-text-container">
+            <div class="full-text-preview">
+              {% if item.formatted_body_md %}
+                {{ item.formatted_body_md | markdown | safe }}
+              {% else %}
+                {% for p in item.body_en %}
+                  <p>{{ p }}</p>
+                {% endfor %}
+              {% endif %}
+            </div>
+            <div class="full-text-actions">
+              <button class="btn-read-full" onclick="toggleFullText(this)" data-paper-id="{{ item.id }}">
+                Read Full Paper
+              </button>
+            </div>
           </div>
         {% endif %}
 
