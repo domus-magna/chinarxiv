@@ -34,6 +34,10 @@ import re
 # Regex pattern for figure/table markers
 MARKER_PATTERN = re.compile(r'\[(?:FIGURE|TABLE):\d+[a-z]?\]')
 
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+_PARA_TAG_RE = re.compile(r"</?\s*para\b[^>]*>", re.IGNORECASE)
+_MAX_TITLE_LEN = 300
+
 
 def _verify_markers_preserved(input_text: str, output_text: str) -> list:
     """
@@ -47,6 +51,37 @@ def _verify_markers_preserved(input_text: str, output_text: str) -> list:
     if lost:
         log(f"WARNING: {len(lost)} markers lost in translation: {lost}")
     return lost
+
+
+def _looks_like_short_english_title(text: str) -> bool:
+    if not text:
+        return False
+    if len(text) > _MAX_TITLE_LEN:
+        return False
+    if _CJK_RE.search(text):
+        return False
+    return sum(ch.isalpha() for ch in text) >= 3
+
+
+def _normalize_title_output(title_en: str, title_src: str) -> str:
+    """
+    Normalize title output to prevent catastrophic UI/search breakage.
+
+    This is intentionally simple and defensive: sometimes models return a whole-paper
+    blob (or wrap output in <PARA ...> tags). Titles should be short.
+    """
+    cleaned = title_en or ""
+    cleaned = _PARA_TAG_RE.sub("", cleaned)
+    cleaned = " ".join(cleaned.split())
+
+    if len(cleaned) <= _MAX_TITLE_LEN:
+        return cleaned
+
+    src = " ".join((title_src or "").split())
+    if _looks_like_short_english_title(src):
+        return src
+
+    return cleaned[: _MAX_TITLE_LEN - 3].rstrip() + "..."
 
 
 SYSTEM_PROMPT = (
@@ -905,6 +940,9 @@ Remember: Produce flowing, readable academic English. Merge fragments into compl
 
             translation.title_en = self.translate_field(
                 title_src, dry_run=dry_run, glossary_override=glossary_override
+            )
+            translation.title_en = _normalize_title_output(
+                translation.title_en or "", title_src
             )
             translation.abstract_en = self.translate_field(
                 abstract_src, dry_run=dry_run, glossary_override=glossary_override
