@@ -973,12 +973,18 @@ def process_paper(
                         continue
 
                     update_stage_status(conn, paper_id, 'figures', 'processing')
-                    if run_figure_translation(paper_id, dry_run=dry_run):
-                        update_stage_status(conn, paper_id, 'figures', 'complete')
-                        result.stages_completed.append('figures')
-                    else:
+                    try:
+                        if run_figure_translation(paper_id, dry_run=dry_run):
+                            update_stage_status(conn, paper_id, 'figures', 'complete')
+                            result.stages_completed.append('figures')
+                        else:
+                            # Figure translation is optional - don't fail the paper
+                            update_stage_status(conn, paper_id, 'figures', 'failed')
+                            log(f"    Figure translation failed for {paper_id} (non-blocking)")
+                    except Exception as fig_e:
+                        # Catch Gemini quota errors, etc. - don't block the paper
                         update_stage_status(conn, paper_id, 'figures', 'failed')
-                        raise RuntimeError("Figure translation failed")
+                        log(f"    Figure translation error: {fig_e} (non-blocking)")
 
                 elif stage == 'pdf':
                     # Skip if already complete
