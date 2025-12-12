@@ -145,7 +145,8 @@
           </div>
         </div>
         <p class="paper-abstract">
-          {{ it.abstract_en[:300] if it.abstract_en else '' }}{% if it.abstract_en and it.abstract_en|length > 300 %}…{% endif %}
+          {% set _abstract_preview = (it.abstract_md or it.abstract_en or '') | markdown | striptags %}
+          {{ _abstract_preview[:300] }}{% if _abstract_preview and _abstract_preview|length > 300 %}…{% endif %}
         </p>
       </article>
     {% endfor %}
