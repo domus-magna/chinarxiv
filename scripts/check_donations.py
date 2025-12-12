@@ -34,7 +34,9 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 import requests
 
@@ -50,6 +52,12 @@ from src.logging_utils import log  # noqa: E402
 
 BTC_DEFAULT_ADDRESS = "bc1qcxzuuykxx46g6u70fa9sytty53vv74eakch5hk"
 ETH_DEFAULT_ADDRESS = "0x107F501699EFb65562bf97FBE06144Cd431ECc9D"
+
+# Limits for scanning and state retention.
+MAX_BTC_EVENTS_TO_SCAN = 20
+MAX_ETH_EVENTS_TO_SCAN = 25
+MAX_SEEN_BTC_TXIDS = 200
+MAX_SEEN_ETH_EVENTS = 400
 
 # Pricing helpers (minor gold-plating).
 COINGECKO_IDS = {"BTC": "bitcoin", "ETH": "ethereum"}
@@ -94,12 +102,7 @@ def _save_state(state_path: Path, state: Dict[str, Any]) -> None:
     write_json(str(state_path), state)
 
 
-def _chunk(seq: Sequence[Any], n: int) -> Iterable[Sequence[Any]]:
-    for i in range(0, len(seq), n):
-        yield seq[i : i + n]
-
-
-def fetch_btc_events(address: str, max_events: int = 20) -> List[DonationEvent]:
+def fetch_btc_events(address: str, max_events: int = MAX_BTC_EVENTS_TO_SCAN) -> List[DonationEvent]:
     url = f"https://blockstream.info/api/address/{address}/txs"
     resp = requests.get(url, timeout=20)
     resp.raise_for_status()
@@ -308,6 +311,7 @@ def _format_amount(amount: float) -> str:
     return f"{amount:.8f}".rstrip("0").rstrip(".")
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
 def _coingecko_price_usd(symbol: str, timestamp: int) -> Optional[float]:
     """Get approximate USD price at the given UTC date."""
     coin_id = COINGECKO_IDS.get(symbol.upper())
@@ -371,12 +375,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument(
         "--max-events",
         type=int,
-        default=20,
+        default=MAX_BTC_EVENTS_TO_SCAN,
         help="Max recent events to scan per chain.",
     )
     parser.add_argument("--dry-run", action="store_true", help="Do not send alerts.")
 
     args = parser.parse_args(argv)
+
+    # Preflight validation: warn if Discord webhook is not configured.
+    if not os.getenv("DISCORD_WEBHOOK_URL"):
+        log("WARNING: DISCORD_WEBHOOK_URL not set, alerts disabled")
 
     state_path = Path(args.state_path)
     state = _load_state(state_path)
@@ -411,7 +419,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             args.eth_address,
             api_key=api_key,
             tokens_filter=tokens_filter,
-            max_events=max(args.max_events, 25),
+            max_events=max(args.max_events, MAX_ETH_EVENTS_TO_SCAN),
         )
         for ev in eth_events:
             dedupe_id = ev.dedupe_id()
@@ -457,8 +465,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             seen_eth.append(ev.dedupe_id())
 
     # Trim seen lists to avoid unbounded growth.
-    seen_btc = list(dict.fromkeys(seen_btc))[-200:]
-    seen_eth = list(dict.fromkeys(seen_eth))[-400:]
+    seen_btc = list(dict.fromkeys(seen_btc))[-MAX_SEEN_BTC_TXIDS:]
+    seen_eth = list(dict.fromkeys(seen_eth))[-MAX_SEEN_ETH_EVENTS:]
 
     state["btc"] = {"seen_txids": seen_btc}
     state["eth"] = {"seen_event_ids": seen_eth}
