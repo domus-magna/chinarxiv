@@ -1,23 +1,3 @@
-# 🚨 CRITICAL: USE BD AT START OF EVERY TASK! 🚨
-#
-# BEFORE YOU DO ANYTHING ELSE - STOP AND RUN: `bd ready`
-# This shows you EXACTLY what to work on next. Dependencies matter!
-# Don't guess - let bd tell you what's actually ready. This prevents:
-# ❌ Wasted time on blocked tasks
-# ❌ Missing critical dependencies
-# ❌ Context switching chaos
-# ✅ Crystal clear priorities
-# ✅ Smooth dependency flow
-# ✅ Organized, predictable progress
-#
-# Make this your unbreakable habit: TASK → `bd ready` → WORK → `bd update`
-# ======================================================================
-#
-# 📣 Non-negotiable BD Workflow (no exceptions)
-# - Run `bd ready` before touching any file. If it reports a block, stop—pushing forward creates rework.
-# - Run `bd update` the moment you finish so the next agent inherits fresh context.
-# - We log BD misses; repeat offenders trigger remediation because they break dependency planning and waste API credits.
-#
 # Repository Guidelines
 
 ## 🎯 Critical Development Philosophy (Read First!)
@@ -51,7 +31,6 @@
 ## 📋 Essential Commands (Quick Reference)
 
 ### Daily Development Workflow
-- **Start work**: `bd ready` (check what tasks are unblocked)
 - **Environment**: `python -m venv .venv && source .venv/bin/activate`
 - **Install deps**: `pip install -r requirements.txt`
 - **Run tests**: `python -m pytest tests/ -v`
