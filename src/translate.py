@@ -145,7 +145,11 @@ def translate_paper_synthesis(
     # Save to database (primary) and local file (backup)
     if not dry_run:
         # Backup: Save to local file first (useful for debugging even if DB save fails).
-        out_dir = "data/translated"
+        #
+        # IMPORTANT:
+        # - Only QA-pass translations should land in data/translated (uploaded to validated/).
+        # - QA-flagged translations should land in data/flagged (uploaded to flagged/).
+        out_dir = "data/translated" if qa_result.status.value == "pass" else "data/flagged"
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, f"{paper_id}.json")
         write_json(out_path, translation)

@@ -175,6 +175,7 @@ class SynthesisQAFilter:
         self.MAX_CHINESE_RATIO = 0.005  # 0.5% tolerance (some papers have Chinese refs)
         self.MIN_AVG_SENTENCE_LENGTH = 10  # Detect fragmentation
         self.MAX_WATERMARK_PATTERN_COUNT = 0  # No watermarks allowed
+        self.MAX_TITLE_LENGTH = 300  # Titles should never be body-sized
 
     # Known watermark patterns to check in output
     WATERMARK_OUTPUT_PATTERNS = [
@@ -259,6 +260,16 @@ class SynthesisQAFilter:
         # 7. Title/abstract validation
         if len(title_en) < 5:
             issues.append("Title too short or missing")
+            flagged_fields.append("title_en")
+
+        # Catch cases where a whole-paper blob (often wrapped in <PARA>) gets written into title_en.
+        # This should be treated as a QA failure so it never lands in validated artifacts.
+        if "<para" in title_en.lower():
+            issues.append("Title contains PARA wrapper tags")
+            flagged_fields.append("title_en")
+
+        if len(title_en) > self.MAX_TITLE_LENGTH:
+            issues.append(f"Title too long: {len(title_en)} chars (max: {self.MAX_TITLE_LENGTH})")
             flagged_fields.append("title_en")
 
         if len(abstract_en) < 20:
