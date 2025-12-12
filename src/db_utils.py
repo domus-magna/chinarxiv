@@ -27,6 +27,44 @@ from .utils import log
 _papers_has_license_column: Optional[bool] = None
 
 
+def _strip_nul(value: Any) -> Any:
+    """
+    PostgreSQL rejects NUL (0x00) characters in text fields.
+
+    We strip them proactively so a single bad character doesn't drop an entire
+    (potentially expensive) translation on the floor.
+    """
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    return value
+
+
+def _strip_nul_in_list(values: Any) -> Any:
+    """
+    Strip NULs from string elements in a list.
+
+    This is primarily used for JSON-serialized fields like creators/subjects,
+    where a single NUL in one element would otherwise break the DB write.
+    """
+    if not isinstance(values, list):
+        return values
+    return [_strip_nul(v) if isinstance(v, str) else v for v in values]
+
+
+def _normalize_qa_status_for_db(raw_status: Any) -> str:
+    """
+    The database schema currently constrains qa_status to: pass, pending, fail.
+
+    The QA filter can emit more granular statuses (e.g., flag_chinese). We map
+    those into the DB's allowed set.
+    """
+    status = str(raw_status or "pass").strip().lower()
+    if status in {"pass", "pending", "fail"}:
+        return status
+    # Any flagged/unknown QA state is stored as pending (needs review).
+    return "pending"
+
+
 def get_db_connection():
     """
     Get PostgreSQL connection from DATABASE_URL environment variable.
@@ -217,10 +255,13 @@ def save_translation_result(
                 creators_en = json.loads(creators_en)
             except json.JSONDecodeError:
                 creators_en = []
+        creators_en = _strip_nul_in_list(creators_en)
 
-        body_md = translation.get('body_md', '')
+        title_en = _strip_nul(translation.get("title_en", "") or "")
+        abstract_en = _strip_nul(translation.get("abstract_en", "") or "")
+        body_md = _strip_nul(translation.get("body_md", "") or "")
         has_full_text = bool(body_md and len(body_md) > 100)
-        qa_status = translation.get('_qa_status', 'pass')
+        qa_status = _normalize_qa_status_for_db(translation.get("_qa_status", "pass"))
 
         # Update English columns and mark as complete
         cursor.execute("""
@@ -235,8 +276,8 @@ def save_translation_result(
                 text_completed_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """, (
-            translation.get('title_en', ''),
-            translation.get('abstract_en', ''),
+            title_en,
+            abstract_en,
             json.dumps(creators_en),
             body_md,
             has_full_text,
@@ -257,17 +298,34 @@ def save_translation_result(
                 subjects_en = []
 
         if subjects_en:
+            # Sanitize and de-duplicate to avoid unique constraint violations.
+            seen: set[str] = set()
+            deduped: list[str] = []
+            for subject in subjects_en:
+                if not subject:
+                    continue
+                if not isinstance(subject, str):
+                    continue
+                subject = _strip_nul(subject)
+                if not subject:
+                    continue
+                if subject in seen:
+                    continue
+                seen.add(subject)
+                deduped.append(subject)
+            subjects_en = deduped
+
             # Replace existing subjects with translated ones
             cursor.execute(
                 "DELETE FROM paper_subjects WHERE paper_id = %s",
                 (paper_id,)
             )
             for subject in subjects_en:
-                if subject:  # Skip empty subjects
-                    cursor.execute(
-                        "INSERT INTO paper_subjects (paper_id, subject) VALUES (%s, %s)",
-                        (paper_id, subject)
-                    )
+                cursor.execute(
+                    "INSERT INTO paper_subjects (paper_id, subject) VALUES (%s, %s) "
+                    "ON CONFLICT DO NOTHING",
+                    (paper_id, subject),
+                )
 
         conn.commit()
         log(f"Saved translation for {paper_id} to database")
