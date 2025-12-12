@@ -1177,7 +1177,10 @@ def get_work_queue(
 
             if status.get('processing_status') == 'complete':
                 # Check if specific stages are requested and incomplete
-                if text_only and status.get('text_status') != 'complete' or figures_only and status.get('figures_status') != 'complete':
+                if text_only and (
+                    status.get('text_status') != 'complete'
+                    or status.get('pdf_status') != 'complete'
+                ) or figures_only and status.get('figures_status') != 'complete':
                     work_queue.append(paper_id)
                 # Otherwise skip complete papers
             else:
