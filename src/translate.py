@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+from datetime import datetime, timezone
 
 from .db_utils import get_paper_for_translation, save_translation_result
 from .file_service import read_json, write_json
@@ -141,9 +142,27 @@ def translate_paper_synthesis(
     translation["_qa_score"] = qa_result.score
     translation["_qa_issues"] = qa_result.issues
     translation["_qa_chinese_ratio"] = qa_result.chinese_ratio
+    translation["_qa_generated_at"] = datetime.now(timezone.utc).isoformat()
 
     # Save to database (primary) and local file (backup)
     if not dry_run:
+        # Persist a small per-paper QA report for later review/debugging.
+        # This is intentionally compact and does not include the full body.
+        qa_report = {
+            "paper_id": paper_id,
+            "generated_at": translation["_qa_generated_at"],
+            "qa_status": qa_result.status.value,
+            "qa_score": qa_result.score,
+            "qa_issues": qa_result.issues,
+            "qa_chinese_ratio": qa_result.chinese_ratio,
+            "title_en_len": len(translation.get("title_en", "") or ""),
+            "abstract_en_len": len(translation.get("abstract_en", "") or ""),
+            "body_md_len": len(translation.get("body_md", "") or ""),
+        }
+        qa_dir = os.path.join("reports", "qa_results")
+        os.makedirs(qa_dir, exist_ok=True)
+        write_json(os.path.join(qa_dir, f"{paper_id}.json"), qa_report)
+
         # Backup: Save to local file first (useful for debugging even if DB save fails).
         #
         # IMPORTANT:
