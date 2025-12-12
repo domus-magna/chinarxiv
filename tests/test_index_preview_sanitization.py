@@ -45,4 +45,4 @@ def test_index_abstract_preview_strips_para_like_tags(
     # We should not leak raw tag text into the preview.
     assert "<PARA" not in body
     assert "&lt;PARA" not in body
-
+    assert "This should not render as a tag." in body
