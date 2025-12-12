@@ -322,6 +322,47 @@ def release_paper_lock(conn, paper_id: str) -> None:
     conn.commit()
 
 
+def reconcile_qa_status(conn) -> int:
+    """
+    Fix papers where text is complete but qa_status isn't 'pass'.
+
+    This can happen when:
+    - Text translation saved successfully but qa_status update failed
+    - Old translation runs before qa_status was properly tracked
+    - Database inconsistencies from partial failures
+
+    Only sets qa_status='pass' for papers that have actual translated content.
+
+    Returns:
+        Number of papers reconciled
+    """
+    cursor = conn.cursor()
+
+    # Find papers with text complete but qa_status not 'pass'
+    # AND that have actual translated content (title_en is not empty)
+    cursor.execute("""
+        UPDATE papers
+        SET qa_status = 'pass'
+        WHERE text_status = 'complete'
+          AND qa_status != 'pass'
+          AND title_en IS NOT NULL
+          AND title_en != ''
+          AND abstract_en IS NOT NULL
+          AND abstract_en != ''
+        RETURNING id
+    """)
+
+    reconciled = cursor.fetchall()
+    conn.commit()
+
+    if reconciled:
+        count = len(reconciled)
+        log(f"Reconciled qa_status for {count} papers")
+        return count
+
+    return 0
+
+
 # ============================================================================
 # Discovery Functions (Paper Harvesting)
 # ============================================================================
@@ -1210,6 +1251,17 @@ def run_orchestrator(
     else:
         stages = DEFAULT_STAGES
         log("Running FULL PIPELINE mode")
+
+    # Reconcile any papers with inconsistent qa_status
+    # (text complete but qa_status != 'pass')
+    try:
+        conn = get_db_connection()
+        reconciled = reconcile_qa_status(conn)
+        if reconciled > 0:
+            log(f"Fixed {reconciled} papers with inconsistent qa_status")
+        conn.close()
+    except Exception as e:
+        log(f"Warning: qa_status reconciliation failed: {e}")
 
     # Get work queue
     try:
