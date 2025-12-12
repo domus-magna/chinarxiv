@@ -148,7 +148,7 @@ def build_pdf_markdown(
 
     yaml_header = "---\nheader-includes:\n" + "\n".join(header_includes) + "\n---\n\n"
 
-\\begin{{center}}
+    latex_preamble = f"""\\begin{{center}}
 \\rule{{\\textwidth}}{{0.5pt}}
 
 {{\\small AI translation · View original \\& related papers at \\href{{{chinarxiv_url}}}{{{display_url}}}}}
@@ -159,7 +159,7 @@ def build_pdf_markdown(
 \\vspace{{1em}}
 
 """
-    return yaml_header + body_md
+    return yaml_header + latex_preamble + body_md
 
 
 def inject_figures_into_markdown(
