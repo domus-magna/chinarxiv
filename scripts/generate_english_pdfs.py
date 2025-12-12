@@ -125,30 +125,33 @@ def build_pdf_markdown(
     # small amount of Chinese slips through QA.
     if pdf_engine == "xelatex":
         header_includes = [
-            "  - \\\\usepackage{fontspec}",
-            "  - \\\\usepackage{xeCJK}",
-            "  - \\\\setCJKmainfont{Noto Sans CJK SC}",
+            "  - \\usepackage{fontspec}",
+            "  - \\usepackage{xeCJK}",
+            "  - \\setCJKmainfont{Noto Sans CJK SC}",
         ]
     else:
         header_includes = []
 
+    # Package imports belong in the LaTeX preamble (header-includes).
     header_includes += [
-        "  - \\\\usepackage{fancyhdr}",
-        "  - \\\\usepackage{hyperref}",
-        "  - \\\\usepackage{graphicx}",
-        "  - \\\\pagestyle{fancy}",
-        "  - \\\\fancyhead{}",
-        "  - \\\\fancyhead[R]{\\\\includegraphics[height=0.6cm]{assets/logo-wordmark.png}}",
-        "  - \\\\fancyfoot{}",
-        f"  - \\\\fancyfoot[L]{{\\\\small \\\\href{{{chinarxiv_url}}}{{{display_url}}}}}",
-        "  - \\\\fancyfoot[R]{\\\\small Machine Translation}",
-        "  - \\\\renewcommand{\\\\headrulewidth}{0pt}",
-        "  - \\\\renewcommand{\\\\footrulewidth}{0.4pt}",
+        "  - \\usepackage{fancyhdr}",
+        "  - \\usepackage{hyperref}",
+        "  - \\usepackage{graphicx}",
     ]
 
     yaml_header = "---\nheader-includes:\n" + "\n".join(header_includes) + "\n---\n\n"
 
-    latex_preamble = f"""\\begin{{center}}
+    # Body-level header/footer configuration must come after \\begin{{document}}.
+    latex_preamble = f"""\\pagestyle{{fancy}}
+\\fancyhead{{}}
+\\fancyhead[R]{{\\includegraphics[height=0.6cm]{{assets/logo-wordmark.png}}}}
+\\fancyfoot{{}}
+\\fancyfoot[L]{{\\small \\href{{{chinarxiv_url}}}{{{display_url}}}}}
+\\fancyfoot[R]{{\\small Machine Translation}}
+\\renewcommand{{\\headrulewidth}}{{0pt}}
+\\renewcommand{{\\footrulewidth}}{{0.4pt}}
+
+\\begin{{center}}
 \\rule{{\\textwidth}}{{0.5pt}}
 
 {{\\small AI translation · View original \\& related papers at \\href{{{chinarxiv_url}}}{{{display_url}}}}}
