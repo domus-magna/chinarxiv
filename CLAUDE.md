@@ -146,12 +146,30 @@ psql $DATABASE_URL -c "REFRESH MATERIALIZED VIEW category_counts;"
 
 ---
 
-## CRITICAL: Full Pipeline = Text + Figures
+## Pipeline Philosophy: Text First, Figures Optional
 
-**MANDATORY**: When running ANY translation job (backfill, single paper, batch):
-1. **ALWAYS translate BOTH text AND figures** - this is NOT optional
-2. If figure pipeline fails, the whole job fails - do not continue text-only
-3. Never assume "text-only first, figures later" without EXPLICIT user approval
+**Papers become visible after text translation completes.** Figure translation is attempted but non-blocking:
+
+1. **Text translation is required** - Papers must have translated title, abstract, and body to be visible
+2. **Figure translation is optional** - If Gemini fails (quota, errors), the paper still completes
+3. **Papers without figures show "Request Figure Translation" button** - Users can request figures for papers they care about
+
+### Why Figures Are Optional
+
+- **Cost**: Gemini figure translation costs ~$0.50-1.00 per paper vs ~$0.08 for text (Kimi K2)
+- **Quota limits**: Gemini has strict daily quotas that block entire pipeline runs
+- **Value delivery**: Users get translated content immediately, figures are nice-to-have
+- **Request-driven**: User requests help prioritize which papers get figure translation
+
+### Pipeline Behavior
+
+| Stage | Required | Failure Behavior |
+|-------|----------|-----------------|
+| harvest | Yes | Paper marked failed |
+| text | Yes | Paper marked failed |
+| figures | No | `figures_status='failed'`, paper continues |
+| pdf | No | `pdf_status='skipped'`, paper continues |
+| post | No | Paper continues |
 
 ## Railway Deployment (Dec 2025)
 
@@ -383,12 +401,11 @@ curl https://chinaxiv-web-production.up.railway.app/health
 
 ## Common Mistakes to Avoid
 
-1. **Running text-only translation** - NEVER do this unless user explicitly approves
-2. **Assuming figures can be added later** - While technically possible, it's extra work
-3. **Ignoring circuit breaker errors** - These indicate billing issues, stop and check
-4. **Not checking for GEMINI_API_KEY** - Figure translation requires Google API access
-5. **Using wrong Python version on Railway** - Must use 3.11 (`.python-version` file)
-6. **Gunicorn syntax with parentheses** - Use `'app:create_app'` NOT `'app:create_app()'`
+1. **Ignoring circuit breaker errors** - These indicate billing issues, stop and check
+2. **Not checking for GEMINI_API_KEY** - Figure translation requires Google API access (optional but recommended)
+3. **Using wrong Python version on Railway** - Must use 3.11 (`.python-version` file)
+4. **Gunicorn syntax with parentheses** - Use `'app:create_app'` NOT `'app:create_app()'`
+5. **Not setting qa_status after translation** - Papers only appear with `qa_status='pass'`
 
 ## Monitoring
 

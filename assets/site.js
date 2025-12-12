@@ -149,3 +149,16 @@ function showToast(message) {
 function showCopyFeedback() {
   showToast('Copied!');
 }
+
+// Toggle full text preview expansion (mobile)
+function toggleFullText(btn) {
+  const container = btn.closest('.full-text-container');
+  if (!container) return;
+
+  const preview = container.querySelector('.full-text-preview');
+  if (preview) {
+    preview.classList.add('expanded');
+    btn.setAttribute('aria-expanded', 'true');
+    trackEvent('expand-full-text', { paper_id: btn.dataset.paperId });
+  }
+}
