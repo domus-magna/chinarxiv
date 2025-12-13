@@ -399,8 +399,8 @@ def save_translation_result(
 
         if subjects_en:
             # Sanitize, normalize to Title Case, and de-duplicate.
-            # Note: title() capitalizes articles like "and", "of" but this matches
-            # the PostgreSQL INITCAP() function used in the migration.
+            # Note: title() capitalizes articles like "and", "of" - this matches
+            # PostgreSQL INITCAP() which was used to normalize existing subjects.
             seen: set[str] = set()
             deduped: list[str] = []
             for subject in subjects_en:
