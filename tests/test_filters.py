@@ -43,8 +43,8 @@ class TestLoadCategoryTaxonomy:
         """Test that taxonomy contains known categories."""
         taxonomy = load_category_taxonomy()
 
-        # Known categories from category_taxonomy.json
-        expected_categories = ['ai_computing', 'physics', 'biology', 'engineering']
+        # Known categories from category_taxonomy.json (updated Dec 2025)
+        expected_categories = ['ai_cs', 'physics', 'biology', 'engineering']
 
         for category_id in expected_categories:
             assert category_id in taxonomy, f"Expected category '{category_id}' not found"
@@ -87,22 +87,22 @@ class TestGetCategorySubjects:
 
     def test_get_subjects_for_valid_category(self):
         """Test getting subjects for a known valid category."""
-        subjects = get_category_subjects('ai_computing')
+        subjects = get_category_subjects('ai_cs')
 
         assert isinstance(subjects, list)
         assert len(subjects) > 0
         assert all(isinstance(s, str) for s in subjects)
 
     def test_get_subjects_contains_expected_values(self):
-        """Test that subjects for ai_computing include known values."""
-        subjects = get_category_subjects('ai_computing')
+        """Test that subjects for ai_cs include known values."""
+        subjects = get_category_subjects('ai_cs')
 
         # Known subjects from category_taxonomy.json
         expected_subjects = ['Computer Science', 'Computer Science & Technology']
 
         for expected in expected_subjects:
             assert expected in subjects, \
-                f"Expected subject '{expected}' not found in ai_computing"
+                f"Expected subject '{expected}' not found in ai_cs"
 
     def test_get_subjects_for_physics_category(self):
         """Test getting subjects for physics category."""
@@ -174,23 +174,26 @@ class TestBuildCategoriesWithoutDatabase:
                 f"Category {category_id} should have count=0 without database"
 
     def test_build_categories_preserves_taxonomy_data(self):
-        """Test that build_categories preserves data from taxonomy."""
+        """Test that build_categories preserves data from taxonomy for returned categories."""
         taxonomy = load_category_taxonomy()
-        categories = build_categories()
+        # Pass max_tabs high to get all categories (for testing)
+        categories = build_categories(max_tabs=100)
 
-        for category_id in taxonomy:
-            assert category_id in categories
-            assert categories[category_id]['label'] == taxonomy[category_id]['label']
-            assert categories[category_id]['order'] == taxonomy[category_id]['order']
+        # Verify each returned category matches taxonomy
+        for category_id, cat_data in categories.items():
+            assert category_id in taxonomy
+            assert cat_data['label'] == taxonomy[category_id]['label']
+            assert cat_data['order'] == taxonomy[category_id]['order']
 
     def test_build_categories_subjects_match_taxonomy_children(self):
         """Test that subjects field matches children from taxonomy."""
         taxonomy = load_category_taxonomy()
-        categories = build_categories()
+        # Pass max_tabs high to get all categories (for testing)
+        categories = build_categories(max_tabs=100)
 
-        for category_id in taxonomy:
+        for category_id, cat_data in categories.items():
             expected_children = taxonomy[category_id].get('children', [])
-            actual_subjects = categories[category_id]['subjects']
+            actual_subjects = cat_data['subjects']
             assert actual_subjects == expected_children
 
 
@@ -219,9 +222,9 @@ class TestBuildCategoriesWithDatabase:
             db = get_db()
             categories = build_categories(db)
 
-            # ai_computing category should have Computer Science papers
+            # ai_cs category should have Computer Science papers
             # From sample_papers fixture: 3 papers have Computer Science subject
-            ai_count = categories['ai_computing']['count']
+            ai_count = categories['ai_cs']['count']
             assert ai_count >= 3, f"Expected at least 3 AI papers, got {ai_count}"
 
     def test_build_categories_with_database_returns_counts(self, app):
@@ -292,18 +295,23 @@ class TestCategoryCountAccuracy:
                 f"Expected at least 2 physics papers, got {physics_count}"
 
     def test_engineering_category_counts(self, app, sample_papers):
-        """Test that engineering category count is accurate."""
+        """Test that category counts are accurate and only non-empty categories are returned."""
         from app.database import get_db
 
         with app.app_context():
             db = get_db()
-            categories = build_categories(db)
+            # Use max_tabs=100 to ensure all populated categories are returned
+            categories = build_categories(db, max_tabs=100)
 
-            # Engineering category should exist and have a count >= 0
-            assert 'engineering' in categories, "engineering category should exist"
-            engineering_count = categories['engineering']['count']
-            assert engineering_count >= 0, \
-                f"Engineering count should be non-negative, got {engineering_count}"
+            # All returned categories should have count > 0
+            for cat_id, cat_data in categories.items():
+                assert cat_data['count'] > 0, \
+                    f"Category {cat_id} should not be returned with count=0"
+
+            # Categories with papers should exist
+            # (sample_papers fixture has papers in ai_cs, biology, physics, earth_space)
+            assert 'ai_cs' in categories, "ai_cs should exist (pinned)"
+            assert 'physics' in categories, "physics should exist"
 
     def test_category_counts_exclude_flagged_papers(self, app, sample_papers):
         """Test that category counts only include QA-passed papers."""
@@ -339,12 +347,12 @@ class TestFilterIntegrationWithRoutes:
 
         with app.app_context():
             # This is how routes use get_category_subjects() to filter papers
-            subjects = get_category_subjects('ai_computing')
-            assert len(subjects) > 0, "ai_computing should have subjects"
+            subjects = get_category_subjects('ai_cs')
+            assert len(subjects) > 0, "ai_cs should have subjects"
 
             # Query papers with category filter (should use these subjects internally)
             papers, total = query_papers(
-                category='ai_computing',
+                category='ai_cs',
                 page=1,
                 per_page=50
             )
@@ -362,10 +370,10 @@ class TestFilterIntegrationWithRoutes:
             categories = build_categories(db)
 
             # Verify structure matches what template expects
-            assert 'ai_computing' in categories
-            assert 'label' in categories['ai_computing']
-            assert 'order' in categories['ai_computing']
-            assert 'count' in categories['ai_computing']
+            assert 'ai_cs' in categories
+            assert 'label' in categories['ai_cs']
+            assert 'order' in categories['ai_cs']
+            assert 'count' in categories['ai_cs']
 
             # Template sorts categories by order
             sorted_categories = sorted(categories.items(), key=lambda x: x[1]['order'])
@@ -377,8 +385,8 @@ class TestEdgeCases:
 
     def test_category_with_special_characters_in_subjects(self):
         """Test handling of subjects with special characters."""
-        # ai_computing has "Computer Science & Technology" with ampersand
-        subjects = get_category_subjects('ai_computing')
+        # ai_cs has "Computer Science & Technology" with ampersand
+        subjects = get_category_subjects('ai_cs')
 
         # Should include subject with ampersand
         assert any('&' in s for s in subjects), \
@@ -387,7 +395,7 @@ class TestEdgeCases:
     def test_category_with_unicode_characters(self):
         """Test handling of categories with potential Unicode."""
         # Category IDs should be ASCII, but subjects might have Unicode
-        subjects = get_category_subjects('ai_computing')
+        subjects = get_category_subjects('ai_cs')
 
         # All subjects should be strings (may contain Unicode)
         for subject in subjects:
@@ -456,8 +464,8 @@ class TestHelperFunctionUsage:
 
     def test_filter_workflow_from_url_to_query(self):
         """Test typical workflow: URL param → get_category_subjects → query_papers."""
-        # Simulate URL parameter: /?category=ai_computing
-        category_param = 'ai_computing'
+        # Simulate URL parameter: /?category=ai_cs
+        category_param = 'ai_cs'
 
         # Step 1: Get subjects for this category
         subjects = get_category_subjects(category_param)
