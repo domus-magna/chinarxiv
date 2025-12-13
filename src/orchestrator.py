@@ -214,6 +214,37 @@ def get_paper_status(conn, paper_id: str) -> dict:
     return dict(row) if row else {}
 
 
+def get_paper_statuses_batch(conn, paper_ids: list) -> dict:
+    """
+    Get processing status for multiple papers in a single query.
+
+    This is a performance optimization over calling get_paper_status() in a loop.
+    Reduces N database round-trips to 1.
+
+    Args:
+        conn: Database connection
+        paper_ids: List of paper IDs to query
+
+    Returns:
+        dict: Mapping of paper_id -> status dict. Missing papers are not included.
+    """
+    if not paper_ids:
+        return {}
+
+    cursor = conn.cursor()
+    # Use ANY() for efficient IN clause with array parameter
+    cursor.execute("""
+        SELECT id, processing_status, text_status, figures_status, pdf_status,
+               has_chinese_pdf, has_english_pdf, processing_started_at, processing_error,
+               text_completed_at, figures_completed_at, pdf_completed_at,
+               pdf_url, source_url
+        FROM papers
+        WHERE id = ANY(%s)
+    """, (paper_ids,))
+
+    return {row['id']: dict(row) for row in cursor.fetchall()}
+
+
 def acquire_paper_lock(conn, paper_id: str) -> bool:
     """
     Try to acquire exclusive lock on a paper for processing.
@@ -1265,10 +1296,13 @@ def get_work_queue(
             log(f"Force mode: processing all {len(papers)} papers")
             return papers
 
-        # Filter out already-complete papers
+        # Filter out already-complete papers (batch query for performance)
+        # This reduces N database round-trips to 1
+        statuses = get_paper_statuses_batch(conn, papers)
+
         work_queue = []
         for paper_id in papers:
-            status = get_paper_status(conn, paper_id)
+            status = statuses.get(paper_id)
 
             if not status:
                 # Paper not in DB - add to queue
