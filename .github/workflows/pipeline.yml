@@ -81,6 +81,16 @@ on:
     # Daily at 3 AM UTC - processes pending and zombie papers
     - cron: '0 3 * * *'
 
+# Prevent overlapping runs - saves API costs and prevents race conditions
+concurrency:
+  group: pipeline-${{ github.event.inputs.scope || 'smart-resume' }}-${{ github.event.inputs.target || 'default' }}
+  cancel-in-progress: false  # Don't cancel long-running translations
+
+# Minimal permissions - read code, upload artifacts
+permissions:
+  contents: read
+  actions: write
+
 run-name: >-
   pipeline: ${{ inputs.scope || 'smart-resume' }}${{ inputs.target && format(' {0}', inputs.target) || '' }}${{ inputs.force && ' [force]' || '' }}${{ inputs.text_only && ' [text-only]' || '' }}${{ inputs.figures_only && ' [figures-only]' || '' }}${{ inputs.include_failed && ' [retry-failed]' || '' }}
 

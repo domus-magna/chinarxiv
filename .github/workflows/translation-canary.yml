@@ -26,6 +26,11 @@ on:
     - cron: "0 6 * * *"  # daily 06:00 UTC
   workflow_dispatch:
 
+# Minimal permissions - read code, upload artifacts
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   canary:
     runs-on: ubuntu-latest
