@@ -36,6 +36,10 @@ on:
     # Every Sunday at 4 AM UTC
     - cron: '0 4 * * 0'
 
+# Minimal permissions - only read code, no writes needed
+permissions:
+  contents: read
+
 run-name: reconcile-state${{ inputs.dry_run && ' [dry-run]' || '' }}
 
 jobs:

@@ -6,6 +6,11 @@ on:
     # Nightly after the main pipeline window; adjust as needed.
     - cron: "25 4 * * *"
 
+# Minimal permissions - read code, upload artifacts
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   sweep:
     runs-on: ubuntu-latest
