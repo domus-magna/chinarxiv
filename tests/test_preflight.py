@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 
 def test_env_diagnose_imports():
@@ -42,3 +43,23 @@ def test_preflight_offline(tmp_path, monkeypatch):
 
     assert os.path.exists("reports/preflight_report.json")
     assert os.path.exists("reports/preflight_report.md")
+
+
+def test_env_diagnose_accepts_resolve_alias(monkeypatch):
+    """
+    Our docs and Make targets historically referenced `--resolve`.
+    Keep it as a compatibility alias for `--fix`.
+    """
+    from src.tools import env_diagnose
+
+    calls = {"fix": 0}
+
+    def fake_fix_env_issues():
+        calls["fix"] += 1
+        return True
+
+    monkeypatch.setattr(env_diagnose, "fix_env_issues", fake_fix_env_issues)
+    monkeypatch.setattr(sys, "argv", ["env_diagnose", "--resolve"])
+
+    assert env_diagnose.main() == 0
+    assert calls["fix"] == 1

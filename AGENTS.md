@@ -245,7 +245,7 @@ This process catches overengineering before it becomes technical debt.
 - **NEW: Automatic Environment Resolution**
   - The system now automatically detects and resolves shell/.env mismatches
   - Use `python -m src.tools.env_diagnose --check` to detect mismatches
-  - Use `python -m src.tools.env_diagnose --resolve` to fix mismatches
+  - Use `python -m src.tools.env_diagnose --fix` (or `--resolve`) to fix mismatches
   - Use `python -m src.tools.env_diagnose --validate` to test API keys
 - **Manual Troubleshooting** (if automatic resolution fails):
   - Shell: `echo $OPENROUTER_API_KEY` should print a non-empty value.

@@ -14,6 +14,7 @@ Requires:
 
 import sys
 from pathlib import Path
+import warnings
 import pytest
 import psycopg2
 import json
@@ -26,6 +27,50 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app import create_app  # noqa: E402
+
+# PyMuPDF/fitz emits SWIG-related DeprecationWarnings on some platforms, including
+# at interpreter shutdown. These are third-party warnings and not actionable for
+# this repo; suppress them to keep test output clean.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*SwigPyPacked has no __module__ attribute.*",
+    category=DeprecationWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*SwigPyObject has no __module__ attribute.*",
+    category=DeprecationWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*swigvarlink has no __module__ attribute.*",
+    category=DeprecationWarning,
+)
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
+    """
+    Re-apply warning filters at end of the test session.
+
+    Some combinations of plugins/platforms can reconfigure warning filters late
+    in the pytest lifecycle. The SWIG warnings we suppress above can also be
+    emitted at interpreter shutdown, so we re-assert the ignore rules here to
+    keep the overall test output quiet and stable.
+    """
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*SwigPyPacked has no __module__ attribute.*",
+        category=DeprecationWarning,
+    )
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*SwigPyObject has no __module__ attribute.*",
+        category=DeprecationWarning,
+    )
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*swigvarlink has no __module__ attribute.*",
+        category=DeprecationWarning,
+    )
 
 
 @pytest.fixture(scope='session')

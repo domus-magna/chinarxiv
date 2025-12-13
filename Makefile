@@ -18,7 +18,10 @@ venv:
 	$(VPIP) install -r requirements.txt
 
 test:
-	$(PY) -m pytest -q
+	# Suppress noisy third-party SWIG DeprecationWarnings emitted by PyMuPDF/fitz
+	# (including a shutdown-time warning that bypasses pytest's normal filtering).
+	PYTHONWARNINGS="ignore:.*SwigPyPacked has no __module__ attribute.*:DeprecationWarning,ignore:.*SwigPyObject has no __module__ attribute.*:DeprecationWarning,ignore:.*swigvarlink has no __module__ attribute.*:DeprecationWarning" \
+		$(PY) -m pytest -q
 
 lint:
 	ruff check src tests
