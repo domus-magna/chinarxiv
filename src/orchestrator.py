@@ -233,13 +233,14 @@ def get_paper_statuses_batch(conn, paper_ids: list) -> dict:
 
     cursor = conn.cursor()
     # Use ANY() for efficient IN clause with array parameter
+    # Explicit ::text[] cast ensures correct type matching with TEXT id column
     cursor.execute("""
         SELECT id, processing_status, text_status, figures_status, pdf_status,
                has_chinese_pdf, has_english_pdf, processing_started_at, processing_error,
                text_completed_at, figures_completed_at, pdf_completed_at,
                pdf_url, source_url
         FROM papers
-        WHERE id = ANY(%s)
+        WHERE id = ANY(%s::text[])
     """, (paper_ids,))
 
     return {row['id']: dict(row) for row in cursor.fetchall()}
