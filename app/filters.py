@@ -7,14 +7,47 @@ and building filter-related data structures.
 Performance:
 - PostgreSQL: Uses materialized view for category counts (single query, 10-20ms)
 - Taxonomy loading is cached in memory after the first call
+- Category counts are cached for 5 minutes to reduce DB queries
 """
 
 import json
 import logging
+import time
 from functools import lru_cache
 from pathlib import Path
+from threading import Lock
 
 logger = logging.getLogger(__name__)
+
+# Time-based cache for category counts (5 minutes)
+_category_cache = {
+    'data': None,
+    'timestamp': 0,
+    'ttl': 300,  # 5 minutes
+}
+_category_cache_lock = Lock()
+
+# Time-based cache for available filters (5 minutes)
+_filters_cache = {
+    'data': None,
+    'timestamp': 0,
+    'ttl': 300,  # 5 minutes
+}
+_filters_cache_lock = Lock()
+
+
+def clear_category_caches():
+    """
+    Clear all time-based caches. Useful for testing and after
+    data imports that might change category counts.
+    """
+    global _category_cache, _filters_cache
+    with _category_cache_lock:
+        _category_cache['data'] = None
+        _category_cache['timestamp'] = 0
+    with _filters_cache_lock:
+        _filters_cache['data'] = None
+        _filters_cache['timestamp'] = 0
 
 
 @lru_cache(maxsize=None)
@@ -71,6 +104,7 @@ def build_categories(db_connection=None, max_tabs=5):
 
     Performance optimization:
     - PostgreSQL: Queries materialized view (single query, 15-25x faster)
+    - Results cached for 5 minutes to reduce database load
 
     Args:
         db_connection: Optional database connection for counting papers
@@ -89,6 +123,13 @@ def build_categories(db_connection=None, max_tabs=5):
                 ...
             }
     """
+    # Check time-based cache first (thread-safe)
+    now = time.time()
+    with _category_cache_lock:
+        if (_category_cache['data'] is not None and
+                now - _category_cache['timestamp'] < _category_cache['ttl']):
+            return _category_cache['data']
+
     taxonomy = load_category_taxonomy()
 
     # Build all categories with their data
@@ -110,7 +151,14 @@ def build_categories(db_connection=None, max_tabs=5):
         _build_category_counts(db_connection, adapter, categories, taxonomy)
 
     # Select top categories: pinned first, then by count
-    return _select_top_categories(categories, max_tabs)
+    result = _select_top_categories(categories, max_tabs)
+
+    # Update cache (thread-safe)
+    with _category_cache_lock:
+        _category_cache['data'] = result
+        _category_cache['timestamp'] = now
+
+    return result
 
 
 def _select_top_categories(categories, max_tabs):
@@ -193,6 +241,9 @@ def get_available_filters(db_connection):
     Returns subjects with their paper counts, organized by category in a format
     ready for rendering in the filter UI.
 
+    Performance optimization:
+    - Results cached for 5 minutes to reduce database load
+
     Args:
         db_connection: Database connection for querying subject counts
 
@@ -211,6 +262,13 @@ def get_available_filters(db_connection):
                 ...
             }
     """
+    # Check time-based cache first (thread-safe)
+    now = time.time()
+    with _filters_cache_lock:
+        if (_filters_cache['data'] is not None and
+                now - _filters_cache['timestamp'] < _filters_cache['ttl']):
+            return _filters_cache['data']
+
     taxonomy = load_category_taxonomy()
 
     # Import adapter here to avoid circular imports
@@ -248,5 +306,10 @@ def get_available_filters(db_connection):
                 'order': category_data['order'],
                 'subjects': subjects
             }
+
+    # Update cache (thread-safe)
+    with _filters_cache_lock:
+        _filters_cache['data'] = filters
+        _filters_cache['timestamp'] = now
 
     return filters
