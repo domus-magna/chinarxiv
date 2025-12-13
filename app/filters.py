@@ -105,6 +105,7 @@ def build_categories(db_connection=None, max_tabs=5):
     Performance optimization:
     - PostgreSQL: Queries materialized view (single query, 15-25x faster)
     - Results cached for 5 minutes to reduce database load
+    - Uses double-checked locking to prevent cache stampede
 
     Args:
         db_connection: Optional database connection for counting papers
@@ -123,42 +124,48 @@ def build_categories(db_connection=None, max_tabs=5):
                 ...
             }
     """
-    # Check time-based cache first (thread-safe)
-    now = time.time()
+    # Double-checked locking to prevent cache stampede
+    # First check without lock (fast path)
+    if (_category_cache['data'] is not None and
+            time.time() - _category_cache['timestamp'] < _category_cache['ttl']):
+        return _category_cache['data']
+
+    # Acquire lock and check again (prevents stampede)
     with _category_cache_lock:
+        # Re-check after acquiring lock (another thread may have populated)
+        now = time.time()
         if (_category_cache['data'] is not None and
                 now - _category_cache['timestamp'] < _category_cache['ttl']):
             return _category_cache['data']
 
-    taxonomy = load_category_taxonomy()
+        taxonomy = load_category_taxonomy()
 
-    # Build all categories with their data
-    categories = {
-        cat_id: {
-            'label': data['label'],
-            'order': data['order'],
-            'pinned': data.get('pinned', False),
-            'subjects': data.get('children', []),
-            'count': 0  # Default count, updated below if db_connection provided
+        # Build all categories with their data
+        categories = {
+            cat_id: {
+                'label': data['label'],
+                'order': data['order'],
+                'pinned': data.get('pinned', False),
+                'subjects': data.get('children', []),
+                'count': 0  # Default count, updated below if db_connection provided
+            }
+            for cat_id, data in taxonomy.items()
         }
-        for cat_id, data in taxonomy.items()
-    }
 
-    # Add paper counts if database connection provided
-    if db_connection:
-        from .db_adapter import get_adapter
-        adapter = get_adapter()
-        _build_category_counts(db_connection, adapter, categories, taxonomy)
+        # Add paper counts if database connection provided
+        if db_connection:
+            from .db_adapter import get_adapter
+            adapter = get_adapter()
+            _build_category_counts(db_connection, adapter, categories, taxonomy)
 
-    # Select top categories: pinned first, then by count
-    result = _select_top_categories(categories, max_tabs)
+        # Select top categories: pinned first, then by count
+        result = _select_top_categories(categories, max_tabs)
 
-    # Update cache (thread-safe)
-    with _category_cache_lock:
+        # Update cache while still holding lock
         _category_cache['data'] = result
         _category_cache['timestamp'] = now
 
-    return result
+        return result
 
 
 def _select_top_categories(categories, max_tabs):
@@ -243,6 +250,7 @@ def get_available_filters(db_connection):
 
     Performance optimization:
     - Results cached for 5 minutes to reduce database load
+    - Uses double-checked locking to prevent cache stampede
 
     Args:
         db_connection: Database connection for querying subject counts
@@ -262,54 +270,60 @@ def get_available_filters(db_connection):
                 ...
             }
     """
-    # Check time-based cache first (thread-safe)
-    now = time.time()
+    # Double-checked locking to prevent cache stampede
+    # First check without lock (fast path)
+    if (_filters_cache['data'] is not None and
+            time.time() - _filters_cache['timestamp'] < _filters_cache['ttl']):
+        return _filters_cache['data']
+
+    # Acquire lock and check again (prevents stampede)
     with _filters_cache_lock:
+        # Re-check after acquiring lock (another thread may have populated)
+        now = time.time()
         if (_filters_cache['data'] is not None and
                 now - _filters_cache['timestamp'] < _filters_cache['ttl']):
             return _filters_cache['data']
 
-    taxonomy = load_category_taxonomy()
+        taxonomy = load_category_taxonomy()
 
-    # Import adapter here to avoid circular imports
-    from .db_adapter import get_adapter
-    adapter = get_adapter()
+        # Import adapter here to avoid circular imports
+        from .db_adapter import get_adapter
+        adapter = get_adapter()
 
-    # Get all subject counts from materialized view (single query)
-    try:
-        import psycopg2
-        cursor = adapter.get_cursor(db_connection)
-        cursor.execute("SELECT subject, paper_count FROM category_counts;")
-        subject_counts = {row['subject']: row['paper_count'] for row in cursor.fetchall()}
-    except (psycopg2.Error, Exception) as e:
-        logger.error(f"Database error fetching subject counts: {e}", exc_info=True)
-        subject_counts = {}
+        # Get all subject counts from materialized view (single query)
+        try:
+            import psycopg2
+            cursor = adapter.get_cursor(db_connection)
+            cursor.execute("SELECT subject, paper_count FROM category_counts;")
+            subject_counts = {row['subject']: row['paper_count'] for row in cursor.fetchall()}
+        except (psycopg2.Error, Exception) as e:
+            logger.error(f"Database error fetching subject counts: {e}", exc_info=True)
+            subject_counts = {}
 
-    # Build filter structure grouped by category
-    filters = {}
-    for category_id, category_data in taxonomy.items():
-        # Get subjects for this category with their counts
-        subjects = []
-        for subject_name in category_data.get('children', []):
-            count = subject_counts.get(subject_name, 0)
-            # Only include subjects that have papers
-            if count > 0:
-                subjects.append({
-                    'name': subject_name,
-                    'count': count
-                })
+        # Build filter structure grouped by category
+        filters = {}
+        for category_id, category_data in taxonomy.items():
+            # Get subjects for this category with their counts
+            subjects = []
+            for subject_name in category_data.get('children', []):
+                count = subject_counts.get(subject_name, 0)
+                # Only include subjects that have papers
+                if count > 0:
+                    subjects.append({
+                        'name': subject_name,
+                        'count': count
+                    })
 
-        # Only include categories that have subjects with papers
-        if subjects:
-            filters[category_id] = {
-                'label': category_data['label'],
-                'order': category_data['order'],
-                'subjects': subjects
-            }
+            # Only include categories that have subjects with papers
+            if subjects:
+                filters[category_id] = {
+                    'label': category_data['label'],
+                    'order': category_data['order'],
+                    'subjects': subjects
+                }
 
-    # Update cache (thread-safe)
-    with _filters_cache_lock:
+        # Update cache while still holding lock
         _filters_cache['data'] = filters
         _filters_cache['timestamp'] = now
 
-    return filters
+        return filters

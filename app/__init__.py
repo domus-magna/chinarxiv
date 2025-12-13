@@ -184,22 +184,25 @@ def create_app(config=None):
         """
         Add Cache-Control headers for performance.
 
-        - Static assets (versioned with ?v=): 1 year, immutable
-        - HTML pages: 5 minutes (content may change)
-        - Paper detail pages: 24 hours (rarely change)
+        - Paper detail pages (/items/): 24 hours (rarely change)
         - API responses: 1 minute
+        - HTML pages: 5 minutes (content may change)
+
+        Note: Static assets (/assets/) are handled by WhiteNoise middleware
+        with its own caching headers, so we skip them here.
         """
-        # Skip if response already has Cache-Control
+        # Skip if response already has Cache-Control (set by WhiteNoise or other)
         if 'Cache-Control' in response.headers:
             return response
 
         path = request.path
 
-        # Static assets with version query param - cache forever
-        if path.startswith('/assets/') and request.args.get('v'):
-            response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
-        # Static assets without version OR paper detail pages - cache 24 hours
-        elif path.startswith('/assets/') or path.startswith('/items/'):
+        # Skip /assets/ - handled by WhiteNoise middleware
+        if path.startswith('/assets/'):
+            return response
+
+        # Paper detail pages - cache 24 hours
+        if path.startswith('/items/'):
             response.headers['Cache-Control'] = 'public, max-age=86400'
         # API endpoints - cache 1 minute
         elif path.startswith('/api/'):
