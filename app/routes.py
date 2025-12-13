@@ -283,7 +283,7 @@ def index():
     Homepage with filtering and pagination.
 
     Query Parameters:
-        category: Category ID (e.g., 'ai_computing')
+        category: Category ID (e.g., 'ai_cs')
         from: ISO date string for date range start
         to: ISO date string for date range end
         q: Search query string

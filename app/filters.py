@@ -46,14 +46,14 @@ def get_category_subjects(category_id):
     Get the list of subjects for a given category.
 
     Args:
-        category_id: Category identifier (e.g., 'ai_computing')
+        category_id: Category identifier (e.g., 'ai_cs')
 
     Returns:
         list: List of subject strings for this category.
               Returns empty list if category not found.
 
     Example:
-        >>> get_category_subjects('ai_computing')
+        >>> get_category_subjects('ai_cs')
         ['Computer Science', 'Computer Science & Technology', ...]
     """
     taxonomy = load_category_taxonomy()
