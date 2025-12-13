@@ -239,6 +239,7 @@ def main():
     # Upload PDFs
     success_count = 0
     fail_count = 0
+    db_update_fail_count = 0
     meta_files_to_cleanup = []
 
     for i, (pdf_path, paper_id) in enumerate(to_upload, 1):
@@ -274,7 +275,8 @@ def main():
 
             # Update database with URL (if connected)
             if db_conn:
-                update_english_pdf_url(db_conn, paper_id, url)
+                if not update_english_pdf_url(db_conn, paper_id, url):
+                    db_update_fail_count += 1
 
             # Only cleanup metadata after successful upload
             if meta_path.exists():
@@ -305,7 +307,10 @@ def main():
     print(f"Done! Uploaded {success_count} PDFs, {fail_count} failures")
     print(f"Manifest: {B2_PUBLIC_URL_BASE}/{B2_PDF_PREFIX}manifest.json")
     if db_conn:
-        print("Database URLs updated")
+        if db_update_fail_count > 0:
+            print(f"⚠ Database: {success_count - db_update_fail_count} updated, {db_update_fail_count} FAILED")
+        else:
+            print(f"Database: {success_count} URLs updated")
 
 
 if __name__ == "__main__":

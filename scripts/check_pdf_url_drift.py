@@ -61,6 +61,18 @@ def get_db_connection():
     return psycopg2.connect(database_url)
 
 
+def is_valid_paper_id(paper_id: str) -> bool:
+    """Check if string matches expected paper ID format (chinaxiv-YYYYMM.NNNNN)."""
+    if not paper_id.startswith("chinaxiv-"):
+        return False
+    # Basic validation: chinaxiv-YYYYMM.NNNNN (e.g., chinaxiv-202201.00001)
+    parts = paper_id.replace("chinaxiv-", "").split(".")
+    if len(parts) != 2:
+        return False
+    month_part, num_part = parts
+    return len(month_part) == 6 and month_part.isdigit() and num_part.isdigit()
+
+
 def list_b2_pdfs(s3) -> set:
     """List all paper IDs with PDFs in B2."""
     paper_ids = set()
@@ -73,7 +85,9 @@ def list_b2_pdfs(s3) -> set:
                 # Extract paper ID from key like "english_pdfs/chinaxiv-202201.00001.pdf"
                 filename = key.split("/")[-1]
                 paper_id = filename.replace(".pdf", "")
-                paper_ids.add(paper_id)
+                # Only include valid paper IDs (skip test files, backups, etc.)
+                if is_valid_paper_id(paper_id):
+                    paper_ids.add(paper_id)
 
     return paper_ids
 
