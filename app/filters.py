@@ -134,8 +134,8 @@ def _select_top_categories(categories, max_tabs):
         key=lambda x: (-x[1]['count'], x[1]['order'])
     )
 
-    # Calculate how many non-pinned to include
-    slots_for_non_pinned = max_tabs - len(pinned)
+    # Calculate how many non-pinned to include (guard against negative if many pinned)
+    slots_for_non_pinned = max(0, max_tabs - len(pinned))
 
     # Build result: pinned first (by order), then top non-pinned
     result = {}
@@ -199,7 +199,7 @@ def get_available_filters(db_connection):
     Returns:
         dict: Filter data structure:
             {
-                "ai_computing": {
+                "ai_cs": {
                     "label": "AI / CS",
                     "order": 1,
                     "subjects": [

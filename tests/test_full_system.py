@@ -50,13 +50,13 @@ class TestCompleteUserWorkflows:
         assert response.status_code == 200
 
         # Step 2: Filter by AI & Computing category
-        filter_response = client.get('/?category=ai_computing')
+        filter_response = client.get('/?category=ai_cs')
         assert filter_response.status_code == 200
         html = filter_response.data.decode('utf-8')
 
         # Should see category filter applied
         # The exact UI will depend on implementation, but URL should reflect filter
-        assert 'ai_computing' in html or 'AI' in html
+        assert 'ai_cs' in html or 'AI' in html
 
     def test_multi_filter_refinement_workflow(self, client, sample_papers):
         """Test: User applies multiple filters progressively."""
@@ -98,7 +98,7 @@ class TestFilterCombinations:
 
     def test_date_and_category_filter_combination(self, client, sample_papers):
         """Test combining date range with category filter."""
-        response = client.get('/?start_date=2024-11-01&end_date=2024-11-30&category=ai_computing')
+        response = client.get('/?start_date=2024-11-01&end_date=2024-11-30&category=ai_cs')
         assert response.status_code == 200
 
         # Verify both filters are applied (implementation-specific checks)
@@ -144,7 +144,7 @@ class TestCategoryTabNavigation:
     def test_switch_between_category_tabs(self, client, sample_papers):
         """Test navigating between different category tabs."""
         # Load AI & Computing tab
-        ai_response = client.get('/?category=ai_computing')
+        ai_response = client.get('/?category=ai_cs')
         assert ai_response.status_code == 200
 
         # Switch to Physics tab
@@ -161,7 +161,7 @@ class TestCategoryTabNavigation:
     def test_category_tab_preserves_other_filters(self, client, sample_papers):
         """Test that switching category tabs preserves date/search filters."""
         # Apply date filter and select AI category
-        response1 = client.get('/?start_date=2024-11-01&category=ai_computing')
+        response1 = client.get('/?start_date=2024-11-01&category=ai_cs')
         assert response1.status_code == 200
 
         # Switch to Physics category (date filter should persist)
@@ -339,7 +339,7 @@ class TestPerformanceScenarios:
         """Test rapidly changing filters (simulating user clicking quickly)."""
         # Simulate rapid filter changes
         filters = [
-            '/?category=ai_computing',
+            '/?category=ai_cs',
             '/?category=physics',
             '/?category=biology',
             '/?start_date=2024-11-01',

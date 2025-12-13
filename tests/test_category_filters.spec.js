@@ -19,13 +19,13 @@ test.describe('Category Filters', () => {
 
   test('should filter papers by AI & Computer Science category', async ({ page }) => {
     // Click AI & Computer Science tab
-    await page.click('[data-category="ai_computing"]');
+    await page.click('[data-category="ai_cs"]');
 
     // Verify URL updated
-    expect(page.url()).toContain('?category=ai_computing');
+    expect(page.url()).toContain('?category=ai_cs');
 
     // Verify tab is active
-    const aiTab = await page.locator('[data-category="ai_computing"]');
+    const aiTab = await page.locator('[data-category="ai_cs"]');
     await expect(aiTab).toHaveClass(/active/);
     await expect(aiTab).toHaveAttribute('aria-selected', 'true');
 
@@ -68,8 +68,8 @@ test.describe('Category Filters', () => {
 
   test('should show all papers when clicking "All Recent"', async ({ page }) => {
     // First, filter by a category
-    await page.click('[data-category="ai_computing"]');
-    expect(page.url()).toContain('?category=ai_computing');
+    await page.click('[data-category="ai_cs"]');
+    expect(page.url()).toContain('?category=ai_cs');
 
     // Then click "All Recent"
     await page.click('[data-category=""]');
@@ -98,8 +98,8 @@ test.describe('Category Filters', () => {
 
   test('should handle browser back button', async ({ page }) => {
     // Click AI tab
-    await page.click('[data-category="ai_computing"]');
-    expect(page.url()).toContain('?category=ai_computing');
+    await page.click('[data-category="ai_cs"]');
+    expect(page.url()).toContain('?category=ai_cs');
 
     // Click Physics tab
     await page.click('[data-category="physics"]');
@@ -109,14 +109,14 @@ test.describe('Category Filters', () => {
     await page.goBack();
 
     // Should be back to AI category
-    expect(page.url()).toContain('?category=ai_computing');
-    const aiTab = await page.locator('[data-category="ai_computing"]');
+    expect(page.url()).toContain('?category=ai_cs');
+    const aiTab = await page.locator('[data-category="ai_cs"]');
     await expect(aiTab).toHaveClass(/active/);
   });
 
   test('should handle browser forward button', async ({ page }) => {
     // Click AI tab
-    await page.click('[data-category="ai_computing"]');
+    await page.click('[data-category="ai_cs"]');
 
     // Click Physics tab
     await page.click('[data-category="physics"]');
@@ -152,7 +152,7 @@ test.describe('Category Filters', () => {
     expect(count1).not.toContain(' of ');
 
     // Filter and check count format again
-    await page.click('[data-category="ai_computing"]');
+    await page.click('[data-category="ai_cs"]');
     const count2 = await page.textContent('#paperCount');
     expect(count2).toMatch(/^Showing \d+ papers?$/);
     expect(count2).not.toContain(' of ');
@@ -187,7 +187,7 @@ test.describe('Category Filter Edge Cases', () => {
     await page.goto('/');
 
     // Rapidly click different tabs
-    await page.click('[data-category="ai_computing"]');
+    await page.click('[data-category="ai_cs"]');
     await page.click('[data-category="physics"]');
     await page.click('[data-category="psychology"]');
     await page.click('[data-category=""]');

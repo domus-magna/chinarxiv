@@ -532,9 +532,10 @@ def sample_category_taxonomy():
         dict: Category taxonomy structure
     """
     return {
-        'ai_computing': {
-            'label': 'AI & Computing',
+        'ai_cs': {
+            'label': 'AI / CS',
             'order': 1,
+            'pinned': True,
             'subjects': ['Computer Science', 'Artificial Intelligence', 'Natural Language Processing']
         },
         'biology': {

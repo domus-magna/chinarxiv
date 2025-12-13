@@ -275,8 +275,8 @@ describe('setFilterState() - Type Validation', () => {
 
   // Test category type validation
   resetTestState();
-  setFilterState({ category: 'ai_computing' });
-  assertEqual(testFilterState.category, 'ai_computing',
+  setFilterState({ category: 'ai_cs' });
+  assertEqual(testFilterState.category, 'ai_cs',
     'accepts string for category');
 
   resetTestState();
@@ -378,10 +378,10 @@ describe('Query Clearing Edge Cases', () => {
   assertEqual(testFilterState.query, 'test',
     'query set initially');
 
-  setFilterState({ query: '', category: 'ai_computing' });
+  setFilterState({ query: '', category: 'ai_cs' });
   assertEqual(testFilterState.query, '',
     'query cleared on category change');
-  assertEqual(testFilterState.category, 'ai_computing',
+  assertEqual(testFilterState.category, 'ai_cs',
     'category updated');
 });
 
@@ -397,7 +397,7 @@ describe('Combined State Updates', () => {
 
   setFilterState({
     query: 'machine learning',
-    category: 'ai_computing',
+    category: 'ai_cs',
     dateFrom: fromDate,
     dateTo: toDate
   });
@@ -405,7 +405,7 @@ describe('Combined State Updates', () => {
   assertEqual(testFilterState.query, 'machine learning',
     'sets query in combined update');
 
-  assertEqual(testFilterState.category, 'ai_computing',
+  assertEqual(testFilterState.category, 'ai_cs',
     'sets category in combined update');
 
   assertEqual(testFilterState.dateFrom, fromDate,
@@ -420,7 +420,7 @@ describe('Combined State Updates', () => {
   assertEqual(testFilterState.query, 'quantum',
     'updates query in partial update');
 
-  assertEqual(testFilterState.category, 'ai_computing',
+  assertEqual(testFilterState.category, 'ai_cs',
     'preserves category in partial update');
 });
 

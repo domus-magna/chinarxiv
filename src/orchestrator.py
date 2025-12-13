@@ -1459,8 +1459,7 @@ def run_orchestrator(
     if stats.success > 0 and not dry_run:
         try:
             from .db_utils import refresh_category_counts
-            refresh_category_counts()
-            log("Refreshed category_counts materialized view")
+            refresh_category_counts()  # Logs internally on success/failure
         except Exception as e:
             log(f"Warning: Failed to refresh category_counts: {e}")
 
