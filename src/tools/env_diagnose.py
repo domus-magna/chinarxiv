@@ -229,11 +229,19 @@ def main():
     )
     parser.add_argument("--check", action="store_true", help="Check for mismatches")
     parser.add_argument("--fix", action="store_true", help="Fix environment issues")
+    parser.add_argument(
+        "--resolve",
+        action="store_true",
+        help="Alias for --fix (kept for backwards compatibility)",
+    )
     parser.add_argument("--validate", action="store_true", help="Validate API keys")
     parser.add_argument(
         "--preflight", action="store_true", help="Run full preflight and emit reports"
     )
     args = parser.parse_args()
+
+    if args.resolve:
+        args.fix = True
 
     if not any([args.check, args.fix, args.validate, args.preflight]):
         args.check = True  # Default to check mode
