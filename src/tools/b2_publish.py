@@ -168,16 +168,20 @@ def _qa_report_remote_key(paper_id: str, generated_at: Optional[str]) -> str:
     return f"reports/qa/{day}/{paper_id}_{stamp}.json"
 
 
-def upload_qa_report(paper_id: str, local_path: str) -> Optional[str]:
+def upload_qa_report(paper_id: str, local_path: str) -> bool:
     """
     Upload a per-paper QA report JSON to B2.
 
+    Args:
+        paper_id: Paper identifier
+        local_path: Local path to the QA report JSON
+
     Returns:
-        Remote key if upload succeeded, otherwise None.
+        True if upload succeeded, False otherwise
     """
     endpoint, bucket, prefix = _get_b2_config()
     if not endpoint or not bucket:
-        return None
+        return False
 
     generated_at: Optional[str] = None
     try:
@@ -190,9 +194,7 @@ def upload_qa_report(paper_id: str, local_path: str) -> Optional[str]:
 
     remote_key = _qa_report_remote_key(paper_id, generated_at)
     dest_root = f"s3://{bucket}/{prefix}"
-    if _aws_cp(local_path, f"{dest_root}{remote_key}", endpoint):
-        return remote_key
-    return None
+    return _aws_cp(local_path, f"{dest_root}{remote_key}", endpoint)
 
 
 def upload_figures(paper_id: str, figures_dir: str) -> int:
