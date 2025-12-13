@@ -626,3 +626,17 @@ def mock_openrouter_balance():
     with patch('src.pipeline.check_openrouter_balance') as mock:
         mock.return_value = (True, 10.0)  # Sufficient balance
         yield mock
+
+
+@pytest.fixture(autouse=True)
+def clear_filter_caches():
+    """
+    Clear category filter caches before each test.
+
+    This ensures tests don't see stale cached data from previous tests,
+    which could cause intermittent test failures.
+    """
+    from app.filters import clear_category_caches
+    clear_category_caches()
+    yield
+    clear_category_caches()

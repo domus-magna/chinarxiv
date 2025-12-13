@@ -14,5 +14,8 @@ markdown==3.7
 markupsafe>=2.0
 bleach==6.3.0
 
+# Static files and compression
+whitenoise==6.6.0
+
 # Utilities
 python-dotenv==1.0.1
