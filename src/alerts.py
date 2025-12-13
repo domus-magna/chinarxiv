@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import atexit
 import os
+import re
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -293,6 +294,46 @@ class AlertManager:
             log(f"Discord webhook failed: {e}")
             return False
 
+    @staticmethod
+    def _extract_error_type(error: str, max_len: int = 80) -> str:
+        """
+        Extract error type for grouping, avoiding URL/paper ID noise.
+
+        Examples:
+            "PDF not available: http://..." -> "PDF not available"
+            "Network timeout after 30s" -> "Network timeout after 30s"
+            "Failed for chinaxiv-202501.00001: 404" -> "Failed: 404"
+        """
+        if not error:
+            return "Unknown error"
+
+        # Strip paper IDs (chinaxiv-YYYYMM.NNNNN patterns) and clean up
+        error = re.sub(r'\s*chinaxiv-\d{6}\.\d{5}\s*', ' ', error)
+        error = re.sub(r'\s+', ' ', error)  # Collapse multiple spaces
+        error = re.sub(r' for :', ':', error)  # Clean up "for :" artifacts
+
+        # Split on colon and take the part before any URL or long detail
+        if ': ' in error:
+            parts = error.split(': ', 1)
+            prefix = parts[0].strip()
+            suffix = parts[1].strip() if len(parts) > 1 else ''
+
+            # If suffix is a URL or very long, just use prefix
+            if suffix.startswith('http') or len(suffix) > 50:
+                error = prefix
+            # If suffix is short and informative, keep it
+            elif suffix and len(prefix) + len(suffix) <= max_len:
+                error = f"{prefix}: {suffix}"
+            else:
+                error = prefix
+
+        # Final truncation at word boundary if still too long
+        if len(error) > max_len:
+            truncated = error[:max_len].rsplit(' ', 1)[0]
+            error = truncated if truncated else error[:max_len]
+
+        return error.strip() or "Unknown error"
+
     # Convenience methods
     def critical(self, title: str, message: str, **kw: Any) -> None:
         """Send critical alert (always immediate)."""
@@ -500,13 +541,15 @@ class AlertManager:
             error: Error message
         """
         key = f"stage_failure_{stage}"
-        # Truncate error for grouping (full error still logged)
-        error_short = error[:80] if len(error) > 80 else error
+        # Extract error type for grouping - preserves meaningful info
+        # e.g. "PDF not available" from "PDF not available: http://..."
+        # Full error is still logged via log() in _send_to_discord
+        error_type = self._extract_error_type(error)
 
         self.alert(
             "error",  # NOT critical - enables batching
             f"{stage.title()} Stage Failure",
-            error_short,  # Used for grouping in aggregation
+            error_type,  # Used for grouping in aggregation
             key=key,
             paper_id=paper_id,
             stage=stage,
