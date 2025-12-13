@@ -12,6 +12,7 @@ from __future__ import annotations
 import atexit
 import os
 import re
+import sys
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -81,11 +82,26 @@ class AlertManager:
         # Flush timers
         self._timers: Dict[str, threading.Timer] = {}
 
-        # Register cleanup on exit
-        atexit.register(self._flush_all)
+        # Register cleanup on exit.
+        #
+        # Under pytest, output capturing is typically torn down before atexit
+        # handlers run. If we flush buffered alerts at process exit, those logs
+        # leak into the end of the test output, creating noisy (and misleading)
+        # CI logs. In tests, it's safe to skip this entirely because alerts are
+        # side effects and not part of the assertions.
+        if not self._running_under_pytest():
+            atexit.register(self._flush_all)
 
         if not self.enabled:
             log("Discord webhook URL not configured. Alerts will be logged only.")
+
+    @staticmethod
+    def _running_under_pytest() -> bool:
+        # During early collection/import time, pytest is typically available as
+        # `_pytest.*` even if `pytest` itself isn't in `sys.modules` yet.
+        if "pytest" in sys.modules or "_pytest" in sys.modules:
+            return True
+        return any(name.startswith("_pytest.") for name in sys.modules)
 
     def alert(
         self,
@@ -107,6 +123,11 @@ class AlertManager:
             immediate: If True, send immediately without buffering
             **metadata: Additional data to include in the alert
         """
+        # Avoid buffered/no-webhook alert output leaking after pytest capture
+        # ends. This keeps test runs quiet without changing runtime behavior.
+        if not self.enabled and self._running_under_pytest():
+            return
+
         key = key or title
 
         # Critical level or explicit immediate flag bypasses aggregation
@@ -228,6 +249,8 @@ class AlertManager:
 
     def _flush_all(self) -> None:
         """Flush all pending alerts (called at exit)."""
+        if self._running_under_pytest():
+            return
         keys = list(self._buffer.keys())
         for key in keys:
             try:
