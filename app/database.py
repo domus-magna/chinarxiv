@@ -43,7 +43,7 @@ def query_papers(category=None, date_from=None, date_to=None, search=None,
     the Codex-reviewed plan.
 
     Args:
-        category: Category ID (e.g., 'ai_computing') or None
+        category: Category ID (e.g., 'ai_cs') or None
         date_from: ISO date string (e.g., '2022-01-01') or None
         date_to: ISO date string (e.g., '2022-12-31') or None
         search: Search query string or None

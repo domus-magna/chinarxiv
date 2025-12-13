@@ -1,5 +1,5 @@
 {
-  "ai_computing": {
+  "ai_cs": {
     "label": "AI / CS",
     "order": 1,
     "pinned": true,
@@ -11,72 +11,161 @@
       "Computer Applications",
       "Artificial Intelligence",
       "Natural Language Processing",
-      "Natural Language Understanding and Machine Translation",
-      "Information Science and Systems Science",
+      "Natural Language Understanding And Machine Translation",
+      "Information Science And Systems Science",
+      "Information Science",
       "Graph Theory",
-      "Other Disciplines of Computer Science and Technology"
+      "Integrated Theory Of Computer Science",
+      "Integration Theory Of Computer Science",
+      "Other Disciplines Of Computer Science And Technology"
     ]
   },
-  "biology": {
-    "label": "Biology",
+  "psychology": {
+    "label": "Psychology",
     "order": 2,
     "children": [
-      "Biology",
-      "Genetics",
-      "Biochemistry",
-      "Virology",
-      "Agriculture",
-      "Structural Biology"
+      "Psychology",
+      "Cognitive Psychology",
+      "Social Psychology",
+      "Developmental Psychology",
+      "Management Psychology",
+      "Applied Psychology",
+      "Clinical And Counseling Psychology",
+      "Educational Psychology",
+      "Experimental Psychology",
+      "Psychometrics",
+      "Physiological Psychology",
+      "Personality Psychology"
+    ]
+  },
+  "earth_space": {
+    "label": "Earth & Space",
+    "order": 3,
+    "children": [
+      "Geography",
+      "Astronomy",
+      "Earth Sciences",
+      "Earth Science",
+      "Geoscience",
+      "Soil Science",
+      "Atmospheric Science",
+      "Geological Science",
+      "Geology",
+      "Oceanography",
+      "Meteorology",
+      "Astronomical Instruments And Technology",
+      "Astrophysics"
     ]
   },
   "physics": {
     "label": "Physics",
-    "order": 3,
+    "order": 4,
     "children": [
       "Physics",
       "Nuclear Physics",
+      "Nuclear Science And Technology",
+      "Radiation Physics And Technology",
       "Quantum Computing",
-      "Astrophysics",
-      "Condensed Matter: Electronic Structure, Electrical, Magnetic, and Optical Properties",
-      "Science and Technology of Interdisciplinary Physics and Related Fields",
-      "Astronomical Instrumentation and Technology"
+      "Condensed Matter Physics",
+      "Particle Physics",
+      "General Physics: Statistical And Quantum Mechanics, Quantum Information, Etc.",
+      "Particle Accelerator",
+      "Optics"
+    ]
+  },
+  "biology": {
+    "label": "Biology",
+    "order": 5,
+    "children": [
+      "Biology",
+      "Botany",
+      "Applied Botany",
+      "Biochemistry",
+      "Ecology",
+      "Genetics",
+      "Virology",
+      "Microbiology",
+      "Zoology",
+      "Cell Biology",
+      "Molecular Biology",
+      "Agriculture",
+      "Agriculture, Forestry, Animal Husbandry, And Fishery",
+      "Structural Biology"
+    ]
+  },
+  "medicine": {
+    "label": "Medicine",
+    "order": 6,
+    "children": [
+      "Clinical Medicine",
+      "Medicine And Pharmacy",
+      "Medicine, Pharmacy",
+      "Nursing Science",
+      "Preventive Medicine And Public Health",
+      "Biomedical Engineering",
+      "Pharmacology",
+      "Pharmacy"
+    ]
+  },
+  "library_info": {
+    "label": "Library Science",
+    "order": 7,
+    "children": [
+      "Library Science",
+      "Library And Information Science",
+      "Library Science, Information Science",
+      "Library Science And Information Science",
+      "Digital Publishing",
+      "Internet Journals",
+      "Internet Journal",
+      "Online Journals",
+      "Archival Science"
     ]
   },
   "engineering": {
     "label": "Engineering",
-    "order": 4,
+    "order": 8,
     "children": [
-      "Nuclear Science and Technology",
-      "Nuclear Science & Technology",
-      "Engineering and Technical Sciences",
-      "Instrumentation Technology",
-      "Radiation Physics and Technology",
-      "Power and Electrical Engineering",
+      "Engineering And Technical Sciences",
       "Mechanical Engineering",
+      "Power And Electrical Engineering",
       "Electrical Engineering",
-      "Fission Reactor Engineering Technology",
-      "Fission Reactor Engineering",
-      "Nuclear Detection Technology and Nuclear Electronics",
-      "Electronics and Communication Technology",
-      "General Engineering Technology",
-      "Mechanical Manufacturing Automation",
+      "Instrumentation Technology",
+      "Metrology",
+      "Materials Science",
       "Materials Science (General)",
-      "Environmental Science and Technology",
-      "Basic Disciplines of Environmental Science and Technology",
-      "Engineering Thermophysics",
-      "Biomedical Engineering",
-      "Electronic, Optical, and Magnetic Materials",
-      "Surveying and Mapping Science and Technology",
-      "Mechanical Manufacturing Technology and Equipment",
-      "Spent Nuclear Fuel Reprocessing Technology",
-      "Nuclear Materials and Process Technology",
-      "Nuclear Fusion Engineering Technology",
-      "Particle Accelerators",
-      "Science of Science and Technology Management",
-      "Other Mechanical Engineering Disciplines",
-      "Information Processing Technology",
-      "Engineering and Technology Sciences",
-      "Engineering and Technological Sciences"
+      "Environmental Science And Technology",
+      "Surveying And Mapping Science And Technology",
+      "Fission Reactor Engineering",
+      "Nuclear Detection Technology And Nuclear Electronics",
+      "Electronics And Communication Technology"
+    ]
+  },
+  "math_stats": {
+    "label": "Mathematics",
+    "order": 9,
+    "children": [
+      "Mathematics",
+      "Statistics",
+      "Applied Mathematics",
+      "Probability And Statistics"
+    ]
+  },
+  "management": {
+    "label": "Management",
+    "order": 10,
+    "children": [
+      "Management Science",
+      "Science Of Science And Technology Management",
+      "Business Administration"
+    ]
+  },
+  "other": {
+    "label": "Other",
+    "order": 99,
+    "children": [
+      "Other",
+      "Synthesis"
     ]
   }
 }

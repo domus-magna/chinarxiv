@@ -398,7 +398,9 @@ def save_translation_result(
                 subjects_en = []
 
         if subjects_en:
-            # Sanitize and de-duplicate to avoid unique constraint violations.
+            # Sanitize, normalize to Title Case, and de-duplicate.
+            # Note: title() capitalizes articles like "and", "of" - this matches
+            # PostgreSQL INITCAP() which was used to normalize existing subjects.
             seen: set[str] = set()
             deduped: list[str] = []
             for subject in subjects_en:
@@ -407,6 +409,10 @@ def save_translation_result(
                 if not isinstance(subject, str):
                     continue
                 subject = _strip_nul(subject)
+                if not subject:
+                    continue
+                # Normalize to Title Case for consistency
+                subject = subject.strip().title()
                 if not subject:
                     continue
                 if subject in seen:
@@ -533,6 +539,40 @@ def update_chinese_metadata(
         conn.rollback()
         log(f"Error updating Chinese metadata for {paper_id}: {e}")
         raise
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def refresh_category_counts(conn=None) -> bool:
+    """
+    Refresh the category_counts materialized view.
+
+    This view pre-computes paper counts per subject for fast category
+    filtering. Should be called after papers are translated/imported.
+
+    Args:
+        conn: Optional database connection
+
+    Returns:
+        True if refresh succeeded, False otherwise
+    """
+    close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        close_conn = True
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("REFRESH MATERIALIZED VIEW category_counts;")
+        conn.commit()
+        log("Refreshed category_counts materialized view")
+        return True
+
+    except Exception as e:
+        log(f"Error refreshing category_counts: {e}")
+        return False
+
     finally:
         if close_conn:
             conn.close()

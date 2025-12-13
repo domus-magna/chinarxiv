@@ -291,7 +291,7 @@ class TestEndToEndIntegration:
         with app.app_context():
             # Execute a complex query with all filters
             papers, total = query_papers(
-                category="ai_computing",
+                category="ai_cs",
                 date_from="2022-01-01",
                 date_to="2022-12-31",
                 search="neural",

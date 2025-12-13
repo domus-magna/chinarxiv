@@ -310,7 +310,7 @@ class TestParameterTampering:
     def test_duplicate_parameters_handled(self, client, sample_papers):
         """Test that duplicate parameters are handled safely."""
         # Try to confuse parameter parsing with duplicates
-        response = client.get('/?category=ai_computing&category=physics')
+        response = client.get('/?category=ai_cs&category=physics')
         assert response.status_code == 200
 
         # Should use one value or handle gracefully

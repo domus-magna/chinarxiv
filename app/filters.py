@@ -46,14 +46,14 @@ def get_category_subjects(category_id):
     Get the list of subjects for a given category.
 
     Args:
-        category_id: Category identifier (e.g., 'ai_computing')
+        category_id: Category identifier (e.g., 'ai_cs')
 
     Returns:
         list: List of subject strings for this category.
               Returns empty list if category not found.
 
     Example:
-        >>> get_category_subjects('ai_computing')
+        >>> get_category_subjects('ai_cs')
         ['Computer Science', 'Computer Science & Technology', ...]
     """
     taxonomy = load_category_taxonomy()
@@ -61,18 +61,20 @@ def get_category_subjects(category_id):
     return category.get('children', [])
 
 
-def build_categories(db_connection=None):
+def build_categories(db_connection=None, max_tabs=5):
     """
-    Build category data structure with metadata.
+    Build category data structure with dynamic ranking.
 
-    This function loads the taxonomy and optionally adds paper counts
-    per category if a database connection is provided.
+    Categories are ranked by paper count, with pinned categories (AI/CS)
+    always appearing first. Returns only top N categories to fit on screen
+    without scrolling.
 
     Performance optimization:
     - PostgreSQL: Queries materialized view (single query, 15-25x faster)
 
     Args:
         db_connection: Optional database connection for counting papers
+        max_tabs: Maximum number of category tabs to show (default 5)
 
     Returns:
         dict: Category data with structure:
@@ -80,7 +82,8 @@ def build_categories(db_connection=None):
                 "category_id": {
                     "label": "Display Name",
                     "order": 1,
-                    "count": 42,  # Only if db_connection provided
+                    "count": 42,
+                    "pinned": True/False,
                     "subjects": ["Subject 1", "Subject 2", ...]
                 },
                 ...
@@ -88,27 +91,66 @@ def build_categories(db_connection=None):
     """
     taxonomy = load_category_taxonomy()
 
-    # Use dictionary comprehension for cleaner code
+    # Build all categories with their data
     categories = {
         cat_id: {
             'label': data['label'],
             'order': data['order'],
+            'pinned': data.get('pinned', False),
             'subjects': data.get('children', []),
             'count': 0  # Default count, updated below if db_connection provided
         }
         for cat_id, data in taxonomy.items()
     }
 
-    # Optionally add paper counts if database connection provided
+    # Add paper counts if database connection provided
     if db_connection:
-        # Import adapter here to avoid circular imports
         from .db_adapter import get_adapter
-
         adapter = get_adapter()
-        # PostgreSQL: Use materialized view (single query, very fast)
         _build_category_counts(db_connection, adapter, categories, taxonomy)
 
-    return categories
+    # Select top categories: pinned first, then by count
+    return _select_top_categories(categories, max_tabs)
+
+
+def _select_top_categories(categories, max_tabs):
+    """
+    Select top N categories for display: pinned first, then by paper count.
+
+    Args:
+        categories: Dict of all categories with counts
+        max_tabs: Maximum number of tabs to show
+
+    Returns:
+        dict: Filtered categories (pinned + top by count)
+    """
+    # Separate pinned and non-pinned categories
+    pinned = {k: v for k, v in categories.items() if v.get('pinned')}
+    non_pinned = {k: v for k, v in categories.items() if not v.get('pinned')}
+
+    # Sort non-pinned by count (descending), then by order
+    sorted_non_pinned = sorted(
+        non_pinned.items(),
+        key=lambda x: (-x[1]['count'], x[1]['order'])
+    )
+
+    # Calculate how many non-pinned to include (guard against negative if many pinned)
+    slots_for_non_pinned = max(0, max_tabs - len(pinned))
+
+    # Build result: pinned first (by order), then top non-pinned
+    result = {}
+
+    # Add pinned categories first, sorted by order
+    for cat_id, data in sorted(pinned.items(), key=lambda x: x[1]['order']):
+        result[cat_id] = data
+
+    # Add top non-pinned categories
+    for cat_id, data in sorted_non_pinned[:slots_for_non_pinned]:
+        # Only include if it has papers
+        if data['count'] > 0:
+            result[cat_id] = data
+
+    return result
 
 
 def _build_category_counts(db_connection, adapter, categories, taxonomy):
@@ -157,7 +199,7 @@ def get_available_filters(db_connection):
     Returns:
         dict: Filter data structure:
             {
-                "ai_computing": {
+                "ai_cs": {
                     "label": "AI / CS",
                     "order": 1,
                     "subjects": [
