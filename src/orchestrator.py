@@ -214,6 +214,38 @@ def get_paper_status(conn, paper_id: str) -> dict:
     return dict(row) if row else {}
 
 
+def get_paper_statuses_batch(conn, paper_ids: list) -> dict:
+    """
+    Get processing status for multiple papers in a single query.
+
+    This is a performance optimization over calling get_paper_status() in a loop.
+    Reduces N database round-trips to 1.
+
+    Args:
+        conn: Database connection
+        paper_ids: List of paper IDs to query
+
+    Returns:
+        dict: Mapping of paper_id -> status dict. Missing papers are not included.
+    """
+    if not paper_ids:
+        return {}
+
+    cursor = conn.cursor()
+    # Use ANY() for efficient IN clause with array parameter
+    # Explicit ::text[] cast ensures correct type matching with TEXT id column
+    cursor.execute("""
+        SELECT id, processing_status, text_status, figures_status, pdf_status,
+               has_chinese_pdf, has_english_pdf, processing_started_at, processing_error,
+               text_completed_at, figures_completed_at, pdf_completed_at,
+               pdf_url, source_url
+        FROM papers
+        WHERE id = ANY(%s::text[])
+    """, (paper_ids,))
+
+    return {row['id']: dict(row) for row in cursor.fetchall()}
+
+
 def acquire_paper_lock(conn, paper_id: str) -> bool:
     """
     Try to acquire exclusive lock on a paper for processing.
@@ -964,6 +996,7 @@ def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
     Returns:
         True if post-processing succeeded, False otherwise
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from .tools.b2_publish import (
         upload_translation,
         upload_english_pdf,
@@ -979,35 +1012,48 @@ def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
         log("    [DRY RUN] Would upload to B2")
         return True
 
-    uploaded_count = 0
+    # Collect upload tasks for parallel execution
+    upload_tasks = []
 
-    # 1. Upload translation JSON (validated or flagged)
+    # 1. Translation JSON (validated or flagged)
     translation_path = f"data/translated/{paper_id}.json"
     flagged_path = f"data/flagged/{paper_id}.json"
-
     if os.path.exists(translation_path):
-        if upload_translation(paper_id, translation_path):
-            log("    Uploaded translation to B2")
-            uploaded_count += 1
-        else:
-            log("    WARNING: Translation upload failed")
+        upload_tasks.append(('translation', upload_translation, paper_id, translation_path))
     elif os.path.exists(flagged_path):
-        if upload_flagged(paper_id, flagged_path):
-            log("    Uploaded flagged translation to B2")
-            uploaded_count += 1
-        else:
-            log("    WARNING: Flagged upload failed")
+        upload_tasks.append(('flagged', upload_flagged, paper_id, flagged_path))
 
-    # 2. Upload English PDF (if exists)
+    # 2. English PDF (if exists)
     english_pdf_path = f"data/english_pdfs/{paper_id}.pdf"
     if os.path.exists(english_pdf_path):
-        if upload_english_pdf(paper_id, english_pdf_path):
-            log("    Uploaded English PDF to B2")
-            uploaded_count += 1
-        else:
-            log("    WARNING: English PDF upload failed")
+        upload_tasks.append(('english_pdf', upload_english_pdf, paper_id, english_pdf_path))
 
-    # 3. Upload figures (if directory exists)
+    # 3. QA report (if present)
+    qa_report_path = f"reports/qa_results/{paper_id}.json"
+    if os.path.exists(qa_report_path):
+        upload_tasks.append(('qa_report', upload_qa_report, paper_id, qa_report_path))
+
+    # Execute uploads in parallel (3 concurrent uploads max)
+    uploaded_count = 0
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {}
+        for task_name, upload_fn, pid, path in upload_tasks:
+            future = executor.submit(upload_fn, pid, path)
+            futures[future] = task_name
+
+        for future in as_completed(futures):
+            task_name = futures[future]
+            try:
+                result = future.result()
+                if result:
+                    log(f"    Uploaded {task_name} to B2")
+                    uploaded_count += 1
+                else:
+                    log(f"    WARNING: {task_name} upload failed")
+            except Exception as e:
+                log(f"    ERROR: {task_name} upload exception: {e}")
+
+    # 4. Upload figures (if directory exists) - sequential due to internal parallelism
     figures_dir = f"data/figures/{paper_id}"
     if os.path.isdir(figures_dir):
         fig_count = upload_figures(paper_id, figures_dir)
@@ -1017,21 +1063,11 @@ def run_post_processing(paper_id: str, dry_run: bool = False) -> bool:
         else:
             log("    No figures uploaded (empty or failed)")
 
-    # 4. Create pointer JSON
+    # 5. Create pointer JSON (must be after all uploads)
     if create_paper_pointer(paper_id):
         log("    Created paper pointer in B2")
     else:
         log("    WARNING: Pointer creation failed")
-
-    # 5. Upload QA report (if present)
-    qa_report_path = f"reports/qa_results/{paper_id}.json"
-    if os.path.exists(qa_report_path):
-        remote_key = upload_qa_report(paper_id, qa_report_path)
-        if remote_key:
-            log(f"    Uploaded QA report to B2: {remote_key}")
-            uploaded_count += 1
-        else:
-            log("    WARNING: QA report upload failed")
 
     # POST stage succeeds if we uploaded something OR there was nothing to upload
     # (empty uploaded_count with no files is fine - translation may be DB-only)
@@ -1265,10 +1301,13 @@ def get_work_queue(
             log(f"Force mode: processing all {len(papers)} papers")
             return papers
 
-        # Filter out already-complete papers
+        # Filter out already-complete papers (batch query for performance)
+        # This reduces N database round-trips to 1
+        statuses = get_paper_statuses_batch(conn, papers)
+
         work_queue = []
         for paper_id in papers:
-            status = get_paper_status(conn, paper_id)
+            status = statuses.get(paper_id)
 
             if not status:
                 # Paper not in DB - add to queue

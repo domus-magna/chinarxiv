@@ -9,7 +9,7 @@ This module creates and configures the Flask application with:
 Requires: DATABASE_URL environment variable for PostgreSQL connection
 """
 
-from flask import Flask, g, render_template
+from flask import Flask, g, render_template, request
 import os
 import markdown as md
 from markupsafe import Markup
@@ -17,6 +17,7 @@ import bleach
 import logging
 from app.db_adapter import init_adapter, get_adapter
 from werkzeug.exceptions import HTTPException
+from whitenoise import WhiteNoise
 
 try:
     import psycopg2
@@ -174,5 +175,53 @@ def create_app(config=None):
     # Register blueprints (routes will be added in Phase 2.4)
     from . import routes
     app.register_blueprint(routes.bp)
+
+    # ---------------------------------------------------------------------
+    # HTTP Cache Headers (Performance optimization)
+    # ---------------------------------------------------------------------
+    @app.after_request
+    def add_cache_headers(response):
+        """
+        Add Cache-Control headers for performance.
+
+        - Paper detail pages (/items/): 24 hours (rarely change)
+        - API responses: 1 minute
+        - HTML pages: 5 minutes (content may change)
+
+        Note: Static assets (/assets/) are handled by WhiteNoise middleware
+        with its own caching headers, so we skip them here.
+        """
+        # Skip if response already has Cache-Control (set by WhiteNoise or other)
+        if 'Cache-Control' in response.headers:
+            return response
+
+        path = request.path
+
+        # Skip /assets/ - handled by WhiteNoise middleware
+        if path.startswith('/assets/'):
+            return response
+
+        # Paper detail pages - cache 24 hours
+        if path.startswith('/items/'):
+            response.headers['Cache-Control'] = 'public, max-age=86400'
+        # API endpoints - cache 1 minute
+        elif path.startswith('/api/'):
+            response.headers['Cache-Control'] = 'public, max-age=60'
+        # Homepage and other pages - cache 5 minutes
+        elif response.content_type and 'text/html' in response.content_type:
+            response.headers['Cache-Control'] = 'public, max-age=300'
+
+        return response
+
+    # Wrap app with WhiteNoise for compressed static file serving
+    # This must happen AFTER all routes are registered
+    app.wsgi_app = WhiteNoise(
+        app.wsgi_app,
+        root=os.path.join(os.path.dirname(__file__), '..', 'assets'),
+        prefix='/assets/',
+        # Enable compression (gzip/brotli)
+        # Add immutable for versioned assets, max_age for non-versioned
+        max_age=86400,  # 1 day for non-versioned static files
+    )
 
     return app
