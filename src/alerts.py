@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import atexit
 import os
+import re
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -173,6 +174,11 @@ class AlertManager:
         level_priority = {"critical": 4, "error": 3, "warning": 2, "info": 1, "success": 0}
         highest_level = max(alerts, key=lambda a: level_priority.get(a.level, 0)).level
 
+        # Special handling for stage failures - cleaner format
+        if key.startswith("stage_failure_"):
+            self._send_stage_failure_summary(key, alerts, highest_level)
+            return
+
         # Group by message/error type
         by_message: Dict[str, int] = {}
         for a in alerts:
@@ -189,6 +195,36 @@ class AlertManager:
 
         title = f"Alert Summary: {key}"
         self._send_to_discord(highest_level, title, "\n".join(lines))
+
+    def _send_stage_failure_summary(
+        self, key: str, alerts: List[BufferedAlert], level: str
+    ) -> None:
+        """Send formatted summary for stage failures."""
+        # Extract stage name from key (e.g., "stage_failure_harvest" -> "Harvest")
+        stage = key.replace("stage_failure_", "").title()
+
+        # Group by error message
+        by_error: Dict[str, int] = {}
+        for a in alerts:
+            error_msg = a.message or "Unknown error"
+            by_error[error_msg] = by_error.get(error_msg, 0) + 1
+
+        # Build summary lines
+        lines = [f"**{len(alerts)} papers** failed in the last {self.window_seconds}s:"]
+        for error_msg, count in sorted(by_error.items(), key=lambda x: -x[1]):
+            if count > 1:
+                lines.append(f"  \u2022 {error_msg}: {count}x")
+            else:
+                lines.append(f"  \u2022 {error_msg}")
+
+        # Add GitHub Actions link if available
+        run_id = os.environ.get("GITHUB_RUN_ID")
+        repo = os.environ.get("GITHUB_REPOSITORY", "domus-magna/chinaxiv-english")
+        if run_id:
+            lines.append(f"\n[View logs](https://github.com/{repo}/actions/runs/{run_id})")
+
+        title = f"{stage} Stage Failures"
+        self._send_to_discord(level, title, "\n".join(lines))
 
     def _flush_all(self) -> None:
         """Flush all pending alerts (called at exit)."""
@@ -257,6 +293,46 @@ class AlertManager:
         except requests.RequestException as e:
             log(f"Discord webhook failed: {e}")
             return False
+
+    @staticmethod
+    def _extract_error_type(error: str, max_len: int = 80) -> str:
+        """
+        Extract error type for grouping, avoiding URL/paper ID noise.
+
+        Examples:
+            "PDF not available: http://..." -> "PDF not available"
+            "Network timeout after 30s" -> "Network timeout after 30s"
+            "Failed for chinaxiv-202501.00001: 404" -> "Failed: 404"
+        """
+        if not error:
+            return "Unknown error"
+
+        # Strip paper IDs (chinaxiv-YYYYMM.NNNNN patterns) and clean up
+        error = re.sub(r'\s*chinaxiv-\d{6}\.\d{5}\s*', ' ', error)
+        error = re.sub(r'\s+', ' ', error)  # Collapse multiple spaces
+        error = re.sub(r' for :', ':', error)  # Clean up "for :" artifacts
+
+        # Split on colon and take the part before any URL or long detail
+        if ': ' in error:
+            parts = error.split(': ', 1)
+            prefix = parts[0].strip()
+            suffix = parts[1].strip() if len(parts) > 1 else ''
+
+            # If suffix is a URL or very long, just use prefix
+            if suffix.startswith('http') or len(suffix) > 50:
+                error = prefix
+            # If suffix is short and informative, keep it
+            elif suffix and len(prefix) + len(suffix) <= max_len:
+                error = f"{prefix}: {suffix}"
+            else:
+                error = prefix
+
+        # Final truncation at word boundary if still too long
+        if len(error) > max_len:
+            truncated = error[:max_len].rsplit(' ', 1)[0]
+            error = truncated if truncated else error[:max_len]
+
+        return error.strip() or "Unknown error"
 
     # Convenience methods
     def critical(self, title: str, message: str, **kw: Any) -> None:
@@ -447,6 +523,38 @@ class AlertManager:
             papers=papers_count,
         )
 
+    def stage_failure(
+        self,
+        stage: str,
+        paper_id: str,
+        error: str,
+    ) -> None:
+        """
+        Record a pipeline stage failure (batched by stage type).
+
+        Multiple failures within the aggregation window are combined into
+        a single Discord message grouped by error type.
+
+        Args:
+            stage: Stage name (harvest, text, figures, pdf)
+            paper_id: Paper that failed
+            error: Error message
+        """
+        key = f"stage_failure_{stage}"
+        # Extract error type for grouping - preserves meaningful info
+        # e.g. "PDF not available" from "PDF not available: http://..."
+        # Full error is still logged via log() in _send_to_discord
+        error_type = self._extract_error_type(error)
+
+        self.alert(
+            "error",  # NOT critical - enables batching
+            f"{stage.title()} Stage Failure",
+            error_type,  # Used for grouping in aggregation
+            key=key,
+            paper_id=paper_id,
+            stage=stage,
+        )
+
 
 # Global singleton instance
 _manager: Optional[AlertManager] = None
@@ -535,3 +643,12 @@ def pipeline_started(
 ) -> None:
     """Send pipeline started alert."""
     get_alert_manager().pipeline_started(papers_count, source, month, with_figures)
+
+
+def stage_failure(stage: str, paper_id: str, error: str) -> None:
+    """
+    Record a pipeline stage failure (batched by stage type).
+
+    Multiple failures within 60s are combined into a single Discord message.
+    """
+    get_alert_manager().stage_failure(stage, paper_id, error)
