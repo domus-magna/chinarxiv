@@ -27,11 +27,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     import boto3
+    import psycopg2
     from botocore.exceptions import ClientError
     from dotenv import load_dotenv
 except ImportError as e:
     print(f"ERROR: Missing dependencies: {e}")
-    print("Run: pip install boto3 python-dotenv")
+    print("Run: pip install boto3 python-dotenv psycopg2-binary")
     sys.exit(1)
 
 load_dotenv()
@@ -115,6 +116,34 @@ def upload_manifest(s3, manifest: dict):
     )
 
 
+def get_db_connection():
+    """Get PostgreSQL connection from DATABASE_URL."""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        return None
+    try:
+        return psycopg2.connect(database_url)
+    except Exception as e:
+        log(f"Warning: Could not connect to database: {e}")
+        return None
+
+
+def update_english_pdf_url(conn, paper_id: str, url: str) -> bool:
+    """Update english_pdf_url in database after B2 upload."""
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE papers SET english_pdf_url = %s WHERE id = %s",
+            (url, paper_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        log(f"  Warning: DB update failed for {paper_id}: {e}")
+        conn.rollback()
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Upload English PDFs to B2")
     parser.add_argument(
@@ -162,6 +191,13 @@ def main():
 
     # Create S3 client
     s3 = get_s3_client()
+
+    # Connect to database (optional - will log warning if unavailable)
+    db_conn = get_db_connection()
+    if db_conn:
+        log("Connected to database for URL updates")
+    else:
+        log("Warning: No database connection - URLs will only be in B2 manifest")
 
     # Get existing manifest
     log("Downloading existing manifest...")
@@ -235,6 +271,11 @@ def main():
                 "figure_count": figure_count,
             }
             success_count += 1
+
+            # Update database with URL (if connected)
+            if db_conn:
+                update_english_pdf_url(db_conn, paper_id, url)
+
             # Only cleanup metadata after successful upload
             if meta_path.exists():
                 meta_files_to_cleanup.append(meta_path)
@@ -255,10 +296,16 @@ def main():
                 meta_path.unlink()
         log(f"Cleaned up {len(meta_files_to_cleanup)} metadata files")
 
+    # Close database connection
+    if db_conn:
+        db_conn.close()
+
     print()
     print("=" * 60)
     print(f"Done! Uploaded {success_count} PDFs, {fail_count} failures")
     print(f"Manifest: {B2_PUBLIC_URL_BASE}/{B2_PDF_PREFIX}manifest.json")
+    if db_conn:
+        print("Database URLs updated")
 
 
 if __name__ == "__main__":
